@@ -189,11 +189,11 @@ export function LoginForm({
           {/* </div> */}
         </CardContent>
         <CardContent className="px-8 pb-6">
-          <Link to="https://tailed.ca/sign-in">
+          <a href="https://tailed.ca/sign-in">
             <Button variant="secondary" className="w-full">
               I represent a company - Go to Company Portal
             </Button>
-          </Link>
+          </a>
         </CardContent>
       </Card>
       <div className="mt-4 text-center text-xs text-muted-foreground [&_a]:underline [&_a]:underline-offset-4 hover:[&_a]:text-primary">

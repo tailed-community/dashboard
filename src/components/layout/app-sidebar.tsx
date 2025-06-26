@@ -35,11 +35,6 @@ const data = {
       icon: ChartPie,
       isActive: true,
     },
-    {
-      title: "Jobs",
-      url: "/jobs",
-      icon: BriefcaseBusiness,
-    },
   ],
   navSecondary: [
     {
@@ -73,12 +68,11 @@ const data = {
 };
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const { organization, user, loading } = useSidebar() || { 
-    organization: null, 
-    user: null, 
-    loading: true 
+  const { user, loading } = useSidebar() || {
+    user: null,
+    loading: true,
   };
-  
+
   return (
     <Sidebar variant="inset" {...props}>
       <SidebarHeader>
@@ -90,17 +84,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   <Command className="size-4" />
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  {loading ? (
-                    <>
-                      <Skeleton className="h-4 w-24" />
-                      <Skeleton className="mt-1 h-3 w-16" />
-                    </>
-                  ) : (
-                    <>
-                      <span className="truncate font-semibold">{organization?.name}</span>
-                      <span className="truncate text-xs">{organization?.type}</span>
-                    </>
-                  )}
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="mt-1 h-3 w-16" />
                 </div>
               </Link>
             </SidebarMenuButton>
@@ -122,12 +107,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </div>
           </div>
         ) : (
-          <NavUser user={user || {
-            name: "",
-            initials: "",
-            email: "",
-            avatar: ""
-          }} />
+          <NavUser
+            user={
+              user || {
+                name: "",
+                initials: "",
+                email: "",
+                avatar: "",
+              }
+            }
+          />
         )}
       </SidebarFooter>
     </Sidebar>

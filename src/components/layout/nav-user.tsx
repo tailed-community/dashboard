@@ -93,20 +93,9 @@ export function NavUser({
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem>
-                <Sparkles />
-                {m.upgrade_to_premium()}
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
               <DropdownMenuItem onClick={() => navigate("/account")}>
                 <BadgeCheck />
                 {m.account()}
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <CreditCard />
-                {m.billing()}
               </DropdownMenuItem>
               <DropdownMenuItem>
                 <Bell />

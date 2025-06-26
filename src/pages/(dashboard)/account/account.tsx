@@ -9,7 +9,7 @@ import {
   Check,
   X,
   Loader2,
-  Building2,
+  UserCircle,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -141,7 +141,7 @@ const apiService = {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ role }),
-        }
+        },
       );
       if (!response.ok) throw new Error("Failed to update member role");
       return await response.json();
@@ -184,6 +184,7 @@ const initialMembers: Array<any> = [];
 
 export default function AccountPage() {
   const [organization, setOrganization] = useState(initialOrganization);
+  const [student, setStudent] = useState({ name: "", email: "" });
   const [members, setMembers] = useState(initialMembers);
   const [pendingInvites, setPendingInvites] = useState<
     Array<{
@@ -272,26 +273,32 @@ export default function AccountPage() {
     fetchData();
   }, []);
 
-  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setOrganization((prev) => ({ ...prev, name: e.target.value }));
+  const handleStudentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setStudent((prev) => ({ ...prev, [name]: value }));
   };
 
-  const saveNameChange = async () => {
+  const saveStudentChange = async () => {
     setIsLoading(true);
     try {
-      await apiService.updateOrganizationName(organization.name);
-      setIsEditingName(false);
-      toast.success("Organization updated", {
-        description: "Organization name has been updated successfully.",
+      // Assume updateStudent is a function to update student details
+      await apiService.updateStudent(student);
+      toast.success("Student updated", {
+        description: "Student details have been updated successfully.",
       });
     } catch (error) {
-      console.error("Error updating name:", error);
-      toast.error("Error updating organization", {
-        description: "Could not update organization name. Please try again.",
+      console.error("Error updating student:", error);
+      toast.error("Error updating student", {
+        description: "Could not update student details. Please try again.",
       });
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleGitHubLogin = () => {
+    // Redirect to GitHub OAuth login
+    window.location.href = "/auth/github";
   };
 
   const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -327,7 +334,7 @@ export default function AccountPage() {
       const result = (await apiService.inviteMember(
         newMemberEmail,
         newMemberFirstName,
-        newMemberLastName
+        newMemberLastName,
       )) as any;
       setMembers((prev) => [
         ...prev,
@@ -360,8 +367,8 @@ export default function AccountPage() {
       await apiService.updateMemberRole(memberId, newRole);
       setMembers((prev) =>
         prev.map((member) =>
-          member.id === memberId ? { ...member, role: newRole } : member
-        )
+          member.id === memberId ? { ...member, role: newRole } : member,
+        ),
       );
       toast.success("Role updated", {
         description: "Member role has been updated successfully.",
@@ -381,7 +388,7 @@ export default function AccountPage() {
     try {
       await apiService.removeMember(memberToRemove.id);
       setMembers((prev) =>
-        prev.filter((member) => member.id !== memberToRemove.id)
+        prev.filter((member) => member.id !== memberToRemove.id),
       );
       setIsRemoveDialogOpen(false);
       toast.success("Member removed", {
@@ -403,7 +410,7 @@ export default function AccountPage() {
     <div className="w-full max-w-6xl mx-auto p-4 space-y-6">
       <Card>
         <CardHeader>
-          <div className="flex items-center space-x-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
             <Skeleton className="w-[100px] h-[100px] rounded-lg" />
             <div className="flex-grow space-y-3">
               <Skeleton className="h-8 w-[200px]" />
@@ -453,19 +460,15 @@ export default function AccountPage() {
       <Card>
         <CardHeader>
           <div className="flex items-center space-x-4">
-            <div className="relative">
-              {isUploadingLogo ? (
-                <div className="w-[100px] h-[100px] rounded-lg bg-muted flex items-center justify-center">
-                  <Loader2 className="h-6 w-6 animate-spin" />
-                </div>
-              ) : isLoadingLogo ? (
+            <div className="relative flex justify-center items-center">
+              {isUploadingLogo || isLoadingLogo ? (
                 <div className="w-[100px] h-[100px] rounded-lg bg-muted flex items-center justify-center">
                   <Loader2 className="h-6 w-6 animate-spin" />
                 </div>
               ) : resolvedLogoUrl ? (
                 <img
                   src={resolvedLogoUrl}
-                  alt={`${organization.name || 'Organization'} logo`}
+                  alt={`${organization.name || "Organization"} logo`}
                   width={100}
                   height={100}
                   className="rounded-lg object-cover border"
@@ -475,7 +478,7 @@ export default function AccountPage() {
                 />
               ) : (
                 <div className="w-[100px] h-[100px] rounded-lg bg-muted flex items-center justify-center border">
-                  <Building2 className="h-12 w-12 text-muted-foreground" />
+                  <UserCircle className="h-12 w-12 text-muted-foreground" />
                 </div>
               )}
               <Label
@@ -493,321 +496,47 @@ export default function AccountPage() {
                 disabled={isUploadingLogo || isLoadingLogo}
               />
             </div>
-            <div className="flex-grow">
-              {isEditingName ? (
-                <div className="flex items-center">
-                  <Input
-                    value={organization.name}
-                    onChange={handleNameChange}
-                    className="text-2xl font-bold max-w-sm"
-                    autoFocus
-                  />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={saveNameChange}
-                    disabled={isLoading}
-                    className="ml-2"
-                  >
-                    {isLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Check className="h-4 w-4" />
-                    )}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setOrganization((prev) => ({
-                        ...prev,
-                        name: initialOrganization.name,
-                      }));
-                      setIsEditingName(false);
-                    }}
-                    className="ml-1"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              ) : (
-                <CardTitle className="text-2xl flex items-center">
-                  {organization.name}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setIsEditingName(true)}
-                    className="ml-2"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                </CardTitle>
-              )}
-              <p className="text-sm text-muted-foreground">
-                Organization Account
-              </p>
-            </div>
-          </div>
-        </CardHeader>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Members</CardTitle>
-            <Dialog
-              open={isInviteDialogOpen}
-              onOpenChange={setIsInviteDialogOpen}
-            >
-              <DialogTrigger asChild>
-                <Button>
-                  <UserPlus className="mr-2 h-4 w-4" />
-                  Invite Member
+            <div className="flex-grow space-y-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <Input
+                  name="name"
+                  value={student.name}
+                  onChange={handleStudentChange}
+                  placeholder="Student Name"
+                  className="w-full"
+                />
+                <Input
+                  name="email"
+                  value={student.email}
+                  onChange={handleStudentChange}
+                  placeholder="Student Email"
+                  className="w-full"
+                />
+              </div>
+              <div className="flex space-x-4 mt-4">
+                <Button
+                  variant="primary"
+                  onClick={saveStudentChange}
+                  disabled={isLoading}
+                  className="w-full md:w-auto"
+                >
+                  {isLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    "Save"
+                  )}
                 </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[425px]">
-                <DialogHeader>
-                  <DialogTitle>Invite New Member</DialogTitle>
-                  <DialogDescription>
-                    Enter the details of the person you'd like to invite to your
-                    organization.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="firstName" className="text-right">
-                      First Name
-                    </Label>
-                    <Input
-                      id="firstName"
-                      value={newMemberFirstName}
-                      onChange={(e) => setNewMemberFirstName(e.target.value)}
-                      className="col-span-3"
-                      placeholder="John"
-                    />
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="lastName" className="text-right">
-                      Last Name
-                    </Label>
-                    <Input
-                      id="lastName"
-                      value={newMemberLastName}
-                      onChange={(e) => setNewMemberLastName(e.target.value)}
-                      className="col-span-3"
-                      placeholder="Doe"
-                    />
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="email" className="text-right">
-                      Email
-                    </Label>
-                    <Input
-                      id="email"
-                      value={newMemberEmail}
-                      onChange={(e) => setNewMemberEmail(e.target.value)}
-                      className="col-span-3"
-                      placeholder="colleague@example.com"
-                      type="email"
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button
-                    type="submit"
-                    onClick={handleInviteMember}
-                    disabled={
-                      isInviting ||
-                      !newMemberEmail ||
-                      !newMemberFirstName ||
-                      !newMemberLastName
-                    }
-                  >
-                    {isInviting ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <UserPlus className="mr-2 h-4 w-4" />
-                    )}
-                    {isInviting ? "Sending..." : "Send Invitation"}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+                <Button
+                  variant="secondary"
+                  onClick={handleGitHubLogin}
+                  className="w-full md:w-auto"
+                >
+                  Login with GitHub
+                </Button>
+              </div>
+            </div>
           </div>
         </CardHeader>
-        <CardContent>
-          {isLoading && members.length === 0 ? (
-            <div className="flex items-center justify-center py-10">
-              <Loader2 className="h-6 w-6 animate-spin mr-2" />
-              <span>Loading members...</span>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {members.map((member) => (
-                <div
-                  key={member.id}
-                  className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors"
-                >
-                  <div className="flex items-center space-x-4">
-                    <Avatar>
-                      <AvatarImage src={member.avatar} alt={member.name} />
-                      <AvatarFallback>
-                        {member.name
-                          .split(" ")
-                          .map((n) => n[0])
-                          .join("")}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="text-sm font-medium">{member.name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {member.email}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Badge
-                      variant={"secondary"}
-                    >
-                      {member.role}
-                    </Badge>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuLabel className="font-normal text-xs text-muted-foreground">
-                          Role
-                        </DropdownMenuLabel>
-                        <DropdownMenuRadioGroup
-                          value={member.role}
-                          onValueChange={(value) =>
-                            handleUpdateMemberRole(member.id, value)
-                          }
-                        >
-                        <DropdownMenuRadioItem value="owner">
-                          Owner
-                        </DropdownMenuRadioItem>
-                          <DropdownMenuRadioItem value="admin">
-                            Admin
-                          </DropdownMenuRadioItem>
-                          <DropdownMenuRadioItem value="member">
-                            Member
-                          </DropdownMenuRadioItem>
-                        </DropdownMenuRadioGroup>
-                        <DropdownMenuSeparator />
-                        <AlertDialog
-                          open={isRemoveDialogOpen}
-                          onOpenChange={setIsRemoveDialogOpen}
-                        >
-                          <AlertDialogTrigger asChild>
-                            <DropdownMenuItem
-                              onSelect={(e) => {
-                                e.preventDefault();
-                                setMemberToRemove(member);
-                                setIsRemoveDialogOpen(true);
-                              }}
-                              className="text-red-600"
-                            >
-                              Remove Member
-                            </DropdownMenuItem>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>
-                                Remove this member?
-                              </AlertDialogTitle>
-                              <AlertDialogDescription>
-                                This action cannot be undone. This will
-                                permanently remove
-                                <span className="font-medium">
-                                  {" "}
-                                  {memberToRemove?.name}{" "}
-                                </span>
-                                from your organization.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={handleRemoveMember}
-                                disabled={isRemoving}
-                                className="bg-red-600 hover:bg-red-700"
-                              >
-                                {isRemoving ? (
-                                  <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Removing...
-                                  </>
-                                ) : (
-                                  "Remove Member"
-                                )}
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-              ))}
-
-              {/* Render pending invites */}
-              {pendingInvites.map((invite) => (
-                <div
-                  key={invite.id}
-                  className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors"
-                >
-                  <div className="flex items-center space-x-4">
-                    <Avatar>
-                      <AvatarFallback>
-                        {`${invite.firstName[0]}${invite.lastName[0]}`}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="text-sm font-medium">{`${invite.firstName} ${invite.lastName}`}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {invite.email}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Badge className="text-yellow-600 bg-yellow-100">
-                      Pending
-                    </Badge>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onSelect={(e) => {
-                            e.preventDefault();
-                            setMemberToRemove({
-                              id: invite.id,
-                              name: `${invite.firstName} ${invite.lastName}`,
-                              email: invite.email,
-                            } as any);
-                            setIsRemoveDialogOpen(true);
-                          }}
-                          className="text-red-600"
-                        >
-                          Cancel Invitation
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
       </Card>
     </div>
   );

@@ -220,7 +220,7 @@ export default function SignUpForm() {
             <Button
               variant="secondary"
               className="w-full"
-              onClick={() => navigate("https://taild.ca/sign-up")}
+              onClick={() => (document.location = "https://tailed.ca/sign-up")}
             >
               I represent a company - Go to Company Portal
             </Button>

@@ -1,4 +1,9 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
 import { Toaster } from "./components/ui/sonner";
 import SignIn from "./pages/(auth)/sign-in/page";
 import SignUp from "./pages/(auth)/sign-up/page";
@@ -8,13 +13,13 @@ import Dashboard from "./pages/(dashboard)/page";
 import ProtectedRoute from "./lib/protected-route";
 import DashboardLayout from "./layouts/dashboard-layout";
 import Account from "./pages/(dashboard)/account/page";
-import Jobs from "./pages/(dashboard)/jobs/page";
 
 function App() {
   return (
     <Router>
       <Routes>
         {/* AUTHENTICATION */}
+        <Route path="/" element={<Navigate to="/sign-in" />} />
         <Route path="/sign-in" element={<SignIn />} />
         <Route path="/sign-up" element={<SignUp />} />
         <Route path="/join" element={<Join />} />
@@ -23,7 +28,6 @@ function App() {
           <Route element={<DashboardLayout />}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/account" element={<Account />} />
-            <Route path="/jobs" element={<Jobs />} />
           </Route>
         </Route>
       </Routes>
