@@ -8,12 +8,11 @@ import { m } from "@/paraglide/messages.js";
 import {
   SAMLAuthProvider,
   signInWithPopup,
-  UserCredential,
+  type UserCredential,
 } from "firebase/auth";
-import { FormEvent } from "react";
-import { getApp } from "@firebase/app";
+import { type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { orgAuth } from "@/lib/auth";
+import { studentAuth } from "@/lib/auth";
 // // import Image from "next/image";
 // https://cloud.google.com/identity-platform/docs/admin/manage-users
 // https://cloud.google.com/identity-platform/docs/how-to-configure-custom-claims
@@ -54,7 +53,7 @@ export function LoginWithSAML({
     //   url: "http://localhost"
     // })
     // signInWithEmailAndPassword(auth, email, "test123")
-    signInWithPopup(orgAuth, provider)
+    signInWithPopup(studentAuth, provider)
       .then((userCredential: UserCredential) => {
         // The link was successfully sent. Inform the user.
         // Save the email locally so you don't need to ask the user for it again

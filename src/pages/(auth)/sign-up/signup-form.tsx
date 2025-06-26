@@ -9,7 +9,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useNavigate } from "react-router-dom";
-import { FormEvent, useState } from "react";
+import { type FormEvent, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Select,
@@ -44,22 +44,22 @@ export default function SignUpForm() {
       countryCodes.find((c) => c.country === country)?.code || "+1";
 
     const userData = {
-      organizationName: formData.get("organization") as string,
       firstName: formData.get("firstName") as string,
       lastName: formData.get("lastName") as string,
       phoneNumber: `${countryCode}${phoneNumber.replace(/\D/g, "")}`, // Format: clean non-digits but keep country code
       email: formData.get("email") as string,
+      schoolName: formData.get("school") as string,
     };
 
     try {
-      // Call the API to create the user and org
+      //TODO: Replace with new api when made
       const response = await fetch(
         `${import.meta.env.VITE_API_URL}/auth/create-account`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(userData),
-        }
+        },
       );
 
       if (response.ok) {
@@ -69,7 +69,7 @@ export default function SignUpForm() {
       } else {
         const errorData = await response.json();
         setErrorMessage(
-          errorData.message || "An error occurred during account creation."
+          errorData.message || "An error occurred during account creation.",
         );
       }
     } catch (error) {
@@ -117,16 +117,6 @@ export default function SignUpForm() {
       <CardContent>
         <form className="space-y-6" onSubmit={handleSignUp}>
           <div className="space-y-4">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="organization">Company name</Label>
-              <Input
-                id="organization"
-                name="organization"
-                placeholder="Enter your company name"
-                required
-              />
-            </div>
-
             <div className="grid md:grid-cols-2 gap-4">
               <div className="flex flex-col gap-2">
                 <Label htmlFor="firstName">First name</Label>
@@ -196,6 +186,16 @@ export default function SignUpForm() {
                 required
               />
             </div>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="school">School name</Label>
+              <Input
+                id="school"
+                name="school"
+                placeholder="Enter your school name"
+                required
+              />
+            </div>
           </div>
 
           {errorMessage && (
@@ -220,9 +220,9 @@ export default function SignUpForm() {
             <Button
               variant="secondary"
               className="w-full"
-              onClick={() => navigate("/student-portal")}
+              onClick={() => navigate("https://taild.ca/sign-up")}
             >
-              I’m a Student – Go to Student Portal
+              I represent a company - Go to Company Portal
             </Button>
           </div>
 

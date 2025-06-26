@@ -4,6 +4,11 @@ import SignIn from "./pages/(auth)/sign-in/page";
 import SignUp from "./pages/(auth)/sign-up/page";
 import Join from "./pages/(auth)/join/page";
 import AuthCallback from "./pages/(auth)/auth/callback/page";
+import Dashboard from "./pages/(dashboard)/page";
+import ProtectedRoute from "./lib/protected-route";
+import DashboardLayout from "./layouts/dashboard-layout";
+import Account from "./pages/(dashboard)/account/page";
+import Jobs from "./pages/(dashboard)/jobs/page";
 
 function App() {
   return (
@@ -14,6 +19,13 @@ function App() {
         <Route path="/sign-up" element={<SignUp />} />
         <Route path="/join" element={<Join />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route element={<ProtectedRoute />}>
+          <Route element={<DashboardLayout />}>
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/account" element={<Account />} />
+            <Route path="/jobs" element={<Jobs />} />
+          </Route>
+        </Route>
       </Routes>
       <Toaster />
     </Router>

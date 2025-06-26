@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FormEvent } from "react";
+import { type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { sendLoginLink, TENANT_IDS } from "@/lib/auth";
@@ -58,7 +58,7 @@ export function LoginForm({
     }).then((response) => {
       if (response.ok) {
         // If the account exists, send the login link
-        sendLoginLink(email, TENANT_IDS.ORGANIZATIONS)
+        sendLoginLink(email, TENANT_IDS.STUDENTS)
           .then(() => {
             toast("Login link sent", {
               description: "Check your email for the login link",
@@ -189,9 +189,9 @@ export function LoginForm({
           {/* </div> */}
         </CardContent>
         <CardContent className="px-8 pb-6">
-          <Link to="/student-portal">
+          <Link to="https://tailed.ca/sign-in">
             <Button variant="secondary" className="w-full">
-              {m.im_a_Student_go_to_Student_portal()}
+              I represent a company - Go to Company Portal
             </Button>
           </Link>
         </CardContent>

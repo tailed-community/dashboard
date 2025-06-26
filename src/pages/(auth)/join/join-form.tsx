@@ -130,7 +130,8 @@ export default function JoinPage() {
     setIsSubmitting(true);
     try {
       // Format the phone number with country code
-      const countryCode = countryCodes.find((c) => c.country === values.country)?.code || "+1";
+      const countryCode =
+        countryCodes.find((c) => c.country === values.country)?.code || "+1";
       const formattedPhone = `${countryCode}${values.phone.replace(/\D/g, "")}`;
 
       // Replace with your actual API endpoint
@@ -146,7 +147,7 @@ export default function JoinPage() {
             phone: formattedPhone,
             token,
           }),
-        }
+        },
       );
 
       const data = await response.json();
@@ -173,27 +174,27 @@ export default function JoinPage() {
 
   if (submitSuccess) {
     return (
-        <Card className="w-full max-w-lg">
-            <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl font-bold">Check your email</CardTitle>
-            <CardDescription>
-                We've sent a magic link to your email. Click the link to complete
-                your registration.
-            </CardDescription>
-            </CardHeader>
-            <CardContent>
-            <p className="mb-4">
-                You can close this page or check your inbox to continue.
-            </p>
-            <Button
-                variant="outline"
-                className="w-full"
-                onClick={() => navigate("/sign-in")}
-            >
-                Return to login
-            </Button>
-            </CardContent>
-        </Card>
+      <Card className="w-full max-w-lg">
+        <CardHeader className="space-y-1">
+          <CardTitle className="text-2xl font-bold">Check your email</CardTitle>
+          <CardDescription>
+            We've sent a magic link to your email. Click the link to complete
+            your registration.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="mb-4">
+            You can close this page or check your inbox to continue.
+          </p>
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => navigate("/sign-in")}
+          >
+            Return to login
+          </Button>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -292,8 +293,8 @@ export default function JoinPage() {
                         control={form.control}
                         name="country"
                         render={({ field: countryField }) => (
-                          <Select 
-                            value={countryField.value} 
+                          <Select
+                            value={countryField.value}
                             onValueChange={(value) => {
                               countryField.onChange(value);
                               setCountry(value);
@@ -309,7 +310,9 @@ export default function JoinPage() {
                                   value={_country.country}
                                 >
                                   <span className="flex items-center gap-2">
-                                    <span className="text-base">{_country.flag}</span>{" "}
+                                    <span className="text-base">
+                                      {_country.flag}
+                                    </span>{" "}
                                     {_country.code}
                                   </span>
                                 </SelectItem>
@@ -319,8 +322,8 @@ export default function JoinPage() {
                         )}
                       />
                       <FormControl>
-                        <Input 
-                          placeholder="(555) 123-4567" 
+                        <Input
+                          placeholder="(555) 123-4567"
                           className="flex-1"
                           {...field}
                           onChange={(e) => {

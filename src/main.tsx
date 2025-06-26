@@ -13,5 +13,3 @@ createRoot(document.getElementById("root")!).render(
     </AuthProvider>
   </StrictMode>,
 );
-
-export default App;

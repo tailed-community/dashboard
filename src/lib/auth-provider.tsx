@@ -1,11 +1,10 @@
 import { createContext, useEffect, useState } from "react";
 import {
-  getAuth,
   onAuthStateChanged,
   setPersistence,
   browserLocalPersistence,
 } from "firebase/auth";
-import { orgAuth } from "./auth";
+import { studentAuth } from "./auth";
 
 export const AuthContext = createContext(null);
 
@@ -16,8 +15,8 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     // const app = getApp(); // Ensure Firebase app is initialized
 
-    setPersistence(orgAuth, browserLocalPersistence).then(() => {
-      const unsubscribe = onAuthStateChanged(orgAuth, (user) => {
+    setPersistence(studentAuth, browserLocalPersistence).then(() => {
+      const unsubscribe = onAuthStateChanged(studentAuth, (user) => {
         setUser(user);
         setLoading(false); // ✅ Firebase finished checking
       });
