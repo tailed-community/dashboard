@@ -6,8 +6,6 @@ on:
   push:
     branches:
       - main
-<<<<<<< HEAD
-
 env:
   VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
   VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
@@ -16,9 +14,6 @@ env:
   VITE_FIREBASE_MEASUREMENT_ID: ${{ secrets.VITE_FIREBASE_MEASUREMENT_ID }}
   VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
   VITE_API_URL: ${{ secrets.VITE_API_URL }}
-
-=======
->>>>>>> 0196663 (Changed account page stuff to be more related to the student platform + automatic deployements)
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
@@ -28,11 +23,7 @@ jobs:
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
-<<<<<<< HEAD
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_TAILED_COMMUNITY }}
-=======
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_TAILED_COMMUNITY_FB11E }}
->>>>>>> 0196663 (Changed account page stuff to be more related to the student platform + automatic deployements)
           channelId: live
           projectId: tailed-community-fb11e
         env:
