@@ -6,6 +6,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import JobList from "@/components/jobs/job-cards";
 
 export default function Page() {
   return (
@@ -24,8 +25,8 @@ export default function Page() {
         </div>
       </header>
       <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-        <div className="min-h-[100vh] flex-1 rounded-xl md:min-h-min flex items-center justify-center">
-          <p>Under Construction</p>
+        <div className="min-h-[100vh] flex-1 rounded-xl md:min-h-min">
+          <JobList />
         </div>
       </div>
     </>

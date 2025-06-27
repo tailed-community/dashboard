@@ -1,6 +1,6 @@
 import { Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "@/hooks/use-auth";
-import { orgAuth, TENANT_IDS } from "./auth"; // Import TENANT_IDS instead of orgAuth
+import { studentAuth, TENANT_IDS } from "./auth"; // Import TENANT_IDS instead of orgAuth
 
 const ProtectedRoute = () => {
   const { user } = useAuth();

@@ -9,7 +9,7 @@ import {
   Check,
   X,
   Loader2,
-  UserCircle,
+  Building2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -410,7 +410,7 @@ export default function AccountPage() {
     <div className="w-full max-w-6xl mx-auto p-4 space-y-6">
       <Card>
         <CardHeader>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+          <div className="flex items-center space-x-4">
             <Skeleton className="w-[100px] h-[100px] rounded-lg" />
             <div className="flex-grow space-y-3">
               <Skeleton className="h-8 w-[200px]" />
@@ -460,8 +460,12 @@ export default function AccountPage() {
       <Card>
         <CardHeader>
           <div className="flex items-center space-x-4">
-            <div className="relative flex justify-center items-center">
-              {isUploadingLogo || isLoadingLogo ? (
+            <div className="relative">
+              {isUploadingLogo ? (
+                <div className="w-[100px] h-[100px] rounded-lg bg-muted flex items-center justify-center">
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                </div>
+              ) : isLoadingLogo ? (
                 <div className="w-[100px] h-[100px] rounded-lg bg-muted flex items-center justify-center">
                   <Loader2 className="h-6 w-6 animate-spin" />
                 </div>
@@ -478,7 +482,7 @@ export default function AccountPage() {
                 />
               ) : (
                 <div className="w-[100px] h-[100px] rounded-lg bg-muted flex items-center justify-center border">
-                  <UserCircle className="h-12 w-12 text-muted-foreground" />
+                  <Building2 className="h-12 w-12 text-muted-foreground" />
                 </div>
               )}
               <Label
@@ -497,28 +501,25 @@ export default function AccountPage() {
               />
             </div>
             <div className="flex-grow space-y-4">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="flex items-center space-x-4">
                 <Input
                   name="name"
                   value={student.name}
                   onChange={handleStudentChange}
                   placeholder="Student Name"
-                  className="w-full"
+                  className="max-w-sm"
                 />
                 <Input
                   name="email"
                   value={student.email}
                   onChange={handleStudentChange}
                   placeholder="Student Email"
-                  className="w-full"
+                  className="max-w-sm"
                 />
-              </div>
-              <div className="flex space-x-4 mt-4">
                 <Button
                   variant="primary"
                   onClick={saveStudentChange}
                   disabled={isLoading}
-                  className="w-full md:w-auto"
                 >
                   {isLoading ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -526,14 +527,14 @@ export default function AccountPage() {
                     "Save"
                   )}
                 </Button>
-                <Button
-                  variant="secondary"
-                  onClick={handleGitHubLogin}
-                  className="w-full md:w-auto"
-                >
-                  Login with GitHub
-                </Button>
               </div>
+              <Button
+                variant="secondary"
+                onClick={handleGitHubLogin}
+                className="mt-4"
+              >
+                Login with GitHub
+              </Button>
             </div>
           </div>
         </CardHeader>
