@@ -24,3 +24,10 @@ dist-ssr
 *.sw?
 
 .env
+
+firestore-debug.log
+firebase-debug.log
+functions/.env
+functions/firebase-debug.log
+.data
+*firebase-export*

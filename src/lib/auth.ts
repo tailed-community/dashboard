@@ -25,13 +25,7 @@ if (!getApps().length) {
 
 const app = getApp();
 
-export const TENANT_IDS = import.meta.env.DEV
-  ? ({
-      STUDENTS: "students-dev-e3eo3",
-    } as const)
-  : ({
-      STUDENTS: "students-hactj",
-    } as const);
+export const TENANT_IDS = { STUDENTS: "students-hactj" } as const;
 
 export const getAuthForTenant = (tenantId: string) => {
   const auth = getAuth(app);

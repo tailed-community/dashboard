@@ -1,5 +1,4 @@
-import { getAuth } from "firebase/auth";
-import { orgAuth, studentAuth } from "./auth";
+import { studentAuth } from "./auth";
 
 /**
  * Fetches data from a Firebase Function endpoint with authentication
@@ -7,10 +6,10 @@ import { orgAuth, studentAuth } from "./auth";
  */
 export async function authenticatedFetch(
   url: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
 ): Promise<Response> {
   // check if user is student or org
-  const user = orgAuth.currentUser || studentAuth.currentUser;
+  const user = studentAuth.currentUser;
 
   // Clone the headers to avoid mutating the original object
   const headers = new Headers(options.headers || {});
@@ -40,7 +39,7 @@ export async function authenticatedFetch(
  */
 export async function apiFetch(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
 ): Promise<Response> {
   const apiUrl = import.meta.env.VITE_API_URL || "";
   const url = `${apiUrl}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
