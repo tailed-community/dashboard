@@ -513,7 +513,7 @@ export default function AccountPage() {
                   name="email"
                   value={student.email}
                   onChange={handleStudentChange}
-                  placeholder="Student Email"
+                  placeholder="Email"
                   className="max-w-sm"
                 />
                 <Button

@@ -76,8 +76,11 @@ router.post("/create-account", async (req, res) => {
     );
 
     try {
-      await sendVerificationEmail(email, link);
-      console.log("Verification email sent successfully to:", email);
+      process.env.NODE_ENV === "development"
+        ? console.log(
+            `To verify the account linked to ${email} click this link: ${link}`,
+          )
+        : await sendVerificationEmail(email, link);
 
       // New Contact Form Submission
       await sendNotificationEmail(
