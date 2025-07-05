@@ -7,7 +7,7 @@ const router = express.Router();
 router.put("/", async (request, response) => {
   const document = await db
     .collection("profiles")
-    .where("profileId", "==", request.body.profileId)
+    .where("userId", "==", request.body.profileId)
     .get();
 
   // If the document doesnt exist, create it
@@ -27,7 +27,7 @@ router.get("/:id", async (request, response) => {
   // We get the document that contains the profileId
   const document = await db
     .collection("profiles")
-    .where("profileId", "==", request.params.id)
+    .where("userId", "==", request.params.id)
     .get();
 
   // If there is no such user, return an error
@@ -48,7 +48,7 @@ router.get("/:id", async (request, response) => {
 router.patch("/:id", async (request, response) => {
   const document = await db
     .collection("profiles")
-    .where("profileId", "==", request.params.id)
+    .where("userId", "==", request.params.id)
     .get();
 
   // First check if the document we want to update exists
@@ -73,7 +73,7 @@ router.delete("/:id", async (request, response) => {
   // Delete a company with the matching id
   const document = await db
     .collection("profiles")
-    .where("profileId", "==", request.params.id)
+    .where("userId", "==", request.params.id)
     .get();
 
   // First check if the document exists

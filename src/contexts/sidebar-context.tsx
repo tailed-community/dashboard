@@ -29,7 +29,6 @@ const SidebarContext = createContext<SidebarContextType | undefined>(undefined);
 // Combined API fetch function
 const fetchData = async () => {
   const [userData] = await Promise.all([
-    //TODO: Add this for profile info
     apiFetch("/profile").then((res) => {
       if (!res.ok) throw new Error("Failed to fetch user profile");
       return res.json();

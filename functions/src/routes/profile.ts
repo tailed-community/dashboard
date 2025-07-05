@@ -64,6 +64,11 @@ router.get("/", async (req, res) => {
         "U",
       avatar: profileData.avatar || null,
       phone: profileData.phone || null,
+      devpost: profileData.devpost || null,
+      linkedin: profileData.linkedin || null,
+      school: profileData.school || null,
+      program: profileData.program || null,
+      graduationYear: profileData.graduationYear || null,
       createdAt: profileData.createdAt,
       updatedAt: profileData.updatedAt,
       // Include any other profile data you want to expose

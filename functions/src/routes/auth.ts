@@ -14,6 +14,8 @@ const createAccountSchema = z.object({
   lastName: z.string().min(2),
   email: z.string().email(),
   phoneNumber: z.string().optional(),
+  program: z.string().min(2),
+  graduationYear: z.string().min(4).max(4),
 });
 
 router.post("/create-account", async (req, res) => {
@@ -27,7 +29,15 @@ router.post("/create-account", async (req, res) => {
         details: result.error.format(),
       });
     }
-    const { firstName, lastName, email, phoneNumber } = result.data;
+    const {
+      firstName,
+      lastName,
+      email,
+      phoneNumber,
+      schoolName,
+      program,
+      graduationYear,
+    } = result.data;
     const tenantAuth = await studentAuth();
     try {
       const existingUser = await tenantAuth.getUserByEmail(email);
@@ -60,6 +70,11 @@ router.post("/create-account", async (req, res) => {
         lastName,
         email,
         phone: phoneNumber || null,
+        school: schoolName || null,
+        program: program || null,
+        graduationYear: graduationYear || null,
+        linkedin: null,
+        devpost: null,
         initials: `${firstName.charAt(0)}${lastName.charAt(0)}`,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -167,7 +182,6 @@ router.post("/account-exists", async (req, res) => {
       });
     }
   } catch (error) {
-    // TODO: Throw error based on error code
     return res.status(500).json({ error: error });
   }
 });

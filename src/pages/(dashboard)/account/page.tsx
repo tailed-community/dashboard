@@ -1,4 +1,3 @@
-import { AppSidebar } from "@/components/layout/app-sidebar";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -6,12 +5,7 @@ import {
   BreadcrumbList,
 } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar";
-import { SidebarContextProvider } from "@/contexts/sidebar-context";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import AccountPage from "@/pages/(dashboard)/account/account";
 
 export default function Page() {

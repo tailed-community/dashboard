@@ -49,10 +49,11 @@ export default function SignUpForm() {
       phoneNumber: `${countryCode}${phoneNumber.replace(/\D/g, "")}`, // Format: clean non-digits but keep country code
       email: formData.get("email") as string,
       schoolName: formData.get("school") as string,
+      program: formData.get("program") as string,
+      graduationYear: formData.get("graduationYear") as string,
     };
 
     try {
-      //TODO: Replace with new api when made
       const response = await fetch(
         `${import.meta.env.VITE_API_URL}/auth/create-account`,
         {
@@ -193,6 +194,26 @@ export default function SignUpForm() {
                 id="school"
                 name="school"
                 placeholder="Enter your school name"
+                required
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="program">Program/Major</Label>
+              <Input
+                id="program"
+                name="program"
+                placeholder="Enter your Major/Program name"
+                required
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="graduationYear">Expected Graduation Year</Label>
+              <Input
+                id="graduationYear"
+                name="graduationYear"
+                placeholder="Enter your expected gradation year"
                 required
               />
             </div>
