@@ -32,7 +32,7 @@ export const getAuthForTenant = (tenantId: string) => {
 
   if (import.meta.env.VITE_FIREBASE_PROJECT_ID?.startsWith("demo-")) {
     // Connect to the emulator
-    connectAuthEmulator(auth, "http://localhost:9099");
+    connectAuthEmulator(auth, "http://localhost:9100");
   }
   auth.tenantId = tenantId;
   return auth;
@@ -188,5 +188,4 @@ export const signInWithGoogle = async () => {
   }
 };
 
-export const orgAuth = getAuthForTenant(TENANT_IDS.ORGANIZATIONS);
 export const studentAuth = getAuthForTenant(TENANT_IDS.STUDENTS);

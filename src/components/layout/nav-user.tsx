@@ -24,8 +24,8 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useNavigate } from "react-router-dom";
-import { getAuth, signOut } from "firebase/auth";
-import { orgAuth } from "@/lib/auth";
+import { signOut } from "firebase/auth";
+import { studentAuth } from "@/lib/auth";
 
 export function NavUser({
   user,
@@ -42,7 +42,7 @@ export function NavUser({
 
   const handleLogout = async () => {
     try {
-      await signOut(orgAuth);
+      await signOut(studentAuth);
       navigate("/"); // Redirect to sign-in page after logout
     } catch (error) {
       console.error("Error logging out:", error);

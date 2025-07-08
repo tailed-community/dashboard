@@ -40,9 +40,16 @@ export async function authenticatedFetch(
 export async function apiFetch(
   endpoint: string,
   options: RequestInit = {},
+  companiesCall: boolean = false,
 ): Promise<Response> {
-  const apiUrl = import.meta.env.VITE_API_URL || "";
+  const apiUrl = companiesCall
+    ? import.meta.env.VITE_COMPANIES_API_URL
+    : import.meta.env.VITE_API_URL;
+  console.log("companiesCall", companiesCall);
+  console.log("VITE_API_URL", import.meta.env.VITE_API_URL);
+  console.log("VITE_COMPANIES_API_URL", import.meta.env.VITE_COMPANIES_API_URL);
   const url = `${apiUrl}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
+  console.log("apiFetch URL:", url);
 
   return authenticatedFetch(url, options);
 }

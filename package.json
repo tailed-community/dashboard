@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "NODE_ENV=development && firebase emulators:start --only=hosting,functions,firestore,storage,auth --import .data --export-on-exit",
+    "dev": "NODE_ENV=development && firebase emulators:start --only=hosting,functions,firestore,storage,auth --import .data --export-on-exit --project=demo-tailed1",
     "build": "tsc --noEmitOnError false --skipLibCheck --allowJs --checkJs false --noImplicitAny false --strict false --strictNullChecks false && vite build && cd functions && npm run build && cd ..",
     "lint": "eslint .",
     "preview": "vite preview",
@@ -23,7 +23,8 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-hook-form": "^7.58.1",
-    "react-router-dom": "^7.6.2",
+    "react-icons": "^5.5.0",
+    "react-router-dom": "^7.6.3",
     "sonner": "^2.0.5",
     "tailwind-merge": "^3.3.1",
     "tailwindcss": "^4.1.10",

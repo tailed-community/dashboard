@@ -13,6 +13,8 @@ import Dashboard from "./pages/(dashboard)/page";
 import ProtectedRoute from "./lib/protected-route";
 import DashboardLayout from "./layouts/dashboard-layout";
 import Account from "./pages/(dashboard)/account/page";
+import JobApplyPage from "./pages/jobs/[slug]/apply/page";
+import PublicJobPage from "./pages/jobs/[slug]/page";
 
 function App() {
   return (
@@ -24,6 +26,10 @@ function App() {
         <Route path="/sign-up" element={<SignUp />} />
         <Route path="/join" element={<Join />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
+
+        <Route path="/jobs/:slug" element={<PublicJobPage />} />
+        <Route path="/jobs/:slug/apply" element={<JobApplyPage />} />
+
         <Route element={<ProtectedRoute />}>
           <Route element={<DashboardLayout />}>
             <Route path="/dashboard" element={<Dashboard />} />
