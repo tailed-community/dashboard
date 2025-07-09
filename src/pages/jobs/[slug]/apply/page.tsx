@@ -70,10 +70,10 @@ export default function ApplyJobPage() {
 
       // If token exists, validate it first
       if (token) {
-        //TODO: Make sure that this is done using the studnets tenant
         const validateResponse = await apiFetch(
           `/applicants/validate/${token}`,
           { method: "GET" },
+          true,
         );
 
         if (!validateResponse.ok) {

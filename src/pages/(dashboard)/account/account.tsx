@@ -85,7 +85,6 @@ export default function AccountPage() {
       try {
         const studentData = await apiService.getStudent();
         setStudent(studentData as any);
-        console.log("Fetched student data:", studentData);
       } catch (error) {
         console.error("Error fetching data:", error);
         toast.error("Error loading data", {

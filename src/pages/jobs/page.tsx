@@ -27,14 +27,6 @@ export default function PublicJobPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // TODO:
-  // 1. Fetch the job data from the main api
-  // 2. Fill page details from job data
-  // 3. Look for login, if yes try to autofill, if not show login options
-  // 4. Fill the form with job data
-  // 5. Send a post request to the main api with the form data
-  // 6. Update both companies db and community db with the application data
-
   useEffect(() => {
     async function fetchJob() {
       try {

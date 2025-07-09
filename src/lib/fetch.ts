@@ -10,7 +10,6 @@ export async function authenticatedFetch(
 ): Promise<Response> {
   // check if user is student or org
   const user = studentAuth.currentUser;
-
   // Clone the headers to avoid mutating the original object
   const headers = new Headers(options.headers || {});
 
@@ -18,6 +17,7 @@ export async function authenticatedFetch(
   if (user) {
     try {
       const token = await user.getIdToken();
+
       headers.set("Authorization", `Bearer ${token}`);
     } catch (error) {
       console.error("Error getting auth token:", error);
@@ -45,11 +45,7 @@ export async function apiFetch(
   const apiUrl = companiesCall
     ? import.meta.env.VITE_COMPANIES_API_URL
     : import.meta.env.VITE_API_URL;
-  console.log("companiesCall", companiesCall);
-  console.log("VITE_API_URL", import.meta.env.VITE_API_URL);
-  console.log("VITE_COMPANIES_API_URL", import.meta.env.VITE_COMPANIES_API_URL);
   const url = `${apiUrl}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
-  console.log("apiFetch URL:", url);
 
   return authenticatedFetch(url, options);
 }
