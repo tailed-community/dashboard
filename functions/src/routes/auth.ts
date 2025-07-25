@@ -64,11 +64,6 @@ router.post("/create-account", async (req, res) => {
         updatedAt: new Date(),
       });
 
-    const actionCodeSettings = {
-      url: `${process.env.FRONTEND_URL}/auth/callback`,
-      handleCodeInApp: true,
-    };
-
     return res.status(200).json({
       success: true,
       userId: userRecord.uid,
