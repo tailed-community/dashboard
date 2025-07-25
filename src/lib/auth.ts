@@ -7,6 +7,7 @@ import {
   GithubAuthProvider,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithCredential,
   signInAnonymously as firebaseSignInAnonymously,
   connectAuthEmulator,
 } from "firebase/auth";
@@ -176,6 +177,39 @@ export const signInWithGoogle = async () => {
       // Regular sign in with Google if not anonymous
       const result = await signInWithPopup(studentAuth, provider);
       const credential = GoogleAuthProvider.credentialFromResult(result);
+
+      return {
+        user: result.user,
+        token: credential?.accessToken,
+      };
+    }
+  } catch (error) {
+    console.error("Google auth error:", error);
+    throw error;
+  }
+};
+
+export const signInWithGoogleCredential = async (props: any) => {
+  const { accessToken } = props;
+
+  const provider = new GoogleAuthProvider();
+  provider.addScope("https://www.googleapis.com/auth/userinfo.email");
+  provider.addScope("https://www.googleapis.com/auth/userinfo.profile");
+
+  try {
+    const credential = GoogleAuthProvider.credential(props.accessToken);
+
+    // If we have an anonymous user, try to link with Google
+    if (studentAuth.currentUser?.isAnonymous) {
+      const result = await signInWithCredential(studentAuth, credential);
+
+      return {
+        user: result.user,
+        token: credential?.accessToken,
+      };
+    } else {
+      // Regular sign in with Google if not anonymous
+      const result = await signInWithPopup(studentAuth, provider);
 
       return {
         user: result.user,
