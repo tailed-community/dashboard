@@ -1,81 +1,71 @@
 import { cn } from "@/lib/utils";
+import { z } from "zod";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { FcGoogle } from "react-icons/fc";
+import { Loader2, Mail, Apple, Linkedin } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { toast } from "sonner";
-import { sendLoginLink, TENANT_IDS } from "@/lib/auth";
 import { m } from "@/paraglide/messages.js";
+import { studentAuth, signInWithGoogle } from "@/lib/auth";
+import { apiFetch } from "@/lib/fetch";
+
+//TODO: Add github?
 
 interface LoginProps extends React.ComponentProps<"div"> {
   onChangeLoginType: () => void;
 }
+
+const signUpSchema = z.object({
+  email: z.string().email("Invalid email address"),
+});
+
+type SignUpData = z.infer<typeof signUpSchema>;
 
 export function LoginForm({
   className,
   onChangeLoginType,
   ...props
 }: LoginProps) {
-  const handleLogin = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const [needsAuth, setNeedsAuth] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  let user = null;
 
-    const formData = new FormData(event.currentTarget);
+  const handleGoogleSignIn = async () => {
+    try {
+      setAuthLoading(true);
+      setAuthError(null);
 
-    if (!formData.has("email")) {
-      console.error("Email is required");
+      const { user: newUser } = await signInWithGoogle();
+      user = newUser;
+      setNeedsAuth(false);
+
+      // Fetch application details after authentication
+      setIsLoading(false);
+    } catch (err) {
+      setAuthError("Authentication failed. Please try again.");
+      console.error(err);
+    } finally {
+      setAuthLoading(false);
+      //TODO: Call api to add student in db
+      //TODO: Check if user exists, if not, create account
+      const userData: SignUpData = {
+        firstName: user.displayName?.split(" ")[0] || "",
+        lastName: user.displayName?.split(" ")[1] || "",
+        email: user.email,
+      };
+      await apiFetch("/auth/create-account", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(userData),
+      });
+      window.location.href = "/dashboard";
     }
-
-    const email = formData.get("email") as string;
-
-    console.log(`Email: ${email} - ${window.location.href}`);
-
-    // Checks if account exists. This endpoint checks both the google identity and
-    // the database for the account.
-    fetch(`${import.meta.env.VITE_API_URL}/auth/account-exists`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        email,
-      }),
-    }).then((response) => {
-      if (response.ok) {
-        // If the account exists, send the login link
-        sendLoginLink(email, TENANT_IDS.STUDENTS)
-          .then(() => {
-            toast("Login link sent", {
-              description: "Check your email for the login link",
-            });
-          })
-          .catch((error) => {
-            const errorCode = error.code;
-            const errorMessage = error.message;
-            console.error(`Error: ${errorCode} - ${errorMessage} - ${error}`);
-
-            if (
-              errorCode === "auth/user-not-found" ||
-              errorCode === "auth/admin-restricted-operation"
-            ) {
-              toast.error("User not found", {
-                description: "No account exists with this email address",
-              });
-            } else {
-              toast.error("Login failed", {
-                description: "An error occurred during login",
-              });
-            }
-          });
-      } else {
-        toast.error("User not found", {
-          description: "No account exists with this email address",
-        });
-      }
-    });
   };
-
   return (
     <div
       className={cn("flex flex-col gap-6 w-full max-w-md mx-auto", className)}
@@ -83,7 +73,7 @@ export function LoginForm({
     >
       <Card className="overflow-hidden">
         <CardContent className="p-8">
-          <form className="flex flex-col gap-6" onSubmit={handleLogin}>
+          <form className="flex flex-col gap-4">
             <div className="flex flex-col items-center text-center">
               <img
                 src="/tailed-logo-fixed-shadow.svg"
@@ -98,32 +88,37 @@ export function LoginForm({
                 {m.login_to_your_account()}
               </p>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="email">{m.email()}</Label>
-              <Input
-                id="email"
-                name="email"
-                type="email"
-                placeholder="m@example.com"
-                required
-              />
-            </div>
-            <div className={"flex flex-col"}>
-              <Button type="submit" className="w-full">
-                {m.login()}
-              </Button>
-            </div>
-            <div className="text-center text-sm">
-              {m.dont_have_an_account()}{" "}
-              <Link to="/sign-up" className="underline underline-offset-4">
-                {m.sign_up()}
-              </Link>
-            </div>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={handleGoogleSignIn}
+              disabled={authLoading}
+            >
+              {authLoading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <FcGoogle className="mr-2 h-4 w-4" />
+              )}
+              Continue with Google
+            </Button>
+
+            <Button variant="outline" className="w-full" disabled>
+              <Mail className="mr-2 h-4 w-4" />
+              Continue with Email
+            </Button>
+
+            <Button variant="outline" className="w-full" disabled>
+              <Linkedin className="mr-2 h-4 w-4" />
+              Continue with LinkedIn
+            </Button>
+
+            <Button variant="outline" className="w-full" disabled>
+              <Apple className="mr-2 h-4 w-4" />
+              Continue with Apple
+            </Button>
           </form>
-        </CardContent>
-        <CardContent className="px-8 pb-6">
           <a href="https://tailed.ca/sign-in">
-            <Button variant="secondary" className="w-full">
+            <Button variant="secondary" className="mt-8 w-full">
               I represent a company - Go to Company Portal
             </Button>
           </a>

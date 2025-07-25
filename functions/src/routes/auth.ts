@@ -3,19 +3,13 @@ const router = express.Router();
 
 import { db, studentAuth } from "../lib/firebase";
 import { z } from "zod";
-import { sendVerificationEmail } from "../lib/email-service";
-import { sendNotificationEmail } from "../lib/email-service";
 
 export const TENANT_IDS = { STUDENTS: "students-hactj" } as const;
 
 const createAccountSchema = z.object({
-  schoolName: z.string().min(2),
-  firstName: z.string().min(2),
-  lastName: z.string().min(2),
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
   email: z.string().email(),
-  phoneNumber: z.string().optional(),
-  program: z.string().min(2),
-  graduationYear: z.string().min(4).max(4),
 });
 
 router.post("/create-account", async (req, res) => {
@@ -29,19 +23,15 @@ router.post("/create-account", async (req, res) => {
         details: result.error.format(),
       });
     }
-    const {
-      firstName,
-      lastName,
-      email,
-      phoneNumber,
-      schoolName,
-      program,
-      graduationYear,
-    } = result.data;
+    const { firstName, lastName, email } = result.data;
     const tenantAuth = await studentAuth();
     try {
-      const existingUser = await tenantAuth.getUserByEmail(email);
-      if (existingUser) {
+      const user = await tenantAuth.getUserByEmail(email);
+      let existingUser = null;
+      if (user) {
+        existingUser = await db.collection("profiles").doc(user.uid).get();
+      }
+      if (existingUser?.exists) {
         return res.status(400).json({
           error: "Email already in use",
           message: "This email address is already associated with an account.",
@@ -53,26 +43,20 @@ router.post("/create-account", async (req, res) => {
       }
     }
 
-    const userRecord = await tenantAuth.createUser({
-      email,
-      emailVerified: false,
-      displayName: `${firstName} ${lastName}`,
-      phoneNumber: phoneNumber || null,
-      disabled: false,
-    });
+    const userRecord = await tenantAuth.getUserByEmail(email);
 
     await db
       .collection("profiles")
       .doc(userRecord.uid)
       .set({
         userId: userRecord.uid,
-        firstName,
-        lastName,
+        firstName: firstName || null,
+        lastName: lastName || null,
         email,
-        phone: phoneNumber || null,
-        school: schoolName || null,
-        program: program || null,
-        graduationYear: graduationYear || null,
+        phone: null,
+        school: null,
+        program: null,
+        graduationYear: null,
         linkedin: null,
         devpost: null,
         initials: `${firstName.charAt(0)}${lastName.charAt(0)}`,
@@ -85,44 +69,10 @@ router.post("/create-account", async (req, res) => {
       handleCodeInApp: true,
     };
 
-    const link = await tenantAuth.generateSignInWithEmailLink(
-      email,
-      actionCodeSettings,
-    );
-
-    try {
-      process.env.NODE_ENV === "development"
-        ? console.log(
-            `To verify the account linked to ${email} click this link: ${link}`,
-          )
-        : await sendVerificationEmail(email, link);
-
-      // New Contact Form Submission
-      await sendNotificationEmail(
-        process.env.ADMIN_EMAIL || "info@tailed.ca",
-        "New Account Creation",
-        `   
-          <div style="margin-bottom: 20px;">
-            <p><strong>New account creation received:</strong></p>
-            <p><strong>firstName:</strong> ${firstName}</p>
-            <p><strong>lastName:</strong> ${lastName}</p>
-            <p><strong>email:</strong> ${email}</p>
-            <p><strong>phoneNumber:</strong> ${phoneNumber}</p>
-          </div>
-        `,
-      );
-    } catch (emailError) {
-      console.error("Error sending verification email:", emailError);
-      // Continue with success response even if email fails
-    }
-
-    console.log("Account created successfully for:", email);
-
     return res.status(200).json({
       success: true,
       userId: userRecord.uid,
-      message:
-        "Account created successfully. Please check your email to verify your account.",
+      message: "Account created successfully",
     });
   } catch (error) {
     console.error("Error creating account:", error);
