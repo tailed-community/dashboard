@@ -28,7 +28,7 @@ export const createTenantAuth = async (tenantId: string) => {
 
 export const studentAuth = async () => createTenantAuth(TENANT_IDS.STUDENTS);
 
-export const verifyAuth = (tenant?: "student" | "org") => {
+export const verifyAuth = () => {
   return async (req: any, res: any, next: any) => {
     const authHeader = req.headers.authorization;
 

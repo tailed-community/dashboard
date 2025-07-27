@@ -6,6 +6,9 @@ import { paraglideVitePlugin } from "@inlang/paraglide-js";
 
 // https://vite.dev/config/
 export default defineConfig({
+  server: {
+    port: 5174,
+  },
   plugins: [
     paraglideVitePlugin({
       project: "./project.inlang",

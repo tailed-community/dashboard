@@ -34,10 +34,10 @@ const apiService = {
       throw error;
     }
   },
-  updateStudent: async (studentId: string, studentData: StudentProps) => {
+  updateStudent: async (studentData: StudentProps) => {
     //TODO: If email changes, also update auth tenant
     try {
-      const response = await apiFetch(`/profiles/${studentId}`, {
+      const response = await apiFetch(`/profile`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(studentData),
@@ -112,7 +112,7 @@ export default function AccountPage() {
     setIsEditing((prev) => ({ ...prev, [field]: false }));
     setIsLoading(true);
     try {
-      await apiService.updateStudent(student.id, student as StudentProps);
+      await apiService.updateStudent(student as StudentProps);
       toast.success("Student updated", {
         description: "Student details have been updated successfully.",
       });

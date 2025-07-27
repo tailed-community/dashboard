@@ -4,11 +4,6 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const server = process.env.EMAIL_SERVER;
-// const from = process.env.EMAIL_FROM;
-
-// if (process.env.NODE_ENV === "development") {
-//   to = process.env.DEV_EMAIL ?? "";
-// }
 
 const transport = createTransport(server);
 
@@ -17,8 +12,15 @@ const transport = createTransport(server);
  */
 export const sendVerificationEmail = async (
   email: string,
-  verificationLink: string,
+  verificationLink: string
 ) => {
+  if (process.env.NODE_ENV === "development") {
+    console.log(
+      `Email sent to ${email} params: ${JSON.stringify({ verificationLink })}`
+    );
+    return Promise.resolve();
+  }
+
   const mailOptions = {
     from: process.env.EMAIL_FROM || "Tail'ed <no-reply@tailed.ca>",
     sender: "no-reply@tailed.ca",
@@ -53,8 +55,19 @@ export const sendInvitationEmail = async (
   email: string,
   organizationName: string,
   inviterName: string,
-  inviteLink: string,
+  inviteLink: string
 ) => {
+  if (process.env.NODE_ENV === "development") {
+    console.log(
+      `Email sent to ${email} params: ${JSON.stringify({
+        inviteLink,
+        organizationName,
+        inviterName,
+      })}`
+    );
+    return Promise.resolve();
+  }
+
   const mailOptions = {
     from: process.env.EMAIL_FROM || "Tail'ed <no-reply@tailed.ca>",
     sender: "no-reply@tailed.ca",
@@ -90,8 +103,19 @@ export const sendJobApplicationInviteEmail = async (
   email: string,
   organizationName: string,
   jobTitle: string,
-  applicationLink: string,
+  applicationLink: string
 ) => {
+  if (process.env.NODE_ENV === "development") {
+    console.log(
+      `Email sent to ${email} params: ${JSON.stringify({
+        applicationLink,
+        organizationName,
+        jobTitle,
+      })}`
+    );
+    return Promise.resolve();
+  }
+
   const mailOptions = {
     from: process.env.EMAIL_FROM || "Tail'ed <no-reply@tailed.ca>",
     sender: "no-reply@tailed.ca",
@@ -125,8 +149,18 @@ export const sendJobApplicationInviteEmail = async (
 export const sendJobApplicationConfirmationEmail = async (
   email: string,
   jobTitle: string,
-  organizationName: string,
+  organizationName: string
 ) => {
+  if (process.env.NODE_ENV === "development") {
+    console.log(
+      `Email sent to ${email} params: ${JSON.stringify({
+        jobTitle,
+        organizationName,
+      })}`
+    );
+    return Promise.resolve();
+  }
+
   const mailOptions = {
     from: process.env.EMAIL_FROM || "Tail'ed <no-reply@tailed.ca>",
     sender: "no-reply@tailed.ca",
@@ -155,8 +189,15 @@ export const sendJobApplicationConfirmationEmail = async (
 export async function sendNotificationEmail(
   to: string,
   subject: string,
-  htmlContent: string,
+  htmlContent: string
 ): Promise<void> {
+  if (process.env.NODE_ENV === "development") {
+    console.log(
+      `Email sent to ${to} params: ${JSON.stringify({ subject, htmlContent })}`
+    );
+    return Promise.resolve();
+  }
+
   try {
     const mailOptions = {
       from: process.env.EMAIL_FROM || "Tail'ed <no-reply@tailed.ca>",
@@ -233,6 +274,13 @@ export const sendEmail = async ({
   html: string;
   text?: string;
 }) => {
+  if (process.env.NODE_ENV === "development") {
+    console.log(
+      `Email sent to ${to} params: ${JSON.stringify({ subject, html, text })}`
+    );
+    return Promise.resolve();
+  }
+
   const mailOptions = {
     from: process.env.EMAIL_FROM || "Tail'ed <no-reply@tailed.ca>",
     sender: "no-reply@tailed.ca",
