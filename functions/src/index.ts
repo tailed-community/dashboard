@@ -6,11 +6,6 @@ import cookieParser from "cookie-parser";
 import authRouter from "./routes/auth";
 import profileRouter from "./routes/profile";
 
-// export const helloWorld = onRequest((request, response) => {
-//   logger.info("Hello logs!", {structuredData: true});
-//   response.send("Hello from Firebase!");
-// });
-
 declare global {
   namespace Express {
     interface Request {
