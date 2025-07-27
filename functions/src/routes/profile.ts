@@ -19,7 +19,7 @@ router.get("/", async (req, res) => {
     }
 
     // Fetch the user's profile from Firestore
-    const profileDoc = await db.collection("profiles").doc(userId).get();
+    const profileDoc = await db.collection("studentProfiles").doc(userId).get();
 
     if (!profileDoc.exists) {
       // If no profile document exists, try to get basic info from Auth

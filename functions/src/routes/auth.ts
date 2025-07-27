@@ -29,7 +29,10 @@ router.post("/create-account", async (req, res) => {
       const user = await tenantAuth.getUserByEmail(email);
       let existingUser = null;
       if (user) {
-        existingUser = await db.collection("profiles").doc(user.uid).get();
+        existingUser = await db
+          .collection("studentProfiles")
+          .doc(user.uid)
+          .get();
       }
       if (existingUser?.exists) {
         return res.status(400).json({
@@ -46,7 +49,7 @@ router.post("/create-account", async (req, res) => {
     const userRecord = await tenantAuth.getUserByEmail(email);
 
     await db
-      .collection("profiles")
+      .collection("studentProfiles")
       .doc(userRecord.uid)
       .set({
         userId: userRecord.uid,
@@ -105,7 +108,10 @@ router.post("/account-exists", async (req, res) => {
     const userRecord = await tenantAuth.getUserByEmail(email);
 
     if (userRecord) {
-      const profile = await db.collection("profiles").doc(userRecord.uid).get();
+      const profile = await db
+        .collection("studentProfiles")
+        .doc(userRecord.uid)
+        .get();
       if (profile.exists) {
         return res.status(200).json({ exists: true });
       } else {

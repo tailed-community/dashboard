@@ -6,13 +6,13 @@ const router = express.Router();
 // NOTE: /profiles
 router.put("/", async (request, response) => {
   const document = await db
-    .collection("profiles")
+    .collection("studentProfiles")
     .where("userId", "==", request.body.profileId)
     .get();
 
   // If the document doesnt exist, create it
   if (document.empty) {
-    const doc = db.collection("profiles").add(request.body);
+    const doc = db.collection("studentProfiles").add(request.body);
     response.status(200).json(doc);
   } else {
     // If a profile with this id alredy exists, return 400
@@ -26,7 +26,7 @@ router.put("/", async (request, response) => {
 router.get("/:id", async (request, response) => {
   // We get the document that contains the profileId
   const document = await db
-    .collection("profiles")
+    .collection("studentProfiles")
     .where("userId", "==", request.params.id)
     .get();
 
@@ -47,7 +47,7 @@ router.get("/:id", async (request, response) => {
 // NOTE: /profiles/{id}
 router.patch("/:id", async (request, response) => {
   const document = await db
-    .collection("profiles")
+    .collection("studentProfiles")
     .where("userId", "==", request.params.id)
     .get();
 
@@ -60,7 +60,10 @@ router.patch("/:id", async (request, response) => {
   // If it exists, we can assume there will only be one document since the id is unique
   document.forEach((doc) => {
     // Update the document
-    const promise = db.collection("profiles").doc(doc.id).update(request.body);
+    const promise = db
+      .collection("studentProfiles")
+      .doc(doc.id)
+      .update(request.body);
     promise.then(() => {
       response.sendStatus(200);
       return;
@@ -72,7 +75,7 @@ router.patch("/:id", async (request, response) => {
 router.delete("/:id", async (request, response) => {
   // Delete a company with the matching id
   const document = await db
-    .collection("profiles")
+    .collection("studentProfiles")
     .where("userId", "==", request.params.id)
     .get();
 
@@ -85,7 +88,7 @@ router.delete("/:id", async (request, response) => {
 
   document.forEach((doc) => {
     // Delete document
-    const promise = db.collection("profiles").doc(doc.id).delete();
+    const promise = db.collection("studentProfiles").doc(doc.id).delete();
     promise.then(() => {
       response.sendStatus(200);
       return;
