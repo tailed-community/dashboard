@@ -80,7 +80,7 @@ router.patch("/:id", async (request, response) => {
   const userId = request.user!.uid;
 
   const document = await db
-    .collection("profiles")
+    .collection("studentProfiles")
     .where("userId", "==", userId)
     .get();
 
