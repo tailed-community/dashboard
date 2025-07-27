@@ -3,12 +3,14 @@ import { z } from "zod";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { FcGoogle } from "react-icons/fc";
-import { Loader2, Mail, Apple, Linkedin } from "lucide-react";
+import { SiLinkedin, SiApple } from "react-icons/si";
+import { Loader2, Mail } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Link } from "react-router-dom";
 import { m } from "@/paraglide/messages.js";
-import { studentAuth, signInWithGoogle } from "@/lib/auth";
+import { signInWithGoogle } from "@/lib/auth";
 import { apiFetch } from "@/lib/fetch";
+import { EmailLoginForm } from "./email-login-form";
 
 //TODO: Add github?
 
@@ -27,35 +29,34 @@ export function LoginForm({
   onChangeLoginType,
   ...props
 }: LoginProps) {
-  const [needsAuth, setNeedsAuth] = useState(false);
+  const [showEmailLogin, setShowEmailLogin] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  let user = null;
+
+  // If showing email login, render the EmailLoginForm component
+  if (showEmailLogin) {
+    return (
+      <EmailLoginForm
+        className={className}
+        onChangeLoginType={() => setShowEmailLogin(false)}
+        {...props}
+      />
+    );
+  }
 
   const handleGoogleSignIn = async () => {
     try {
       setAuthLoading(true);
       setAuthError(null);
 
-      const { user: newUser } = await signInWithGoogle();
-      user = newUser;
-      setNeedsAuth(false);
+      const { user } = await signInWithGoogle();
 
-      // Fetch application details after authentication
-      setIsLoading(false);
-    } catch (err) {
-      setAuthError("Authentication failed. Please try again.");
-      console.error(err);
-    } finally {
-      setAuthLoading(false);
-      //TODO: Call api to add student in db
-      //TODO: Check if user exists, if not, create account
+      // TODO: Call api to add student in db
+      // TODO: Check if user exists, if not, create account
       const userData: SignUpData = {
-        firstName: user.displayName?.split(" ")[0] || "",
-        lastName: user.displayName?.split(" ")[1] || "",
-        email: user.email,
+        email: user.email || "",
       };
+
       await apiFetch("/auth/create-account", {
         method: "POST",
         headers: {
@@ -63,7 +64,13 @@ export function LoginForm({
         },
         body: JSON.stringify(userData),
       });
+
       window.location.href = "/dashboard";
+    } catch (err) {
+      setAuthError("Authentication failed. Please try again.");
+      console.error(err);
+    } finally {
+      setAuthLoading(false);
     }
   };
   return (
@@ -73,7 +80,7 @@ export function LoginForm({
     >
       <Card className="overflow-hidden">
         <CardContent className="p-8">
-          <form className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4">
             <div className="flex flex-col items-center text-center">
               <img
                 src="/tailed-logo-fixed-shadow.svg"
@@ -87,6 +94,9 @@ export function LoginForm({
               <p className="text-balance text-muted-foreground">
                 {m.login_to_your_account()}
               </p>
+              {authError && (
+                <p className="text-sm text-red-600 mt-2">{authError}</p>
+              )}
             </div>
             <Button
               variant="outline"
@@ -102,21 +112,33 @@ export function LoginForm({
               Continue with Google
             </Button>
 
-            <Button variant="outline" className="w-full" disabled>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => setShowEmailLogin(true)}
+            >
               <Mail className="mr-2 h-4 w-4" />
               Continue with Email
             </Button>
 
             <Button variant="outline" className="w-full" disabled>
-              <Linkedin className="mr-2 h-4 w-4" />
+              {authLoading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <SiLinkedin className="mr-2 h-4 w-4" />
+              )}
               Continue with LinkedIn
             </Button>
 
             <Button variant="outline" className="w-full" disabled>
-              <Apple className="mr-2 h-4 w-4" />
+              {authLoading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <SiApple className="mr-2 h-4 w-4" />
+              )}
               Continue with Apple
             </Button>
-          </form>
+          </div>
           <a href="https://tailed.ca/sign-in">
             <Button variant="secondary" className="mt-8 w-full">
               I represent a company - Go to Company Portal
