@@ -6,7 +6,6 @@ import {
 } from "react-router-dom";
 import { Toaster } from "./components/ui/sonner";
 import SignIn from "./pages/(auth)/sign-in/page";
-import Join from "./pages/(auth)/join/page";
 import AuthCallback from "./pages/(auth)/auth/callback/page";
 import Dashboard from "./pages/(dashboard)/page";
 import ProtectedRoute from "./lib/protected-route";
@@ -22,7 +21,6 @@ function App() {
         {/* AUTHENTICATION */}
         <Route path="/" element={<Navigate to="/sign-in" />} />
         <Route path="/sign-in" element={<SignIn />} />
-        <Route path="/join" element={<Join />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
 
         <Route path="/jobs/:slug" element={<PublicJobPage />} />

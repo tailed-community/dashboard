@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "module": "NodeNext",
+    "allowJs": true,
     "esModuleInterop": true,
     "moduleResolution": "nodenext",
     "noImplicitReturns": true,
@@ -11,7 +12,5 @@
     "target": "es2017"
   },
   "compileOnSave": true,
-  "include": [
-    "src"
-  ]
+  "include": ["src"]
 }

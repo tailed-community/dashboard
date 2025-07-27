@@ -9,14 +9,7 @@ const router = express.Router();
 router.get("/", async (req, res) => {
   try {
     // Get the user's ID from the authenticated request
-    const userId = req.user?.uid;
-
-    if (!userId) {
-      return res.status(401).json({
-        error: "Unauthorized",
-        message: "User is not authenticated",
-      });
-    }
+    const userId = req.user!.uid;
 
     // Fetch the user's profile from Firestore
     const profileDoc = await db.collection("studentProfiles").doc(userId).get();
@@ -49,7 +42,7 @@ router.get("/", async (req, res) => {
       }
     }
 
-    const profileData = profileDoc.data();
+    const profileData = profileDoc.data()!;
 
     // Return the profile data
     return res.status(200).json({
@@ -80,6 +73,31 @@ router.get("/", async (req, res) => {
       message: "Failed to retrieve user profile data",
     });
   }
+});
+
+router.patch("/:id", async (request, response) => {
+  const userId = request.user!.uid;
+
+  const document = await db
+    .collection("profiles")
+    .where("userId", "==", userId)
+    .get();
+
+  // First check if the document we want to update exists
+  if (document.empty) {
+    response.status(404).json({ error: "Document does not exist" });
+    return;
+  }
+
+  // If it exists, we can assume there will only be one document since the id is unique
+  document.forEach((doc) => {
+    // Update the document
+    const promise = db.collection("profiles").doc(doc.id).update(request.body);
+    promise.then(() => {
+      response.sendStatus(200);
+      return;
+    });
+  });
 });
 
 export default router;
