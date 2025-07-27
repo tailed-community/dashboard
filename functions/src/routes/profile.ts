@@ -10,6 +10,7 @@ router.get("/", async (req, res) => {
   try {
     // Get the user's ID from the authenticated request
     const userId = req.user!.uid;
+    const userId = req.user!.uid;
 
     // Fetch the user's profile from Firestore
     const profileDoc = await db.collection("studentProfiles").doc(userId).get();
@@ -79,7 +80,7 @@ router.patch("/:id", async (request, response) => {
   const userId = request.user!.uid;
 
   const document = await db
-    .collection("studentProfiles")
+    .collection("profiles")
     .where("userId", "==", userId)
     .get();
 
