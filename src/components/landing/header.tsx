@@ -534,50 +534,9 @@ const Resources = () => {
   );
 };
 
-const Pricing = () => {
-  return (
-    <div className="w-fit grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <div className="rounded-2xl p-6">
-        <div className="text-lg font-bold uppercase tracking-[0.12em] px-3">
-          Plan
-        </div>
-        <a href="/pricing" className="mt-3 block group overflow-hidden">
-          <AspectRatio ratio={16 / 9} className="rounded-lg">
-            <img
-              src="/one-fox.svg"
-              alt="pricing_one_plan_image_alt"
-              className="object-fill h-full w-full rounded-2xl"
-            />
-          </AspectRatio>
-          <p className="mt-2 text-sm text-muted-foreground px-3">
-            A clear and easy-to-follow plan
-          </p>
-        </a>
-      </div>
-
-      <div className="rounded-2xl p-6">
-        <div className="text-lg font-bold uppercase tracking-[0.12em] px-3">
-          ROI CALCULATION
-        </div>
-        <a href="/calculator" className="mt-3 block group overflow-hidden">
-          <div className="relative aspect-[16/9] w-full mx-auto rounded-2xl bg-gradient-to-r from-[#E86E1D] to-[#F7C874] grid place-items-center">
-            <div className="text-white text-2xl sm:text-3xl font-extrabold tracking-tight">
-              ROI Calculator
-            </div>
-          </div>
-          <p className="mt-2 text-sm text-muted-foreground px-3">
-            Calculate how much you could save
-          </p>
-        </a>
-      </div>
-    </div>
-  );
-};
-
 const navItems: NavItem[] = [
   { type: "menu", labelKey: "Product", items: <Product /> },
   { type: "menu", labelKey: "Solutions", items: <Solutions /> },
-  { type: "menu", labelKey: "Pricing", items: <Pricing /> },
   { type: "menu", labelKey: "Resources", items: <Resources /> },
 ];
 

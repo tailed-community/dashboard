@@ -42,11 +42,16 @@ export const getAuthForTenant = (tenantId: string) => {
 export const sendLoginLink = async (
   email: string,
   tenantId = TENANT_IDS.STUDENTS,
+  redirectUrl?: string // Add optional redirectUrl
 ) => {
   const actionCodeSettings = {
-    url: `${window.location.origin}/auth/callback?tenantId=${tenantId}`, // Include tenantId in redirect URL
+    url: `${
+      window.location.origin
+    }/auth/callback?tenantId=${tenantId}&redirectUrl=${encodeURIComponent(
+      redirectUrl || ""
+    )}`, // Include tenantId in redirect URL
     handleCodeInApp: true,
-    linkDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+    linkDomain: window.location.origin,
   };
 
   const auth = getAuthForTenant(tenantId);
@@ -69,10 +74,12 @@ export const completeSignIn = async () => {
     // Create a new auth instance with the exact tenantId from the URL
     const auth = tenantId ? getAuthForTenant(tenantId) : studentAuth;
 
+    console.log("Completing sign-in url:", window.location.href);
+
     const userCredential = await signInWithEmailLink(
       auth,
       email,
-      window.location.href,
+      window.location.href
     );
     localStorage.removeItem("emailForSignIn");
 

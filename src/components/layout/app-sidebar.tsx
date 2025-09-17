@@ -23,8 +23,9 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { Link } from "react-router-dom";
-import { useSidebar } from "@/contexts/sidebar-context";
+import { useSidebarContext } from "@/contexts/sidebar-context";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useEffect } from "react";
 
 const data = {
   // Company and user data will be fetched dynamically
@@ -34,6 +35,13 @@ const data = {
       url: "/dashboard",
       icon: ChartPie,
       isActive: true,
+    },
+    // My Applications
+    {
+      title: "My Applications",
+      url: "/jobs/applied",
+      icon: BriefcaseBusiness,
+      isActive: false,
     },
   ],
   navSecondary: [
@@ -68,10 +76,12 @@ const data = {
 };
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const { user, loading } = useSidebar() || {
+  const { user, loading } = useSidebarContext() || {
     user: null,
     loading: true,
   };
+
+  useEffect(() => {}, [user]);
 
   return (
     <Sidebar variant="inset" {...props}>
@@ -90,16 +100,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </div>
           </div>
         ) : (
-          <NavUser
-            user={
-              user || {
-                name: "",
-                initials: "",
-                email: "",
-                avatar: "",
-              }
-            }
-          />
+          <NavUser user={user} />
         )}
       </SidebarFooter>
     </Sidebar>
