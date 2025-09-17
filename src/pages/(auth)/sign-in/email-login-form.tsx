@@ -24,17 +24,21 @@ import { z } from "zod";
 // Zod schema for email validation
 const emailLoginSchema = z.object({
   email: z.string().email("Invalid email address"),
+  redirectUrl: z.string().optional(),
 });
 
 type EmailLoginData = z.infer<typeof emailLoginSchema>;
 
 interface EmailLoginProps extends React.ComponentProps<"div"> {
   onChangeLoginType: () => void;
+  redirectUrl?: string; // Add optional redirectUrl prop
 }
 
+// add redirectUrl field to form
 export function EmailLoginForm({
   className,
   onChangeLoginType,
+  redirectUrl,
   ...props
 }: EmailLoginProps) {
   const [isLoading, setIsLoading] = useState(false);
@@ -44,6 +48,7 @@ export function EmailLoginForm({
     resolver: zodResolver(emailLoginSchema),
     defaultValues: {
       email: "",
+      redirectUrl: redirectUrl || "",
     },
   });
 
@@ -51,29 +56,12 @@ export function EmailLoginForm({
     setIsLoading(true);
 
     try {
-      // Check if account exists
-      const response = await apiFetch("/auth/account-exists", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email: data.email,
-        }),
+      // If the account exists, send the login link
+      await sendLoginLink(data.email, TENANT_IDS.STUDENTS, data.redirectUrl);
+
+      toast.success("Login link sent", {
+        description: "Check your email for the login link",
       });
-
-      if (response.ok) {
-        // If the account exists, send the login link
-        await sendLoginLink(data.email, TENANT_IDS.STUDENTS);
-
-        toast.success("Login link sent", {
-          description: "Check your email for the login link",
-        });
-      } else {
-        toast.error("User not found", {
-          description: "No account exists with this email address",
-        });
-      }
     } catch (error) {
       console.error("Login error:", error);
 

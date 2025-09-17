@@ -193,10 +193,7 @@ export default function AccountPage() {
                 alt="Profile"
                 className="w-24 h-24 rounded-full object-cover"
               />
-              <button
-                className="absolute bottom-0 right-0 bg-black text-white p-2 rounded-full shadow-md hover:bg-blue-600"
-                onClick={() => console.log("Change profile picture clicked")}
-              >
+              <button className="absolute bottom-0 right-0 bg-black text-white p-2 rounded-full shadow-md hover:bg-blue-600">
                 <Upload className="w-4 h-4" />
               </button>
             </div>

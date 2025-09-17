@@ -28,36 +28,27 @@ export const createTenantAuth = async (tenantId: string) => {
 
 export const studentAuth = async () => createTenantAuth(TENANT_IDS.STUDENTS);
 
-export const verifyAuth = () => {
+export const decodedToken = () => {
   return async (req: any, res: any, next: any) => {
     const authHeader = req.headers.authorization;
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      console.error("Missing or invalid bearer token in authorization header");
-      return res
-        .status(401)
-        .json({ error: "Unauthorized - Missing or invalid bearer token" });
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      const token = authHeader.split(" ")[1];
+
+      if (token) {
+        try {
+          // If tenantId provided, verify with that tenant's auth
+          let tenantAuth = await studentAuth();
+          const decodedToken = await tenantAuth.verifyIdToken(token);
+          req.user = decodedToken;
+        } catch (error) {
+          console.error("Error verifying token:", error);
+          res.status(401).json({ error: "Invalid token" });
+        }
+      }
     }
 
-    const token = authHeader.split(" ")[1];
-
-    if (!token) {
-      console.error("No token provided in authorization header");
-      return res
-        .status(401)
-        .json({ error: "Unauthorized - Token not provided" });
-    }
-
-    try {
-      // If tenantId provided, verify with that tenant's auth
-      let tenantAuth = await studentAuth();
-      const decodedToken = await tenantAuth.verifyIdToken(token);
-      req.user = decodedToken;
-      next();
-    } catch (error) {
-      console.error("Error verifying token:", error);
-      res.status(401).json({ error: "Invalid token" });
-    }
+    next();
   };
 };
 

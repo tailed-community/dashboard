@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, Link, useSearchParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { apiFetch } from "@/lib/fetch";
 import {
   Loader2,
@@ -8,7 +8,6 @@ import {
   MapPin,
   Calendar,
   ExternalLink,
-  Building2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,15 +18,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { type Job, type Organization } from "@/types/jobs";
+import { Badge } from "@/components/ui/badge";
+import { type Job } from "@/types/jobs";
 
 export default function PublicJobPage() {
   const { slug } = useParams<{ slug: string }>();
-  const [searchParams] = useSearchParams();
-  const token = searchParams.get("token");
-  const sharedId = searchParams.get("sharedId");
   const [job, setJob] = useState<Job | null>(null);
-  const [organization, setOrganization] = useState<Organization | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,17 +33,7 @@ export default function PublicJobPage() {
         setLoading(true);
         setError(null);
 
-        // Build the endpoint with appropriate query parameters
-        let endpoint = `/public/jobs/${slug}`;
-
-        // Add token or sharedId as query parameters if they exist
-        if (token) {
-          endpoint += `?token=${encodeURIComponent(token)}`;
-        } else if (sharedId) {
-          endpoint += `?sharedId=${encodeURIComponent(sharedId)}`;
-        }
-
-        const response = await apiFetch(endpoint, {}, true);
+        const response = await apiFetch(`/jobs/public/${slug}`, {}, true);
 
         if (!response.ok) {
           const errorData = await response.json();
@@ -55,18 +41,7 @@ export default function PublicJobPage() {
         }
 
         const data = await response.json();
-
-        // Handle nested job and organization structure
-        if (data.job) {
-          setJob(data.job);
-        } else {
-          // Fallback if API returns job directly instead of nested
-          setJob(data);
-        }
-
-        if (data.organization) {
-          setOrganization(data.organization);
-        }
+        setJob(data);
       } catch (err) {
         console.error("Error loading job:", err);
         setError(
@@ -78,23 +53,7 @@ export default function PublicJobPage() {
     }
 
     fetchJob();
-  }, [slug, token, sharedId]);
-
-  // Format date to readable string
-  const formatDate = (dateString?: string) => {
-    if (!dateString) return "";
-
-    try {
-      const date = new Date(dateString);
-      return new Intl.DateTimeFormat("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      }).format(date);
-    } catch (e) {
-      return dateString;
-    }
-  };
+  }, [slug]);
 
   if (loading) {
     return (
@@ -116,7 +75,7 @@ export default function PublicJobPage() {
             {error || "This job posting is not available or has expired."}
           </p>
           <Button className="mt-4" asChild>
-            <Link to="/">Return to Home</Link>
+            <Link to="/dashboard">Return to Home</Link>
           </Button>
         </div>
       </div>
@@ -136,25 +95,6 @@ export default function PublicJobPage() {
 
         <Card className="border shadow-md">
           <CardHeader>
-            {organization && (
-              <div className="flex items-center gap-3 mb-4">
-                {organization.logo ? (
-                  <img
-                    src={organization.logo}
-                    alt={`${organization.name} logo`}
-                    className="h-10 w-10 object-contain"
-                  />
-                ) : (
-                  <div className="h-10 w-10 bg-muted flex items-center justify-center rounded-md">
-                    <Building2 className="h-6 w-6 text-muted-foreground" />
-                  </div>
-                )}
-                <div className="text-sm text-muted-foreground">
-                  {organization.name}
-                </div>
-              </div>
-            )}
-
             <div className="flex items-start justify-between">
               <div>
                 <CardTitle className="text-2xl">{job.title}</CardTitle>
@@ -170,22 +110,20 @@ export default function PublicJobPage() {
                     </div>
                     <div className="flex items-center text-muted-foreground">
                       <Calendar className="mr-1 h-4 w-4" />
-                      <span>
-                        Posted{" "}
-                        {job.postingDate
-                          ? formatDate(job.postingDate)
-                          : "Recently"}
-                      </span>
+                      <span>Posted {new Date().toLocaleDateString()}</span>
                     </div>
                   </div>
                 </CardDescription>
               </div>
 
-              {/* Status badge removed from here */}
+              <Badge
+                variant={job.status === "Active" ? "default" : "secondary"}
+              >
+                {job.status}
+              </Badge>
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Job description section */}
             {job.description && (
               <div>
                 <h2 className="mb-2 font-semibold">Description</h2>
@@ -194,50 +132,11 @@ export default function PublicJobPage() {
                 </div>
               </div>
             )}
-
-            {/* Job requirements section */}
-            {job.requirements && (
-              <div>
-                <h2 className="mb-2 font-semibold">Requirements</h2>
-                <div className="whitespace-pre-line text-muted-foreground">
-                  {job.requirements}
-                </div>
-              </div>
-            )}
-
-            {/* Additional information section */}
-            <div className="border-t pt-4 mt-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {job.postingDate && (
-                  <div>
-                    <p className="text-sm font-medium">Posted on</p>
-                    <p className="text-sm text-muted-foreground">
-                      {formatDate(job.postingDate)}
-                    </p>
-                  </div>
-                )}
-
-                {job.endPostingDate && (
-                  <div>
-                    <p className="text-sm font-medium">Application Deadline</p>
-                    <p className="text-sm text-muted-foreground">
-                      {formatDate(job.endPostingDate)}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
           </CardContent>
           <CardFooter>
             <Button className="w-full" asChild>
               <Link
-                to={`/jobs/${slug}/apply${
-                  token
-                    ? `?token=${encodeURIComponent(token)}`
-                    : sharedId
-                    ? `?sharedId=${encodeURIComponent(sharedId)}`
-                    : ""
-                }`}
+                to={`/public/jobs/${job.id}`}
                 className="flex items-center justify-center gap-2"
               >
                 Apply for this position

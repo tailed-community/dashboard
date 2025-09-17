@@ -9,74 +9,82 @@ import React, {
 import { apiFetch } from "@/lib/fetch";
 
 // Define types for our data
+
 interface User {
-  name: string;
-  initials: string;
-  email: string;
-  avatar: string;
+  name?: string;
+  initials?: string;
+  email?: string;
+  avatar?: string;
 }
 
 interface SidebarContextType {
   user: User | null;
   loading: boolean;
   error: string | null;
+  onboardingRequired: boolean;
   refresh: () => Promise<void>;
 }
 
 // Create the context
 const SidebarContext = createContext<SidebarContextType | undefined>(undefined);
 
-// Combined API fetch function
+// Combined API fetch function with onboarding status
 const fetchData = async () => {
-  const [userData] = await Promise.all([
-    apiFetch("/profile").then((res) => {
-      if (!res.ok) throw new Error("Failed to fetch user profile");
-      return res.json();
-    }),
-  ]);
-
-  return { userData };
+  try {
+    const res = await apiFetch("/profile");
+    const userData = await res.json();
+    // If no name, treat as onboarding required
+    const onboardingRequired = !userData?.name || userData.name === "User";
+    return { userData, onboardingRequired };
+  } catch (error) {
+    // Network or other error, treat as onboarding required but log error
+    console.error("Error loading sidebar data:", error);
+    return { userData: null, onboardingRequired: true, error: error.message };
+  }
 };
 
 export function SidebarContextProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [onboardingRequired, setOnboardingRequired] = useState(false);
 
   const refresh = useCallback(async () => {
-    try {
-      setLoading(true);
-      const { userData } = await fetchData();
+    setLoading(true);
+    const {
+      userData,
+      onboardingRequired: onboarding,
+      error: fetchError,
+    } = await fetchData();
+    // check that userData is not empty {}
+    if (userData && Object.keys(userData).length > 0) {
       setUser(userData);
-      setError(null);
-    } catch (error) {
-      console.error("Error loading sidebar data:", error);
-      setError("Failed to load data");
-    } finally {
-      setLoading(false);
+    } else {
+      setUser(null);
     }
+    setOnboardingRequired(!!onboarding);
+    setError(fetchError || null);
+    setLoading(false);
   }, []);
 
   useEffect(() => {
-    // Only fetch if data isn't already loaded
-    if (!user) {
-      refresh();
-    } else {
-      setLoading(false);
-    }
-  }, [user, refresh]);
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
-    <SidebarContext.Provider value={{ user, loading, error, refresh }}>
+    <SidebarContext.Provider
+      value={{ user, loading, error, onboardingRequired, refresh }}
+    >
       {children}
     </SidebarContext.Provider>
   );
 }
 
-export function useSidebar() {
+export function useSidebarContext() {
   const context = useContext(SidebarContext);
   if (context === undefined) {
-    throw new Error("useSidebar must be used within a SidebarProvider");
+    throw new Error("useSidebarContext must be used within a SidebarProvider");
   }
   return context;
 }

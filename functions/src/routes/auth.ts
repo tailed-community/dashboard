@@ -29,10 +29,7 @@ router.post("/create-account", async (req, res) => {
       const user = await tenantAuth.getUserByEmail(email);
       let existingUser = null;
       if (user) {
-        existingUser = await db
-          .collection("studentProfiles")
-          .doc(user.uid)
-          .get();
+        existingUser = await db.collection("profiles").doc(user.uid).get();
       }
       if (existingUser?.exists) {
         return res.status(400).json({
@@ -49,7 +46,7 @@ router.post("/create-account", async (req, res) => {
     const userRecord = await tenantAuth.getUserByEmail(email);
 
     await db
-      .collection("studentProfiles")
+      .collection("profiles")
       .doc(userRecord.uid)
       .set({
         userId: userRecord.uid,
@@ -93,47 +90,6 @@ router.post("/create-account", async (req, res) => {
       error: "Server error",
       message: "Failed to create account. Please try again later.",
     });
-  }
-});
-
-router.post("/account-exists", async (req, res) => {
-  const { email } = req.body;
-
-  if (!email) {
-    return res.status(400).json({ error: "Email is required" });
-  }
-
-  try {
-    const tenantAuth = await studentAuth();
-    const userRecord = await tenantAuth.getUserByEmail(email);
-
-    if (userRecord) {
-      const profile = await db
-        .collection("studentProfiles")
-        .doc(userRecord.uid)
-        .get();
-      if (profile.exists) {
-        return res.status(200).json({ exists: true });
-      } else {
-        return res.status(404).json({
-          error: {
-            code: "auth/user-not-found",
-            message:
-              "There is no record corresponding to the provided identifier",
-          },
-        });
-      }
-    } else {
-      return res.status(404).json({
-        error: {
-          code: "auth/user-not-found",
-          message:
-            "There is no record corresponding to the provided identifier",
-        },
-      });
-    }
-  } catch (error) {
-    return res.status(500).json({ error: error });
   }
 });
 

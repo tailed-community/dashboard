@@ -1,26 +1,28 @@
 import express from "express";
 
-import { db, auth } from "../lib/firebase";
+import { db, studentAuth } from "../lib/firebase";
 import { logger } from "firebase-functions";
 
 const router = express.Router();
 
 // GET /profile - Returns the profile of the currently authenticated user
 router.get("/", async (req, res) => {
-  try {
-    // Get the user's ID from the authenticated request
-    const userId = req.user!.uid;
+  if (!req.user) {
+    return res.status(200).json({});
+  }
 
-    // Fetch the user's profile from Firestore
-    const profileDoc = await db.collection("studentProfiles").doc(userId).get();
+  try {
+    // Fetch the user's profile from Firestore  using email
+    const profileDoc = await db.collection("profiles").doc(req.user!.uid).get();
 
     if (!profileDoc.exists) {
       // If no profile document exists, try to get basic info from Auth
       try {
-        const userRecord = await auth.getUser(userId);
+        const tenantAuth = await studentAuth();
+        const userRecord = await tenantAuth.getUser(req.user!.uid);
 
         return res.status(200).json({
-          name: userRecord.displayName || "User",
+          name: userRecord.displayName || userRecord.email,
           email: userRecord.email,
           initials: userRecord.displayName
             ? userRecord.displayName
@@ -31,6 +33,7 @@ router.get("/", async (req, res) => {
                 .substring(0, 2)
             : "U",
           avatar: userRecord.photoURL || null,
+          appliedJobIds: [],
           // Add minimal default values
         });
       } catch (authError) {
@@ -46,7 +49,7 @@ router.get("/", async (req, res) => {
 
     // Return the profile data
     return res.status(200).json({
-      id: profileDoc.id,
+      id: profileData.id,
       name: `${profileData.firstName} ${profileData.lastName}`,
       firstName: profileData.firstName,
       lastName: profileData.lastName,
@@ -57,13 +60,15 @@ router.get("/", async (req, res) => {
         "U",
       avatar: profileData.avatar || null,
       phone: profileData.phone || null,
-      devpost: profileData.devpost || null,
-      linkedin: profileData.linkedin || null,
+      devpostUsername: profileData.devpostUsername || null,
+      linkedinUrl: profileData.linkedinUrl || null,
       school: profileData.school || null,
       program: profileData.program || null,
       graduationYear: profileData.graduationYear || null,
       createdAt: profileData.createdAt,
       updatedAt: profileData.updatedAt,
+      portfolioUrl: profileData.portfolioUrl || null,
+      appliedJobIds: profileData.appliedJobIds || [],
       // Include any other profile data you want to expose
     });
   } catch (error) {
@@ -78,25 +83,21 @@ router.get("/", async (req, res) => {
 router.patch("/:id", async (request, response) => {
   const userId = request.user!.uid;
 
-  const document = await db
-    .collection("studentProfiles")
-    .where("userId", "==", userId)
-    .get();
+  const document = await db.collection("profiles").doc(userId).get();
 
   // First check if the document we want to update exists
-  if (document.empty) {
+  if (!document.exists) {
     response.status(404).json({ error: "Document does not exist" });
     return;
   }
 
-  // If it exists, we can assume there will only be one document since the id is unique
-  document.forEach((doc) => {
-    // Update the document
-    const promise = db.collection("profiles").doc(doc.id).update(request.body);
-    promise.then(() => {
-      response.sendStatus(200);
-      return;
-    });
+  const promise = db
+    .collection("profiles")
+    .doc(document.id)
+    .update(request.body);
+  promise.then(() => {
+    response.sendStatus(200);
+    return;
   });
 });
 

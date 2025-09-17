@@ -45,7 +45,7 @@ export default function PublicJobPage() {
       } catch (err) {
         console.error("Error loading job:", err);
         setError(
-          err instanceof Error ? err.message : "An unexpected error occurred",
+          err instanceof Error ? err.message : "An unexpected error occurred"
         );
       } finally {
         setLoading(false);
@@ -86,7 +86,7 @@ export default function PublicJobPage() {
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="mx-auto max-w-3xl">
         <Link
-          to="/"
+          to="/dashboard"
           className="mb-6 flex items-center text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="mr-1 h-4 w-4" />

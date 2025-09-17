@@ -116,7 +116,7 @@ export default function PublicJobPage() {
             {error || "This job posting is not available or has expired."}
           </p>
           <Button className="mt-4" asChild>
-            <Link to="/">Return to Home</Link>
+            <Link to="/dashboard">Return to Home</Link>
           </Button>
         </div>
       </div>
