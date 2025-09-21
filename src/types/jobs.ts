@@ -44,3 +44,18 @@ export interface SharedUser {
   accessLevel: "view" | "edit";
   addedAt: string;
 }
+
+export interface ExternalJob {
+  category: string | null;
+  company_name: string;
+  id: string;
+  title: string;
+  active: boolean;
+  terms?: string[]; // for internships
+  date_updated: number;
+  date_posted: number;
+  url: string;
+  locations: string[];
+  degrees: string[];
+  type: "internship" | "new-grad";
+}

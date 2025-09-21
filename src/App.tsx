@@ -10,6 +10,7 @@ import JobApplyPage from "./pages/(dashboard)/jobs/[slug]/apply/page";
 import PublicJobPage from "./pages/(dashboard)/jobs/[slug]/page";
 import LandingPage from "./pages/landing/page";
 import AppliedJobsPage from "./pages/(dashboard)/jobs/applied/page";
+import JobsPage from "./pages/(dashboard)/jobs/page";
 
 import { SidebarContextProvider } from "./contexts/sidebar-context";
 
@@ -27,6 +28,7 @@ function App() {
           <Route element={<DashboardLayout />}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/account" element={<Account />} />
+            <Route path="/jobs" element={<JobsPage />} />
             <Route path="/jobs/applied" element={<AppliedJobsPage />} />
             <Route path="/jobs/:slug" element={<PublicJobPage />} />
             <Route path="/jobs/:slug/apply" element={<JobApplyPage />} />
