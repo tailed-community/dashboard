@@ -74,8 +74,6 @@ export const completeSignIn = async () => {
     // Create a new auth instance with the exact tenantId from the URL
     const auth = tenantId ? getAuthForTenant(tenantId) : studentAuth;
 
-    console.log("Completing sign-in url:", window.location.href);
-
     const userCredential = await signInWithEmailLink(
       auth,
       email,
@@ -99,7 +97,6 @@ export const initializeStudentSession = async () => {
     // Check if we already have a user (anonymous or authenticated)
     if (!studentAuth.currentUser) {
       await firebaseSignInAnonymously(studentAuth);
-      console.log("Anonymous session created");
     }
     return studentAuth.currentUser;
   } catch (error) {

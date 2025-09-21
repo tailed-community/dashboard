@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { apiFetch } from "@/lib/fetch";
 import { Building2 } from "lucide-react";
+import ExternalJobPreview from "./external-job-preview";
 
 // Skeleton component for loading state
 function JobCardSkeleton() {
@@ -52,11 +53,9 @@ export default function JobBoard() {
       ]);
 
       const jobs = await jobsRes.json();
-      console.log("Fetched jobs:", jobs.jobs);
       setFeaturedJobs(jobs.jobs);
 
       const appliedJobsData = await appliedJobsRes.json();
-      console.log("Fetched applied jobs:", appliedJobsData);
       if (Array.isArray(appliedJobsData)) {
         setAppliedJobIds(new Set(appliedJobsData));
       }
@@ -141,10 +140,15 @@ export default function JobBoard() {
         </>
       )}
       <div className="mt-12">
-        <h3 className="font-semibold mb-1">Explore more job opportunities</h3>
-        <div className="text-muted-foreground">
-          Internet-scrawled jobs and internships will appear here in a future
-          update.
+        <h3 className="font-semibold mb-4">Explore more job opportunities</h3>
+        <ExternalJobPreview limit={6} />
+        <div className="mt-4 text-center">
+          <a
+            href="/jobs/external"
+            className="text-primary hover:underline font-medium"
+          >
+            View all opportunities →
+          </a>
         </div>
       </div>
     </div>

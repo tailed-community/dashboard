@@ -6,7 +6,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import JobBoard from "@/components/job-board";
+import UnifiedJobBoard from "@/components/unified-job-board";
 
 export default function Page() {
   return (
@@ -26,7 +26,7 @@ export default function Page() {
       </header>
       <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
         <div className="min-h-[100vh] flex-1 rounded-xl md:min-h-min">
-          <JobBoard />
+          <UnifiedJobBoard limit={10} />
         </div>
       </div>
     </>
