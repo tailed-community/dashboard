@@ -4,7 +4,7 @@ const router = express.Router();
 import { db, studentAuth } from "../lib/firebase";
 import { z } from "zod";
 
-export const TENANT_IDS = { STUDENTS: "students-hactj" } as const;
+export const TENANT_IDS = { STUDENTS: process.env.FB_TENANT_ID! } as const;
 
 const createAccountSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
@@ -37,7 +37,7 @@ router.post("/create-account", async (req, res) => {
           message: "This email address is already associated with an account.",
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       if (error.code !== "auth/user-not-found") {
         throw error;
       }
@@ -69,7 +69,7 @@ router.post("/create-account", async (req, res) => {
       userId: userRecord.uid,
       message: "Account created successfully",
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error creating account:", error);
 
     if (error.code === "auth/email-already-exists") {

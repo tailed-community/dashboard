@@ -23,6 +23,9 @@ const tenantManager = admin.auth().tenantManager();
 export const auth = admin.auth(); // Default auth without tenant
 
 export const createTenantAuth = async (tenantId: string) => {
+  if (!tenantId) {
+    return auth; // Return default auth if no tenantId
+  }
   return tenantManager.authForTenant(tenantId);
 };
 
