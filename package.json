@@ -4,7 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "cross-env NODE_ENV=development && firebase emulators:start --only=hosting,functions,firestore,storage,auth --import .data --export-on-exit --project=demo-tailed1",
+    "dev": "vite",
+    "serve": "cross-env NODE_ENV=development && firebase emulators:start --only=hosting,functions,firestore,storage,auth --import .data --export-on-exit --project=demo-tailed1",
     "build": "tsc --noEmitOnError false --skipLibCheck --allowJs --checkJs false --noImplicitAny false --strict false --strictNullChecks false && vite build && cd functions && npm run build && cd ..",
     "lint": "eslint .",
     "preview": "vite preview",

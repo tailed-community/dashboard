@@ -26,7 +26,9 @@ if (!getApps().length) {
 
 const app = getApp();
 
-export const TENANT_IDS = { STUDENTS: "students-hactj" } as const;
+export const TENANT_IDS = {
+  STUDENTS: import.meta.env.VITE_TENANT_ID,
+} as const;
 
 export const getAuthForTenant = (tenantId: string) => {
   const auth = getAuth(app);
@@ -35,7 +37,9 @@ export const getAuthForTenant = (tenantId: string) => {
     // Connect to the emulator
     connectAuthEmulator(auth, "http://localhost:9100");
   }
-  auth.tenantId = tenantId;
+  if (tenantId) {
+    auth.tenantId = tenantId;
+  }
   return auth;
 };
 
@@ -47,21 +51,23 @@ export const sendLoginLink = async (
   const actionCodeSettings = {
     url: `${
       window.location.origin
-    }/auth/callback?tenantId=${tenantId}&redirectUrl=${encodeURIComponent(
+    }/auth/callback?${tenantId ? `tenantId=${tenantId}` : ""}&redirectUrl=${encodeURIComponent(
       redirectUrl || ""
     )}`, // Include tenantId in redirect URL
     handleCodeInApp: true,
-    linkDomain: window.location.origin,
+    ...(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN
+      ? { linkDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN }
+      : {}),
   };
 
-  const auth = getAuthForTenant(tenantId);
+  const auth = tenantId ? getAuthForTenant(tenantId) : studentAuth;
   await sendSignInLinkToEmail(auth, email, actionCodeSettings);
   localStorage.setItem("emailForSignIn", email); // Store email temporarily
   localStorage.setItem("tenantIdForSignIn", tenantId); // Store tenantId for later
 };
 
 export const completeSignIn = async () => {
-  if (isSignInWithEmailLink(studentAuth, window.location.href)) {
+  if (isSignInWithEmailLink(getAuth(), window.location.href)) {
     const email =
       localStorage.getItem("emailForSignIn") ||
       window.prompt("Enter your email:");

@@ -36,7 +36,12 @@ const data = {
       icon: ChartPie,
       isActive: true,
     },
-    // My Applications
+    {
+      title: "Job Board",
+      url: "/jobs",
+      icon: Command,
+      isActive: false,
+    },
     {
       title: "My Applications",
       url: "/jobs/applied",
