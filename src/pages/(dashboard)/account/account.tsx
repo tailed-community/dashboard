@@ -8,10 +8,11 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/fetch";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useSearchParams } from "react-router-dom";
 
 type StudentProps = {
     email: string;
-    studentId: number;
+    id: string;
     firstName: string;
     lastName: string;
     phone: string;
@@ -19,7 +20,14 @@ type StudentProps = {
     program: string;
     graduationYear: string;
     devpost: string;
-    linkedin: string;
+    linkedinUrl: string;
+    resume: {
+        id: string;
+        name: string;
+        url: string;
+        uploadedAt: string;
+    };
+    appliedJobs: [];
 };
 
 // API service functions
@@ -37,14 +45,11 @@ const apiService = {
     updateStudent: async (studentData: StudentProps) => {
         //TODO: If email changes, also update auth tenant
         try {
-            const response = await apiFetch(
-                `/profile/${studentData.studentId}`,
-                {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(studentData),
-                }
-            );
+            const response = await apiFetch(`/profile/${studentData.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(studentData),
+            });
             if (!response.ok) throw new Error("Failed to update member role");
             return await response;
         } catch (error) {
@@ -65,8 +70,15 @@ export default function AccountPage() {
         school: "",
         program: "",
         graduationYear: "",
-        linkedin: "",
+        linkedinUrl: "",
         devpost: "",
+        resume: {
+            id: "",
+            name: "",
+            url: "",
+            uploadedAt: "",
+        },
+        appliedJobs: [],
     } as StudentProps);
     const [isLoading, setIsLoading] = useState(false);
     const [isEditing, setIsEditing] = useState({
@@ -76,9 +88,13 @@ export default function AccountPage() {
         school: false,
         program: false,
         graduationYear: false,
-        linkedin: false,
+        linkedinUrl: false,
         devpost: false,
+        resume: false,
     });
+
+    const [resumeFile, setResumeFile] = useState<File | null>(null);
+    const [isUploadingResume, setIsUploadingResume] = useState(false);
 
     // Resolve Firebase storage path to URL when organization changes
     useEffect(() => {
@@ -133,6 +149,91 @@ export default function AccountPage() {
     const handleGitHubLogin = () => {
         // Redirect to GitHub OAuth login
         window.location.href = "/auth/github";
+    };
+    const handleResumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // ✅ Check file type
+        if (file.type !== "application/pdf") {
+            toast.error("Invalid file type", {
+                description: "Please upload a PDF document.",
+            });
+            e.target.value = ""; // reset input
+            return;
+        }
+
+        // ✅ Sanitize file name (letters + spaces only)
+        const sanitizedFileName = file.name
+            .replace(/\.[^/.]+$/, "") // remove extension
+            .replace(/[^A-Za-z\s]/g, "") // only letters and spaces
+            .trim();
+
+        if (sanitizedFileName.length === 0) {
+            toast.error("Invalid file name", {
+                description: "Name must only contain letters or spaces.",
+            });
+            e.target.value = "";
+            return;
+        }
+
+        // ✅ Create a new File with sanitized name + .pdf extension
+        const cleanFile = new File([file], `${sanitizedFileName}.pdf`, {
+            type: file.type,
+        });
+
+        setResumeFile(cleanFile);
+    };
+
+    const handleResumeUpload = async () => {
+        if (!resumeFile) return;
+
+        setIsUploadingResume(true);
+        try {
+            const formData = new FormData();
+            formData.append("resume", resumeFile);
+
+            const response = await apiFetch("/profile/main-resume", {
+                method: "PATCH",
+                body: formData,
+            });
+
+            if (!response.ok) throw new Error("Failed to upload resume");
+            const responseData = await response.json();
+            const body = {
+                resume: responseData.resume,
+                appliedJobs: student.appliedJobs,
+            };
+            try {
+                let endpoint = `/public/update-resume/${student!.id}`;
+
+                const response2 = await apiFetch(
+                    endpoint,
+                    {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(body),
+                    },
+                    true
+                );
+                if (!response2.ok)
+                    throw new Error("Failed to add resume to candidate");
+            } catch (error) {
+                console.error("Error adding resume to candidate:", error);
+                toast.error("Error adding resume to candidate", {
+                    description: "Please try again later.",
+                });
+            }
+            toast.success("Resume uploaded successfully!");
+            setResumeFile(null);
+        } catch (error) {
+            console.error("Error uploading resume:", error);
+            toast.error("Error uploading resume", {
+                description: "Please try again later.",
+            });
+        } finally {
+            setIsUploadingResume(false);
+        }
     };
 
     // Add a new function to render skeleton UI
@@ -527,18 +628,18 @@ export default function AccountPage() {
                             <div className="flex items-center">
                                 <Input
                                     id="linkedin"
-                                    name="linkedin"
-                                    value={student.linkedin || ""}
+                                    name="linkedinUrl"
+                                    value={student.linkedinUrl || ""}
                                     onChange={handleStudentChange}
                                     placeholder="https://linkedin.com/in/username"
                                     className="w-full border-gray-300 focus:ring-black focus:border-black"
-                                    disabled={!isEditing.linkedin}
+                                    disabled={!isEditing.linkedinUrl}
                                 />
-                                {isEditing.linkedin ? (
+                                {isEditing.linkedinUrl ? (
                                     <Button
                                         className="bg-black text-white ml-2"
                                         onClick={() =>
-                                            saveStudentChange("linkedin")
+                                            saveStudentChange("linkedinUrl")
                                         }
                                         disabled={isLoading}
                                     >
@@ -552,7 +653,7 @@ export default function AccountPage() {
                                     <Edit3
                                         className="cursor-pointer ml-2"
                                         onClick={() =>
-                                            handleEditClick("linkedin")
+                                            handleEditClick("linkedinUrl")
                                         }
                                     />
                                 )}
@@ -598,6 +699,109 @@ export default function AccountPage() {
                                     />
                                 )}
                             </div>
+                            <div className="mt-4">
+                                <Label
+                                    htmlFor="resume"
+                                    className="block text-sm font-medium text-gray-700 mb-1"
+                                >
+                                    Resume (PDF)
+                                </Label>
+
+                                {student.resume?.name && !isEditing.resume ? (
+                                    <div className="flex items-center ">
+                                        <div className="w-full">
+                                            <p className="text-sm font-medium text-gray-800">
+                                                {student.resume.name + ".pdf"}
+                                            </p>
+                                            {student.resume.url && (
+                                                <a
+                                                    href={student.resume.url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-sm text-blue-600 underline"
+                                                >
+                                                    View resume
+                                                </a>
+                                            )}
+                                        </div>
+                                        <Edit3
+                                            className="cursor-pointer ml-2"
+                                            onClick={() =>
+                                                setIsEditing((prev) => ({
+                                                    ...prev,
+                                                    resume: true,
+                                                }))
+                                            }
+                                        />
+                                    </div>
+                                ) : (
+                                    <>
+                                        {!student.resume?.name && (
+                                            <p className="text-sm text-gray-500 mb-2">
+                                                No resume uploaded yet.
+                                            </p>
+                                        )}
+
+                                        <div className="flex items-center gap-2">
+                                            <Input
+                                                id="resume"
+                                                type="file"
+                                                accept="application/pdf"
+                                                onChange={handleResumeChange}
+                                                className="w-full cursor-pointer"
+                                            />
+                                            <Button
+                                                className="bg-black text-white"
+                                                disabled={
+                                                    !resumeFile ||
+                                                    isUploadingResume
+                                                }
+                                                onClick={async () => {
+                                                    await handleResumeUpload();
+                                                    const updatedStudent =
+                                                        await apiService.getStudent();
+                                                    setStudent(
+                                                        updatedStudent as any
+                                                    );
+                                                    setIsEditing((prev) => ({
+                                                        ...prev,
+                                                        resume: false,
+                                                    }));
+                                                }}
+                                            >
+                                                {isUploadingResume ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                ) : (
+                                                    "Save"
+                                                )}
+                                            </Button>
+
+                                            <Button
+                                                variant="ghost"
+                                                onClick={() => {
+                                                    setResumeFile(null);
+                                                    setIsEditing((prev) => ({
+                                                        ...prev,
+                                                        resume: false,
+                                                    }));
+                                                }}
+                                            >
+                                                Cancel
+                                            </Button>
+                                        </div>
+
+                                        {resumeFile && (
+                                            <p className="mt-1 text-sm text-gray-500">
+                                                Ready to upload:{" "}
+                                                <span className="font-medium">
+                                                    {resumeFile.name}
+                                                </span>
+                                            </p>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+
                             <div className="flex items-center mt-6">
                                 <Button
                                     variant="secondary"
