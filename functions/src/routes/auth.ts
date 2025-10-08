@@ -57,7 +57,7 @@ router.post("/create-account", async (req, res) => {
         school: null,
         program: null,
         graduationYear: null,
-        linkedin: null,
+        linkedinUrl: null,
         devpost: null,
         initials: `${firstName.charAt(0)}${lastName.charAt(0)}`,
         createdAt: new Date(),

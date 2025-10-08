@@ -246,12 +246,6 @@ export default function ApplyJobPage() {
                     errorData.error || "Failed to submit application"
                 );
             }
-
-            await apiFetch(`/job/applied-jobs/${slug}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload),
-            });
             setIsSubmitted(true);
         } catch (err) {
             setError(
