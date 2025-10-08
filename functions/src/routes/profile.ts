@@ -42,7 +42,7 @@ router.get("/", async (req, res) => {
                               .substring(0, 2)
                         : "U",
                     avatar: userRecord.photoURL || null,
-                    appliedJobIds: [],
+                    appliedJobs: [],
                     // Add minimal default values
                 });
             } catch (authError) {
@@ -79,7 +79,6 @@ router.get("/", async (req, res) => {
             createdAt: profileData.createdAt,
             updatedAt: profileData.updatedAt,
             portfolioUrl: profileData.portfolioUrl || null,
-            appliedJobIds: profileData.appliedJobIds || [],
             resume: profileData.resume || null,
             // Include any other profile data you want to expose
         });
@@ -184,25 +183,24 @@ router.patch("/main-resume/", upload.single("resume"), async (req, res) => {
         });
     }
 });
-router.patch("/:id", async (request, response) => {
-    const userId = request.user!.uid;
-
-    const document = await db.collection("profiles").doc(userId).get();
-
-    // First check if the document we want to update exists
-    if (!document.exists) {
-        response.status(404).json({ error: "Document does not exist" });
-        return;
+router.patch("/update", async (req, res) => {
+    const userId = req.user?.uid;
+    if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
     }
+    try {
+        await db.collection("profiles").doc(userId).update(req.body);
 
-    const promise = db
-        .collection("profiles")
-        .doc(document.id)
-        .update(request.body);
-    promise.then(() => {
-        response.sendStatus(200);
-        return;
-    });
+        return res.status(200).json({
+            success: true,
+            message: "Student updated successfully",
+        });
+    } catch (error) {
+        logger.error("Error updating student:", error);
+        return res.status(500).json({
+            error: "Failed to update student",
+        });
+    }
 });
 
 export default router;

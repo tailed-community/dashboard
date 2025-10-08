@@ -45,7 +45,7 @@ const apiService = {
     updateStudent: async (studentData: StudentProps) => {
         //TODO: If email changes, also update auth tenant
         try {
-            const response = await apiFetch(`/profile/${studentData.id}`, {
+            const response = await apiFetch("/profile/update", {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(studentData),
@@ -126,6 +126,8 @@ export default function AccountPage() {
     const handleEditClick = (field: string) => {
         setIsEditing((prev) => ({ ...prev, [field]: true }));
     };
+
+    console.log("Student data:", student);
 
     const saveStudentChange = async (field: string) => {
         setIsEditing((prev) => ({ ...prev, [field]: false }));
