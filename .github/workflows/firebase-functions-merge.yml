@@ -1,49 +1,49 @@
 name: Deploy to Firebase Functions on branch merge
 on:
-  push:
-    branches:
-      - main
+    push:
+        branches:
+            - main
 env:
-  FB_PROJECT_ID: ${{ secrets.FB_PROJECT_ID }}
-  FB_API_KEY: ${{ secrets.FB_API_KEY }}
-  FB_STORAGE_BUCKET: ${{ secrets.FB_STORAGE_BUCKET }}
-  FB_MESSAGING_SENDER_ID: ${{ secrets.FB_MESSAGING_SENDER_ID }}
-  FB_APP_ID: ${{ secrets.FB_APP_ID }}
-  EMAIL_SERVER: ${{ secrets.EMAIL_SERVER }}
-  FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
-  GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
-  GOOGLE_APPLICATION_CREDENTIALS_BASE64: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_BASE64 }}
-  TARGET: default
+    FB_PROJECT_ID: ${{ secrets.FB_PROJECT_ID }}
+    FB_API_KEY: ${{ secrets.FB_API_KEY }}
+    FB_STORAGE_BUCKET: ${{ secrets.FB_STORAGE_BUCKET }}
+    FB_MESSAGING_SENDER_ID: ${{ secrets.FB_MESSAGING_SENDER_ID }}
+    FB_APP_ID: ${{ secrets.FB_APP_ID }}
+    EMAIL_SERVER: ${{ secrets.EMAIL_SERVER }}
+    FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+    GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
+    GOOGLE_APPLICATION_CREDENTIALS_BASE64: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_BASE64 }}
+    TARGET: default
 jobs:
-  main:
-    name: Deploy to Firebase
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-      - name: Install dependencies
-        working-directory: functions
-        run: |
-          npm ci
-          npm install -g firebase-tools
-      - name: Create .env
-        working-directory: functions
-        run: |
-          touch .env
-          echo "DEVPOST_API_KEY=${{ secrets.DEVPOST_API_KEY }}" >> .env
-          echo "EMAIL_SERVER=${{ secrets.EMAIL_SERVER }}" >> .env
-          echo "FB_API_KEY=${{ secrets.FB_API_KEY }}" >> .env
-          echo "FB_APP_ID=${{ secrets.FB_APP_ID }}" >> .env
-          echo "FB_AUTH_DOMAIN=${{ secrets.FB_AUTH_DOMAIN }}" >> .env
-          echo "FB_MESSAGING_SENDER_ID=${{ secrets.FB_MESSAGING_SENDER_ID }}" >> .env
-          echo "FB_PROJECT_ID=${{ secrets.FB_PROJECT_ID }}" >> .env
-          echo "FB_STORAGE_BUCKET=${{ secrets.FB_STORAGE_BUCKET }}" >> .env
-          echo "FRONTEND_URL=${{ secrets.FRONTEND_URL }}" >> .env
-          echo "GOOGLE_APPLICATION_CREDENTIALS_BASE64=${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_BASE64 }}" >> .env
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: "${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}"
-      - name: Deploy to firebase functions
-        run: |
-          firebase deploy --only functions --non-interactive
+    main:
+        name: Deploy to Firebase
+        runs-on: ubuntu-latest
+        steps:
+            - name: Check out code
+              uses: actions/checkout@v4
+            - name: Install dependencies
+              working-directory: functions
+              run: |
+                  npm i
+                  npm install -g firebase-tools
+            - name: Create .env
+              working-directory: functions
+              run: |
+                  touch .env
+                  echo "DEVPOST_API_KEY=${{ secrets.DEVPOST_API_KEY }}" >> .env
+                  echo "EMAIL_SERVER=${{ secrets.EMAIL_SERVER }}" >> .env
+                  echo "FB_API_KEY=${{ secrets.FB_API_KEY }}" >> .env
+                  echo "FB_APP_ID=${{ secrets.FB_APP_ID }}" >> .env
+                  echo "FB_AUTH_DOMAIN=${{ secrets.FB_AUTH_DOMAIN }}" >> .env
+                  echo "FB_MESSAGING_SENDER_ID=${{ secrets.FB_MESSAGING_SENDER_ID }}" >> .env
+                  echo "FB_PROJECT_ID=${{ secrets.FB_PROJECT_ID }}" >> .env
+                  echo "FB_STORAGE_BUCKET=${{ secrets.FB_STORAGE_BUCKET }}" >> .env
+                  echo "FRONTEND_URL=${{ secrets.FRONTEND_URL }}" >> .env
+                  echo "GOOGLE_APPLICATION_CREDENTIALS_BASE64=${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_BASE64 }}" >> .env
+            - name: Authenticate to Google Cloud
+              uses: google-github-actions/auth@v2
+              with:
+                  credentials_json: "${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}"
+            - name: Deploy to firebase functions
+              run: |
+                  firebase deploy --only functions --non-interactive
