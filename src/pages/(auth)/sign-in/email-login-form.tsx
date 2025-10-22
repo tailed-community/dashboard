@@ -146,7 +146,7 @@ export function EmailLoginForm({
                   {isLoading ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : null}
-                  {m.login()}
+                  {m.login()+" / "+ m.sign_up()}
                 </Button>
 
                 <Button
@@ -160,12 +160,12 @@ export function EmailLoginForm({
                 </Button>
               </div>
 
-              <div className="text-center text-sm">
+              {/* <div className="text-center text-sm">
                 Don't have an account?{" "}
                 <Link to="/sign-up" className="underline underline-offset-4">
                   Sign up
                 </Link>
-              </div>
+              </div> */}
             </form>
           </Form>
         </CardContent>
