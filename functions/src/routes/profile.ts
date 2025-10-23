@@ -6,9 +6,6 @@ import { logger } from "firebase-functions";
 
 const router = express.Router();
 
-// Add this middleware BEFORE the route to ensure raw body is available
-router.use(express.raw({ type: "multipart/form-data", limit: "10mb" }));
-
 // GET /profile - Returns the profile of the currently authenticated user
 router.get("/", async (req, res) => {
     if (!req.user) {
