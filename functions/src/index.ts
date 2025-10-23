@@ -26,7 +26,20 @@ const app = express();
 
 app.use(_cors);
 app.use(cookieParser());
-app.use(express.json());
+
+// Don't use express.json() globally - apply conditionally
+// For multipart/form-data routes, we need the raw body stream
+app.use((req, res, next) => {
+  const contentType = req.headers['content-type'] || '';
+  
+  // Skip body parsing for multipart/form-data
+  if (contentType.includes('multipart/form-data')) {
+    return next();
+  }
+  
+  // Apply JSON parsing for everything else
+  express.json()(req, res, next);
+});
 
 //Routes
 app.use("/auth", authRouter);
