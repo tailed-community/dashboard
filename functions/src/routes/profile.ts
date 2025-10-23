@@ -120,11 +120,11 @@ router.patch("/main-resume/", async (req, res): Promise<void> => {
             return;
         }
 
-        // Ensure we have the raw request body
-        if (!req.readable && !req.body) {
-            logger.error("Request body not readable");
+        // Firebase Functions provides rawBody
+        if (!(req as any).rawBody) {
+            logger.error("Request rawBody not available");
             res.status(400).json({
-                error: "Request body not readable",
+                error: "Request body not available",
             });
             return;
         }
@@ -339,10 +339,10 @@ router.patch("/main-resume/", async (req, res): Promise<void> => {
             }
         });
 
-        // Important: Pipe the request to busboy
-        // This must happen after all event listeners are attached
-        logger.info("Piping request to Busboy");
-        req.pipe(busboy);
+        // CRITICAL: Use busboy.end() with rawBody instead of req.pipe()
+        // Firebase Functions pre-parses the request, so the stream is already consumed
+        logger.info("Feeding rawBody to Busboy");
+        busboy.end((req as any).rawBody);
     } catch (error) {
         logger.error("Error in resume upload handler:", error);
         res.status(500).json({
