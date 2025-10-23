@@ -1,6 +1,6 @@
 import type React from "react";
 import { useState, useEffect } from "react";
-import { Upload, Loader2, Edit3 } from "lucide-react";
+import { Upload, Loader2, PencilLine, X } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,6 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/fetch";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useSearchParams } from "react-router-dom";
 
 type StudentProps = {
     email: string;
@@ -19,13 +18,17 @@ type StudentProps = {
     school: string;
     program: string;
     graduationYear: string;
-    devpost: string;
+    devpostUsername: string;
     linkedinUrl: string;
+    githubUsername: string;
     resume: {
         id: string;
         name: string;
         url: string;
-        uploadedAt: string;
+        uploadedAt:{
+            _seconds: number;
+            _nanoseconds: number;
+        };
     };
     appliedJobs: [];
 };
@@ -71,26 +74,36 @@ export default function AccountPage() {
         program: "",
         graduationYear: "",
         linkedinUrl: "",
-        devpost: "",
+        devpostUsername: "",
+        githubUsername: "",
         resume: {
             id: "",
             name: "",
             url: "",
-            uploadedAt: "",
+            uploadedAt:{
+                _seconds: 0,
+                _nanoseconds: 0
+            },
         },
         appliedJobs: [],
     } as StudentProps);
+
+    const [originalStudent, setOriginalStudent] = useState<StudentProps | null>(
+        null
+    );
+    const [hasChanges, setHasChanges] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+
+    // Track which fields are being edited
     const [isEditing, setIsEditing] = useState({
-        name: false,
-        email: false,
         phone: false,
         school: false,
         program: false,
         graduationYear: false,
         linkedinUrl: false,
-        devpost: false,
-        resume: false,
+        devpostUsername: false,
+        githubUsername: false,
     });
 
     const [resumeFile, setResumeFile] = useState<File | null>(null);
@@ -104,6 +117,7 @@ export default function AccountPage() {
             try {
                 const studentData = await apiService.getStudent();
                 setStudent(studentData as any);
+                setOriginalStudent(studentData as any); // Save original for cancel
             } catch (error) {
                 console.error("Error fetching data:", error);
                 toast.error("Error loading data", {
@@ -118,40 +132,90 @@ export default function AccountPage() {
         fetchData();
     }, []);
 
+    // Check if there are any changes
+    useEffect(() => {
+        if (!originalStudent) return;
+
+        const changed =
+            student.phone !== originalStudent.phone ||
+            student.school !== originalStudent.school ||
+            student.program !== originalStudent.program ||
+            student.graduationYear !== originalStudent.graduationYear ||
+            student.linkedinUrl !== originalStudent.linkedinUrl ||
+            student.devpostUsername !== originalStudent.devpostUsername ||
+            student.githubUsername !== originalStudent.githubUsername;
+
+        setHasChanges(changed);
+    }, [student, originalStudent]);
+
     const handleStudentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
         setStudent((prev) => ({ ...prev, [name]: value }));
     };
 
-    const handleEditClick = (field: string) => {
-        setIsEditing((prev) => ({ ...prev, [field]: true }));
+    const handleToggleEdit = (field: keyof typeof isEditing) => {
+        setIsEditing((prev) => ({ ...prev, [field]: !prev[field] }));
     };
 
-    console.log("Student data:", student);
-
-    const saveStudentChange = async (field: string) => {
-        setIsEditing((prev) => ({ ...prev, [field]: false }));
-        setIsLoading(true);
-        try {
-            await apiService.updateStudent(student as StudentProps);
-            toast.success("Student updated", {
-                description: "Student details have been updated successfully.",
-            });
-        } catch (error) {
-            console.error("Error updating student:", error);
-            toast.error("Error updating student", {
-                description:
-                    "Could not update student details. Please try again.",
-            });
-        } finally {
-            setIsLoading(false);
+    const handleDiscardField = (field: keyof typeof isEditing) => {
+        if (originalStudent) {
+            setStudent((prev) => ({
+                ...prev,
+                [field]: originalStudent[field as keyof StudentProps],
+            }));
+            setIsEditing((prev) => ({ ...prev, [field]: false }));
         }
     };
 
-    const handleGitHubLogin = () => {
-        // Redirect to GitHub OAuth login
-        window.location.href = "/auth/github";
+    const handleSaveChanges = async () => {
+        setIsSaving(true);
+        try {
+            await apiService.updateStudent(student as StudentProps);
+            setOriginalStudent(student); // Update original to current
+            setHasChanges(false);
+            // Reset all editing states
+            setIsEditing({
+                phone: false,
+                school: false,
+                program: false,
+                graduationYear: false,
+                linkedinUrl: false,
+                devpostUsername: false,
+                githubUsername: false,
+            });
+            toast.success("Profile updated", {
+                description: "Your profile has been updated successfully.",
+            });
+        } catch (error) {
+            console.error("Error updating student:", error);
+            toast.error("Error updating profile", {
+                description: "Could not update your profile. Please try again.",
+            });
+        } finally {
+            setIsSaving(false);
+        }
     };
+
+    const handleCancelChanges = () => {
+        if (originalStudent) {
+            setStudent(originalStudent);
+            setHasChanges(false);
+            // Reset all editing states
+            setIsEditing({
+                phone: false,
+                school: false,
+                program: false,
+                graduationYear: false,
+                linkedinUrl: false,
+                devpostUsername: false,
+                githubUsername: false,
+            });
+            toast.info("Changes discarded", {
+                description: "All changes have been reverted.",
+            });
+        }
+    };
+
     const handleResumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -316,41 +380,14 @@ export default function AccountPage() {
                                     >
                                         First Name
                                     </Label>
-                                    <div className="flex items-center">
-                                        <Input
-                                            id="firstName"
-                                            name="firstName"
-                                            value={student.firstName}
-                                            onChange={handleStudentChange}
-                                            placeholder="First Name"
-                                            className="w-full"
-                                            disabled={!isEditing.firstName}
-                                        />
-                                        {isEditing.firstName ? (
-                                            <Button
-                                                className="bg-black text-white"
-                                                onClick={() =>
-                                                    saveStudentChange(
-                                                        "firstName"
-                                                    )
-                                                }
-                                                disabled={isLoading}
-                                            >
-                                                {isLoading ? (
-                                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                                ) : (
-                                                    "Save"
-                                                )}
-                                            </Button>
-                                        ) : (
-                                            <Edit3
-                                                className="cursor-pointer ml-2"
-                                                onClick={() =>
-                                                    handleEditClick("firstName")
-                                                }
-                                            />
-                                        )}
-                                    </div>
+                                    <Input
+                                        id="firstName"
+                                        name="firstName"
+                                        value={student.firstName}
+                                        placeholder="First Name"
+                                        className="w-full"
+                                        disabled
+                                    />
                                 </div>
                                 <div>
                                     <Label
@@ -359,41 +396,14 @@ export default function AccountPage() {
                                     >
                                         Last Name
                                     </Label>
-                                    <div className="flex items-center">
-                                        <Input
-                                            id="lastName"
-                                            name="lastName"
-                                            value={student.lastName}
-                                            onChange={handleStudentChange}
-                                            placeholder="Last Name"
-                                            className="w-full"
-                                            disabled={!isEditing.lastName}
-                                        />
-                                        {isEditing.lastName ? (
-                                            <Button
-                                                className="bg-black text-white"
-                                                onClick={() =>
-                                                    saveStudentChange(
-                                                        "lastName"
-                                                    )
-                                                }
-                                                disabled={isLoading}
-                                            >
-                                                {isLoading ? (
-                                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                                ) : (
-                                                    "Save"
-                                                )}
-                                            </Button>
-                                        ) : (
-                                            <Edit3
-                                                className="cursor-pointer ml-2"
-                                                onClick={() =>
-                                                    handleEditClick("lastName")
-                                                }
-                                            />
-                                        )}
-                                    </div>
+                                    <Input
+                                        id="lastName"
+                                        name="lastName"
+                                        value={student.lastName}
+                                        placeholder="Last Name"
+                                        className="w-full"
+                                        disabled
+                                    />
                                 </div>
                                 <div className="col-span-2">
                                     <Label
@@ -402,39 +412,14 @@ export default function AccountPage() {
                                     >
                                         Email
                                     </Label>
-                                    <div className="flex items-center">
-                                        <Input
-                                            id="email"
-                                            name="email"
-                                            value={student.email}
-                                            onChange={handleStudentChange}
-                                            placeholder="Email"
-                                            className="w-full"
-                                            disabled={!isEditing.email}
-                                        />
-                                        {isEditing.email ? (
-                                            <Button
-                                                className="bg-black text-white"
-                                                onClick={() =>
-                                                    saveStudentChange("email")
-                                                }
-                                                disabled={isLoading}
-                                            >
-                                                {isLoading ? (
-                                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                                ) : (
-                                                    "Save"
-                                                )}
-                                            </Button>
-                                        ) : (
-                                            <Edit3
-                                                className="cursor-pointer ml-2"
-                                                onClick={() =>
-                                                    handleEditClick("email")
-                                                }
-                                            />
-                                        )}
-                                    </div>
+                                    <Input
+                                        id="email"
+                                        name="email"
+                                        value={student.email}
+                                        placeholder="Email"
+                                        className="w-full"
+                                        disabled
+                                    />
                                 </div>
                                 <div>
                                     <Label
@@ -443,7 +428,7 @@ export default function AccountPage() {
                                     >
                                         Phone Number
                                     </Label>
-                                    <div className="flex items-center">
+                                    <div className="flex items-center gap-2">
                                         <Input
                                             id="phone"
                                             name="phone"
@@ -454,26 +439,25 @@ export default function AccountPage() {
                                             disabled={!isEditing.phone}
                                         />
                                         {isEditing.phone ? (
-                                            <Button
-                                                className="bg-black text-white"
+                                            <button
                                                 onClick={() =>
-                                                    saveStudentChange("phone")
+                                                    handleDiscardField("phone")
                                                 }
-                                                disabled={isLoading}
+                                                className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                                title="Discard changes"
                                             >
-                                                {isLoading ? (
-                                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                                ) : (
-                                                    "Save"
-                                                )}
-                                            </Button>
+                                                <X className="h-4 w-4 text-red-600" />
+                                            </button>
                                         ) : (
-                                            <Edit3
-                                                className="cursor-pointer ml-2"
+                                            <button
                                                 onClick={() =>
-                                                    handleEditClick("phone")
+                                                    handleToggleEdit("phone")
                                                 }
-                                            />
+                                                className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                                title="Edit field"
+                                            >
+                                                <PencilLine className="h-4 w-4 text-gray-600" />
+                                            </button>
                                         )}
                                     </div>
                                 </div>
@@ -484,7 +468,7 @@ export default function AccountPage() {
                                     >
                                         University/College
                                     </Label>
-                                    <div className="flex items-center">
+                                    <div className="flex items-center gap-2">
                                         <Input
                                             id="school"
                                             name="school"
@@ -495,26 +479,25 @@ export default function AccountPage() {
                                             disabled={!isEditing.school}
                                         />
                                         {isEditing.school ? (
-                                            <Button
-                                                className="bg-black text-white"
+                                            <button
                                                 onClick={() =>
-                                                    saveStudentChange("school")
+                                                    handleDiscardField("school")
                                                 }
-                                                disabled={isLoading}
+                                                className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                                title="Discard changes"
                                             >
-                                                {isLoading ? (
-                                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                                ) : (
-                                                    "Save"
-                                                )}
-                                            </Button>
+                                                <X className="h-4 w-4 text-red-600" />
+                                            </button>
                                         ) : (
-                                            <Edit3
-                                                className="cursor-pointer ml-2"
+                                            <button
                                                 onClick={() =>
-                                                    handleEditClick("school")
+                                                    handleToggleEdit("school")
                                                 }
-                                            />
+                                                className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                                title="Edit field"
+                                            >
+                                                <PencilLine className="h-4 w-4 text-gray-600" />
+                                            </button>
                                         )}
                                     </div>
                                 </div>
@@ -525,7 +508,7 @@ export default function AccountPage() {
                                     >
                                         Major/Program
                                     </Label>
-                                    <div className="flex items-center">
+                                    <div className="flex items-center gap-2">
                                         <Input
                                             id="program"
                                             name="program"
@@ -536,26 +519,27 @@ export default function AccountPage() {
                                             disabled={!isEditing.program}
                                         />
                                         {isEditing.program ? (
-                                            <Button
-                                                className="bg-black text-white"
+                                            <button
                                                 onClick={() =>
-                                                    saveStudentChange("program")
+                                                    handleDiscardField(
+                                                        "program"
+                                                    )
                                                 }
-                                                disabled={isLoading}
+                                                className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                                title="Discard changes"
                                             >
-                                                {isLoading ? (
-                                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                                ) : (
-                                                    "Save"
-                                                )}
-                                            </Button>
+                                                <X className="h-4 w-4 text-red-600" />
+                                            </button>
                                         ) : (
-                                            <Edit3
-                                                className="cursor-pointer ml-2"
+                                            <button
                                                 onClick={() =>
-                                                    handleEditClick("program")
+                                                    handleToggleEdit("program")
                                                 }
-                                            />
+                                                className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                                title="Edit field"
+                                            >
+                                                <PencilLine className="h-4 w-4 text-gray-600" />
+                                            </button>
                                         )}
                                     </div>
                                 </div>
@@ -566,7 +550,7 @@ export default function AccountPage() {
                                     >
                                         Expected Graduation Year
                                     </Label>
-                                    <div className="flex items-center">
+                                    <div className="flex items-center gap-2">
                                         <Input
                                             id="graduationYear"
                                             name="graduationYear"
@@ -577,34 +561,60 @@ export default function AccountPage() {
                                             disabled={!isEditing.graduationYear}
                                         />
                                         {isEditing.graduationYear ? (
-                                            <Button
-                                                className="bg-black text-white"
+                                            <button
                                                 onClick={() =>
-                                                    saveStudentChange(
+                                                    handleDiscardField(
                                                         "graduationYear"
                                                     )
                                                 }
-                                                disabled={isLoading}
+                                                className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                                title="Discard changes"
                                             >
-                                                {isLoading ? (
-                                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                                ) : (
-                                                    "Save"
-                                                )}
-                                            </Button>
+                                                <X className="h-4 w-4 text-red-600" />
+                                            </button>
                                         ) : (
-                                            <Edit3
-                                                className="cursor-pointer ml-2"
+                                            <button
                                                 onClick={() =>
-                                                    handleEditClick(
+                                                    handleToggleEdit(
                                                         "graduationYear"
                                                     )
                                                 }
-                                            />
+                                                className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                                title="Edit field"
+                                            >
+                                                <PencilLine className="h-4 w-4 text-gray-600" />
+                                            </button>
                                         )}
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Save and Cancel buttons */}
+                            {hasChanges && (
+                                <div className="flex gap-3 justify-end pt-4 border-t">
+                                    <Button
+                                        variant="ghost"
+                                        onClick={handleCancelChanges}
+                                        disabled={isSaving}
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        className="bg-black text-white hover:bg-gray-800"
+                                        onClick={handleSaveChanges}
+                                        disabled={isSaving}
+                                    >
+                                        {isSaving ? (
+                                            <>
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                Saving...
+                                            </>
+                                        ) : (
+                                            "Save Changes"
+                                        )}
+                                    </Button>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </CardHeader>
@@ -627,7 +637,7 @@ export default function AccountPage() {
                             >
                                 LinkedIn URL
                             </Label>
-                            <div className="flex items-center">
+                            <div className="flex items-center gap-2">
                                 <Input
                                     id="linkedin"
                                     name="linkedinUrl"
@@ -638,181 +648,194 @@ export default function AccountPage() {
                                     disabled={!isEditing.linkedinUrl}
                                 />
                                 {isEditing.linkedinUrl ? (
-                                    <Button
-                                        className="bg-black text-white ml-2"
+                                    <button
                                         onClick={() =>
-                                            saveStudentChange("linkedinUrl")
+                                            handleDiscardField("linkedinUrl")
                                         }
-                                        disabled={isLoading}
+                                        className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                        title="Discard changes"
                                     >
-                                        {isLoading ? (
-                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                        ) : (
-                                            "Save"
-                                        )}
-                                    </Button>
+                                        <X className="h-4 w-4 text-red-600" />
+                                    </button>
                                 ) : (
-                                    <Edit3
-                                        className="cursor-pointer ml-2"
+                                    <button
                                         onClick={() =>
-                                            handleEditClick("linkedinUrl")
+                                            handleToggleEdit("linkedinUrl")
                                         }
-                                    />
+                                        className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                        title="Edit field"
+                                    >
+                                        <PencilLine className="h-4 w-4 text-gray-600" />
+                                    </button>
                                 )}
                             </div>
                         </div>
+
                         <div>
                             <Label
-                                htmlFor="devpost"
+                                htmlFor="devpostUsername"
                                 className="block text-sm font-medium text-gray-700 mb-1"
                             >
                                 Devpost Username
                             </Label>
-                            <div className="flex items-center">
+                            <div className="flex items-center gap-2">
                                 <Input
-                                    id="devpost"
-                                    name="devpost"
-                                    value={student.devpost || ""}
+                                    id="devpostUsername"
+                                    name="devpostUsername"
+                                    value={student.devpostUsername || ""}
                                     onChange={handleStudentChange}
                                     placeholder="Devpost Username"
                                     className="w-full border-gray-300 focus:ring-black focus:border-black"
-                                    disabled={!isEditing.devpost}
+                                    disabled={!isEditing.devpostUsername}
                                 />
-                                {isEditing.devpost ? (
-                                    <Button
-                                        className="bg-black text-white ml-2"
+                                {isEditing.devpostUsername ? (
+                                    <button
                                         onClick={() =>
-                                            saveStudentChange("devpost")
+                                            handleDiscardField(
+                                                "devpostUsername"
+                                            )
                                         }
-                                        disabled={isLoading}
+                                        className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                        title="Discard changes"
                                     >
-                                        {isLoading ? (
-                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                        ) : (
-                                            "Save"
-                                        )}
-                                    </Button>
+                                        <X className="h-4 w-4 text-red-600" />
+                                    </button>
                                 ) : (
-                                    <Edit3
-                                        className="cursor-pointer ml-2"
+                                    <button
                                         onClick={() =>
-                                            handleEditClick("devpost")
+                                            handleToggleEdit("devpostUsername")
                                         }
-                                    />
+                                        className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                        title="Edit field"
+                                    >
+                                        <PencilLine className="h-4 w-4 text-gray-600" />
+                                    </button>
                                 )}
                             </div>
-                            <div className="mt-4">
-                                <Label
-                                    htmlFor="resume"
-                                    className="block text-sm font-medium text-gray-700 mb-1"
-                                >
-                                    Resume (PDF)
-                                </Label>
+                        </div>
 
-                                {student.resume?.name && !isEditing.resume ? (
-                                    <div className="flex items-center ">
-                                        <div className="w-full">
-                                            <p className="text-sm font-medium text-gray-800">
-                                                {student.resume.name + ".pdf"}
-                                            </p>
-                                            {student.resume.url && (
-                                                <a
-                                                    href={student.resume.url}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="text-sm text-blue-600 underline"
-                                                >
-                                                    View resume
-                                                </a>
-                                            )}
-                                        </div>
-                                        <Edit3
-                                            className="cursor-pointer ml-2"
-                                            onClick={() =>
-                                                setIsEditing((prev) => ({
-                                                    ...prev,
-                                                    resume: true,
-                                                }))
-                                            }
-                                        />
-                                    </div>
+                        <div>
+                            <Label
+                                htmlFor="githubUsername"
+                                className="block text-sm font-medium text-gray-700 mb-1"
+                            >
+                                GitHub Username
+                            </Label>
+                            <div className="flex items-center gap-2">
+                                <Input
+                                    id="githubUsername"
+                                    name="githubUsername"
+                                    value={student.githubUsername || ""}
+                                    onChange={handleStudentChange}
+                                    placeholder="GitHub Username"
+                                    className="w-full border-gray-300 focus:ring-black focus:border-black"
+                                    disabled={!isEditing.githubUsername}
+                                />
+                                {isEditing.githubUsername ? (
+                                    <button
+                                        onClick={() =>
+                                            handleDiscardField("githubUsername")
+                                        }
+                                        className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                        title="Discard changes"
+                                    >
+                                        <X className="h-4 w-4 text-red-600" />
+                                    </button>
                                 ) : (
-                                    <>
-                                        {!student.resume?.name && (
-                                            <p className="text-sm text-gray-500 mb-2">
-                                                No resume uploaded yet.
-                                            </p>
-                                        )}
-
-                                        <div className="flex items-center gap-2">
-                                            <Input
-                                                id="resume"
-                                                type="file"
-                                                accept="application/pdf"
-                                                onChange={handleResumeChange}
-                                                className="w-full cursor-pointer"
-                                            />
-                                            <Button
-                                                className="bg-black text-white"
-                                                disabled={
-                                                    !resumeFile ||
-                                                    isUploadingResume
-                                                }
-                                                onClick={async () => {
-                                                    await handleResumeUpload();
-                                                    const updatedStudent =
-                                                        await apiService.getStudent();
-                                                    setStudent(
-                                                        updatedStudent as any
-                                                    );
-                                                    setIsEditing((prev) => ({
-                                                        ...prev,
-                                                        resume: false,
-                                                    }));
-                                                }}
-                                            >
-                                                {isUploadingResume ? (
-                                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                                ) : (
-                                                    "Save"
-                                                )}
-                                            </Button>
-
-                                            <Button
-                                                variant="ghost"
-                                                onClick={() => {
-                                                    setResumeFile(null);
-                                                    setIsEditing((prev) => ({
-                                                        ...prev,
-                                                        resume: false,
-                                                    }));
-                                                }}
-                                            >
-                                                Cancel
-                                            </Button>
-                                        </div>
-
-                                        {resumeFile && (
-                                            <p className="mt-1 text-sm text-gray-500">
-                                                Ready to upload:{" "}
-                                                <span className="font-medium">
-                                                    {resumeFile.name}
-                                                </span>
-                                            </p>
-                                        )}
-                                    </>
+                                    <button
+                                        onClick={() =>
+                                            handleToggleEdit("githubUsername")
+                                        }
+                                        className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                        title="Edit field"
+                                    >
+                                        <PencilLine className="h-4 w-4 text-gray-600" />
+                                    </button>
                                 )}
                             </div>
+                        </div>
 
-                            <div className="flex items-center mt-6">
+                        <div className="mt-4">
+                            <div className="block text-sm font-medium text-gray-700 mb-2">
+                                Resume (PDF)
+                            </div>
+
+                            {student.resume?.name ? (
+                                <div className="mb-3 p-4 bg-green-50 border border-green-200 rounded-lg">
+                                    <div className="flex items-start justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className="bg-green-100 p-2 rounded-lg">
+                                                <Upload className="h-5 w-5 text-green-600" />
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-semibold text-gray-900">
+                                                    {student.resume.name}.pdf
+                                                </p>
+                                                <p className="text-xs text-gray-500 mt-0.5">
+                                                    Uploaded on{" "}
+                                                    {new Date(
+                                                        student.resume.uploadedAt._seconds * 1000
+                                                    ).toLocaleDateString()}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        {student.resume.url && (
+                                            <a
+                                                href={student.resume.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-xs font-medium text-green-700 hover:text-green-800 underline"
+                                            >
+                                                View
+                                            </a>
+                                        )}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="mb-3 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                                    <p className="text-sm text-gray-500">
+                                        No resume uploaded yet.
+                                    </p>
+                                </div>
+                            )}
+
+                            <div className="flex items-center gap-2 mt-2">
+                                <Input
+                                    id="resume"
+                                    type="file"
+                                    accept="application/pdf"
+                                    onChange={handleResumeChange}
+                                    className="w-full cursor-pointer"
+                                />
                                 <Button
-                                    variant="secondary"
-                                    onClick={handleGitHubLogin}
-                                    className="bg-black text-white px-4 py-2 text-sm hover:bg-gray-800"
+                                    className="bg-black text-white"
+                                    disabled={!resumeFile || isUploadingResume}
+                                    onClick={async () => {
+                                        await handleResumeUpload();
+                                        const updatedStudent =
+                                            await apiService.getStudent();
+                                        setStudent(updatedStudent as any);
+                                        setOriginalStudent(
+                                            updatedStudent as any
+                                        );
+                                    }}
                                 >
-                                    Connect GitHub
+                                    {isUploadingResume ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                        "Upload"
+                                    )}
                                 </Button>
                             </div>
+
+                            {resumeFile && (
+                                <p className="mt-1 text-sm text-gray-500">
+                                    Ready to upload:{" "}
+                                    <span className="font-medium">
+                                        {resumeFile.name}
+                                    </span>
+                                </p>
+                            )}
                         </div>
                     </div>
                 </CardContent>

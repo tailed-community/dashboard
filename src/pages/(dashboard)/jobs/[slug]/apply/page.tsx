@@ -226,19 +226,52 @@ export default function ApplyJobPage() {
                 endpoint += `?sharedId=${encodeURIComponent(sharedId)}`;
             }
 
-            const payload = {
-                ...formData,
-            };
+            // Check if resume is a File (needs multipart/form-data) or an object (use JSON)
+            const hasFileUpload = formData.resume instanceof File;
 
-            const response = await apiFetch(
-                endpoint,
-                {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(payload),
-                },
-                true
-            );
+            let response;
+            if (hasFileUpload) {
+                // Use FormData for file upload
+                const uploadFormData = new FormData();
+
+                // Append all form fields
+                Object.keys(formData).forEach((key) => {
+                    if (key === "resume") {
+                        uploadFormData.append("resume", formData.resume);
+                    } else if (typeof formData[key] === "object") {
+                        uploadFormData.append(
+                            key,
+                            JSON.stringify(formData[key])
+                        );
+                    } else {
+                        uploadFormData.append(key, formData[key]);
+                    }
+                });
+
+                response = await apiFetch(
+                    endpoint,
+                    {
+                        method: "POST",
+                        body: uploadFormData,
+                    },
+                    true
+                );
+            } else {
+                // Use JSON for existing resume
+                const payload = {
+                    ...formData,
+                };
+
+                response = await apiFetch(
+                    endpoint,
+                    {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload),
+                    },
+                    true
+                );
+            }
 
             if (!response.ok) {
                 const errorData = await response.json();

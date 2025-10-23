@@ -58,15 +58,18 @@ export interface ApplicationFormData {
     linkedinUrl: string;
     portfolioUrl: string;
     coverLetter: string;
-    resume: {
-        id: string;
-        name: string;
-        url: string;
-        uploadedAt: {
-            _seconds: number;
-            _nanoseconds: number;
-        };
-    };
+    resume:
+        | {
+              id: string;
+              name: string;
+              url: string;
+              uploadedAt: {
+                  _seconds: number;
+                  _nanoseconds: number;
+              };
+          }
+        | File
+        | null;
 }
 
 export interface DevpostProfile {
