@@ -6,6 +6,9 @@ import { logger } from "firebase-functions";
 
 const router = express.Router();
 
+// Add this middleware BEFORE the route to ensure raw body is available
+router.use(express.raw({ type: "multipart/form-data", limit: "10mb" }));
+
 // GET /profile - Returns the profile of the currently authenticated user
 router.get("/", async (req, res) => {
     if (!req.user) {
@@ -103,39 +106,77 @@ router.patch("/main-resume/", async (req, res): Promise<void> => {
             return;
         }
 
-        // Initialize Busboy
+        // Log headers for debugging
+        logger.info("Request headers:", {
+            contentType: req.headers["content-type"],
+            contentLength: req.headers["content-length"],
+        });
+
+        // Check content-type header
+        const contentType = req.headers["content-type"];
+        if (!contentType || !contentType.includes("multipart/form-data")) {
+            logger.error("Invalid content type:", contentType);
+            res.status(400).json({
+                error: "Invalid content type. Expected multipart/form-data",
+                received: contentType,
+            });
+            return;
+        }
+
+        // Ensure we have the raw request body
+        if (!req.readable && !req.body) {
+            logger.error("Request body not readable");
+            res.status(400).json({
+                error: "Request body not readable",
+            });
+            return;
+        }
+
+        // Initialize Busboy with proper configuration for Firebase Functions
         const busboy = Busboy({
             headers: req.headers,
             limits: {
                 fileSize: 5 * 1024 * 1024, // 5MB max
                 files: 1, // Only accept 1 file
+                fields: 0, // No text fields expected
             },
         });
 
         let fileBuffer: Buffer | null = null;
         let fileName: string | null = null;
-        let mimeType: string | null = null;
         let fileSizeExceeded = false;
+        let fileProcessed = false;
+        let responseHandled = false;
 
         // Handle file upload
         busboy.on("file", (fieldname, file, info) => {
+            logger.info(`Busboy file event triggered: ${fieldname}`);
+
             const { filename, mimeType: mime } = info;
 
             // Validate field name
             if (fieldname !== "resume") {
+                logger.warn(`Invalid field name: ${fieldname}`);
                 file.resume();
                 return;
             }
 
             // Validate file type (PDF only)
             if (mime !== "application/pdf") {
+                logger.warn(`Invalid mime type: ${mime}`);
                 file.resume();
-                res.status(400).json({ error: "Only PDF files are allowed" });
+                if (!fileProcessed && !responseHandled) {
+                    fileProcessed = true;
+                    responseHandled = true;
+                    res.status(400).json({
+                        error: "Only PDF files are allowed",
+                    });
+                }
                 return;
             }
 
             fileName = filename;
-            mimeType = mime;
+            logger.info(`Processing file: ${filename}, type: ${mime}`);
 
             const chunks: Buffer[] = [];
 
@@ -144,6 +185,7 @@ router.patch("/main-resume/", async (req, res): Promise<void> => {
             });
 
             file.on("limit", () => {
+                logger.warn("File size limit exceeded");
                 fileSizeExceeded = true;
                 file.resume(); // Drain the stream
             });
@@ -151,29 +193,62 @@ router.patch("/main-resume/", async (req, res): Promise<void> => {
             file.on("end", () => {
                 if (!fileSizeExceeded) {
                     fileBuffer = Buffer.concat(chunks);
+                    logger.info(
+                        `File buffered successfully: ${fileBuffer.length} bytes`
+                    );
                 }
             });
+
+            file.on("error", (error) => {
+                logger.error("File stream error:", error);
+            });
+        });
+
+        // Handle field (we don't expect any, but log if we get them)
+        busboy.on("field", (fieldname, value) => {
+            logger.info(`Unexpected field: ${fieldname} = ${value}`);
         });
 
         // Handle completion
         busboy.on("finish", async () => {
+            logger.info("Busboy finish event triggered");
+
+            if (fileProcessed || responseHandled) {
+                logger.info("Response already sent, skipping finish handler");
+                return;
+            }
+
             try {
                 if (fileSizeExceeded) {
-                    return res.status(400).json({
+                    responseHandled = true;
+                    res.status(400).json({
                         error: "File size exceeds 5MB limit",
                     });
+                    return;
                 }
 
                 if (!fileBuffer || !fileName) {
-                    return res.status(400).json({ error: "No file uploaded" });
+                    logger.error(
+                        "No file uploaded - fileBuffer or fileName missing",
+                        {
+                            hasBuffer: !!fileBuffer,
+                            hasFileName: !!fileName,
+                        }
+                    );
+                    responseHandled = true;
+                    res.status(400).json({
+                        error: "No file uploaded",
+                        details: {
+                            hasBuffer: !!fileBuffer,
+                            hasFileName: !!fileName,
+                        },
+                    });
+                    return;
                 }
 
-                // Validate file type (PDF only)
-                if (mimeType !== "application/pdf") {
-                    return res
-                        .status(400)
-                        .json({ error: "Only PDF files are allowed" });
-                }
+                logger.info(
+                    `Processing file: ${fileName}, size: ${fileBuffer.length} bytes`
+                );
 
                 // Sanitize file name (letters & spaces only)
                 let originalName = fileName.replace(/\.[^/.]+$/, ""); // remove extension
@@ -204,7 +279,9 @@ router.patch("/main-resume/", async (req, res): Promise<void> => {
                     resumable: false,
                 });
 
-                // Construct a Firebase public download URL (no makePublic, no signed URL)
+                logger.info(`File uploaded to storage: ${filePath}`);
+
+                // Construct a Firebase public download URL
                 const encodedPath = encodeURIComponent(filePath);
                 const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${storage.name}/o/${encodedPath}?alt=media`;
 
@@ -225,9 +302,10 @@ router.patch("/main-resume/", async (req, res): Promise<void> => {
                         { merge: true }
                     );
 
-                logger.info(`Resume uploaded for user ${userId}: ${filePath}`);
+                logger.info(`Resume metadata saved for user ${userId}`);
 
-                return res.status(200).json({
+                responseHandled = true;
+                res.status(200).json({
                     success: true,
                     resume: {
                         id: resumeId,
@@ -237,26 +315,42 @@ router.patch("/main-resume/", async (req, res): Promise<void> => {
                 });
             } catch (error) {
                 logger.error("Error processing resume upload:", error);
-                return res.status(500).json({
-                    error: "Failed to upload resume",
-                });
+                if (!responseHandled) {
+                    responseHandled = true;
+                    res.status(500).json({
+                        error: "Failed to upload resume",
+                        details:
+                            error instanceof Error
+                                ? error.message
+                                : String(error),
+                    });
+                }
             }
         });
 
         // Handle errors
         busboy.on("error", (error) => {
             logger.error("Busboy error:", error);
-            res.status(500).json({
-                error: "Error processing file upload",
-            });
+            if (!fileProcessed && !responseHandled) {
+                fileProcessed = true;
+                responseHandled = true;
+                res.status(500).json({
+                    error: "Error processing file upload",
+                    details:
+                        error instanceof Error ? error.message : String(error),
+                });
+            }
         });
 
-        // Pipe the request to busboy
+        // Important: Pipe the request to busboy
+        // This must happen after all event listeners are attached
+        logger.info("Piping request to Busboy");
         req.pipe(busboy);
     } catch (error) {
-        logger.error("Error uploading resume:", error);
+        logger.error("Error in resume upload handler:", error);
         res.status(500).json({
             error: "Failed to upload resume",
+            details: error instanceof Error ? error.message : String(error),
         });
     }
 });
