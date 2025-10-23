@@ -71,6 +71,7 @@ router.get("/", async (req, res) => {
                 "U",
             avatar: profileData.avatar || null,
             phone: profileData.phone || null,
+            githubUsername: profileData.githubUsername || null,
             devpostUsername: profileData.devpostUsername || null,
             linkedinUrl: profileData.linkedinUrl || null,
             school: profileData.school || null,

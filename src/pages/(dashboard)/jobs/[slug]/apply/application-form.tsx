@@ -7,6 +7,7 @@ import {
     User,
     ArrowLeft,
     ArrowRight,
+    FileText,
 } from "lucide-react";
 import { apiFetch } from "@/lib/fetch";
 import { fetchGithubUserProfile, type GithubProfile } from "@/lib/github";
@@ -25,6 +26,7 @@ import { Steps, Step } from "@/components/ui/steps";
 import PersonalInfoSection from "./components/PersonalInfoSection";
 import GithubProfileSection from "./components/GithubProfileSection";
 import DevpostProfileSection from "./components/DevpostProfileSection";
+import ResumeSection from "./components/ResumeSection";
 import JobDetailsSection from "./components/JobDetailsSection";
 import {
     linkWithPopup,
@@ -94,6 +96,16 @@ export default function ApplicationForm({
                             profile
                         ),
                     }));
+
+                    // Set profile resume if it exists
+                    if (profile.resume && profile.resume.id) {
+                        setProfileResume({
+                            id: profile.resume.id,
+                            name: profile.resume.name,
+                            url: profile.resume.url,
+                            uploadedAt: profile.resume.uploadedAt,
+                        });
+                    }
                 }
             } catch (err) {
                 // Ignore errors, just don't prefill
@@ -135,6 +147,12 @@ export default function ApplicationForm({
     const [devpostProfile, setDevpostProfile] = useState<DevpostProfile | null>(
         null
     );
+    const [profileResume, setProfileResume] = useState<{
+        id: string;
+        name: string;
+        url: string;
+        uploadedAt: string;
+    } | null>(null);
     const [isLoadingGithub, setIsLoadingGithub] = useState(false);
     const [isLoadingDevpost, setIsLoadingDevpost] = useState(false);
     const [githubError, setGithubError] = useState<string | null>(null);
@@ -146,6 +164,23 @@ export default function ApplicationForm({
     ) => {
         const { name, value } = e.target;
         setFormData((prevData) => ({ ...prevData, [name]: value }));
+    };
+
+    const handleResumeChange = (
+        resume:
+            | {
+                  id: string;
+                  name: string;
+                  url: string;
+                  uploadedAt: {
+                      _seconds: number;
+                      _nanoseconds: number;
+                  };
+              }
+            | File
+            | null
+    ) => {
+        setFormData((prevData) => ({ ...prevData, resume }));
     };
 
     // Initialize anonymous session when component mounts
@@ -185,6 +220,8 @@ export default function ApplicationForm({
                 // We need to reauthenticate to get a fresh token
                 try {
                     // Try to relink to get a fresh token
+                    if (!studentAuth.currentUser)
+                        throw new Error("User not authenticated");
                     const result = await linkWithPopup(
                         studentAuth.currentUser,
                         githubProvider
@@ -219,6 +256,8 @@ export default function ApplicationForm({
             } else {
                 // User is not linked with GitHub yet, proceed with normal linking
                 try {
+                    if (!studentAuth.currentUser)
+                        throw new Error("User not authenticated");
                     const result = await linkWithPopup(
                         studentAuth.currentUser,
                         githubProvider
@@ -310,7 +349,30 @@ export default function ApplicationForm({
         }
     };
 
+    const validateCurrentStep = (): boolean => {
+        // Step 3 is the Resume step (index 3)
+        if (currentStep === 3) {
+            // Check if resume exists (either File or existing resume object)
+            if (!formData.resume) {
+                return false;
+            }
+            // If it's a File object, it's valid
+            if (formData.resume instanceof File) {
+                return true;
+            }
+            // If it's an existing resume, check if it has valid data
+            if (formData.resume.id && formData.resume.url) {
+                return true;
+            }
+            return false;
+        }
+        return true; // All other steps are valid by default
+    };
+
     const handleStepNext = () => {
+        if (!validateCurrentStep()) {
+            return; // Don't proceed if validation fails
+        }
         setCurrentStep((prev) => prev + 1);
     };
 
@@ -320,6 +382,25 @@ export default function ApplicationForm({
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        // Validate that resume exists before submission
+        if (!formData.resume) {
+            alert(
+                "Please upload a resume or select your profile resume before submitting."
+            );
+            return;
+        }
+
+        // Validate resume is either a File or has valid data
+        if (!(formData.resume instanceof File)) {
+            if (!formData.resume.id || !formData.resume.url) {
+                alert(
+                    "Please upload a resume or select your profile resume before submitting."
+                );
+                return;
+            }
+        }
+
         setIsSubmitting(true);
 
         try {
@@ -330,6 +411,13 @@ export default function ApplicationForm({
             console.error("Error submitting application:", error);
         } finally {
             setIsSubmitting(false);
+        }
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
+        // Prevent Enter key from submitting the form unless we're on the last step
+        if (e.key === "Enter" && currentStep < 4) {
+            e.preventDefault();
         }
     };
 
@@ -399,6 +487,7 @@ export default function ApplicationForm({
                             title="GitHub Profile"
                         />
                         <Step icon={<Award size={18} />} title="Hackathons" />
+                        <Step icon={<FileText size={18} />} title="Resume" />
                         <Step
                             icon={<Briefcase size={18} />}
                             title="Job Details"
@@ -406,7 +495,7 @@ export default function ApplicationForm({
                     </Steps>
                 </CardHeader>
                 <CardContent>
-                    <form onSubmit={handleSubmit}>
+                    <form onSubmit={handleSubmit} onKeyDown={handleKeyDown}>
                         {/* Step 1: Personal Information */}
                         {currentStep === 0 && (
                             <PersonalInfoSection
@@ -439,8 +528,17 @@ export default function ApplicationForm({
                             />
                         )}
 
-                        {/* Step 4: Job Details */}
+                        {/* Step 4: Resume */}
                         {currentStep === 3 && (
+                            <ResumeSection
+                                formData={formData}
+                                profileResume={profileResume}
+                                onResumeChange={handleResumeChange}
+                            />
+                        )}
+
+                        {/* Step 5: Job Details */}
+                        {currentStep === 4 && (
                             <JobDetailsSection
                                 formData={formData}
                                 handleInputChange={handleInputChange}
@@ -465,11 +563,23 @@ export default function ApplicationForm({
                         <div></div>
                     )}
 
-                    {currentStep < 3 ? (
-                        <Button type="button" onClick={handleStepNext}>
-                            Next
-                            <ArrowRight className="ml-2 h-4 w-4" />
-                        </Button>
+                    {currentStep < 4 ? (
+                        <div
+                            className={
+                                !validateCurrentStep()
+                                    ? "cursor-not-allowed"
+                                    : ""
+                            }
+                        >
+                            <Button
+                                type="button"
+                                onClick={handleStepNext}
+                                disabled={!validateCurrentStep()}
+                            >
+                                Next
+                                <ArrowRight className="ml-2 h-4 w-4" />
+                            </Button>
+                        </div>
                     ) : (
                         <Button onClick={handleSubmit} disabled={isSubmitting}>
                             {isSubmitting ? (
