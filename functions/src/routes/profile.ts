@@ -120,15 +120,6 @@ router.patch("/main-resume/", async (req, res): Promise<void> => {
             return;
         }
 
-        // Firebase Functions provides rawBody
-        if (!(req as any).rawBody) {
-            logger.error("Request rawBody not available");
-            res.status(400).json({
-                error: "Request body not available",
-            });
-            return;
-        }
-
         // Initialize Busboy with proper configuration for Firebase Functions
         const busboy = Busboy({
             headers: req.headers,
@@ -339,10 +330,18 @@ router.patch("/main-resume/", async (req, res): Promise<void> => {
             }
         });
 
-        // CRITICAL: Use busboy.end() with rawBody instead of req.pipe()
-        // Firebase Functions pre-parses the request, so the stream is already consumed
-        logger.info("Feeding rawBody to Busboy");
-        busboy.end((req as any).rawBody);
+        // Handle both Firebase Functions (rawBody) and local Express (pipe)
+        // In production, Firebase pre-parses the request into rawBody
+        // In local dev, the stream is still readable
+        if ((req as any).rawBody) {
+            // Production: Use rawBody
+            logger.info("Using rawBody (Firebase Functions)");
+            busboy.end((req as any).rawBody);
+        } else {
+            // Local development: Use pipe
+            logger.info("Using pipe (Local Express)");
+            req.pipe(busboy);
+        }
     } catch (error) {
         logger.error("Error in resume upload handler:", error);
         res.status(500).json({
