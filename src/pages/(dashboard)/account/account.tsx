@@ -25,7 +25,7 @@ type StudentProps = {
         id: string;
         name: string;
         url: string;
-        uploadedAt:{
+        uploadedAt: {
             _seconds: number;
             _nanoseconds: number;
         };
@@ -80,9 +80,9 @@ export default function AccountPage() {
             id: "",
             name: "",
             url: "",
-            uploadedAt:{
+            uploadedAt: {
                 _seconds: 0,
-                _nanoseconds: 0
+                _nanoseconds: 0,
             },
         },
         appliedJobs: [],
@@ -359,18 +359,29 @@ export default function AccountPage() {
         <div className="w-full max-w-6xl mx-auto p-4 space-y-6">
             <Card>
                 <CardHeader>
+                    {/* TODO: Add profile picture functionality */}
+                    <div className="relative my-3 border-b-3 pb-4">
+                        <img
+                            src="https://www.placeholderimage.online/images/generic/users-profile.jpg"
+                            alt="Profile"
+                            className="w-24 h-24 rounded-full object-cover"
+                        />
+                        <h1 className="text-2xl font-bold mt-2">
+                            {student.firstName} {student.lastName}
+                        </h1>
+                        {/* <button className="absolute bottom-0 right-0 bg-black text-white p-2 rounded-full shadow-md hover:bg-blue-600">
+                            <Upload className="w-4 h-4" />
+                        </button> */}
+                    </div>
+                    <h2 className="text-lg font-semibold text-gray-800">
+                        Personal Information
+                    </h2>
+                    <p className="text-sm text-gray-500">
+                        Edit your profiles information.
+                    </p>
+                </CardHeader>
+                <CardContent>
                     <div className="flex items-center space-x-4">
-                        <div className="relative">
-                            {/* TODO: Add profile picture functionality */}
-                            <img
-                                src="https://www.placeholderimage.online/images/generic/users-profile.jpg"
-                                alt="Profile"
-                                className="w-24 h-24 rounded-full object-cover"
-                            />
-                            <button className="absolute bottom-0 right-0 bg-black text-white p-2 rounded-full shadow-md hover:bg-blue-600">
-                                <Upload className="w-4 h-4" />
-                            </button>
-                        </div>
                         <div className="flex-grow space-y-4">
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
@@ -588,38 +599,10 @@ export default function AccountPage() {
                                     </div>
                                 </div>
                             </div>
-
-                            {/* Save and Cancel buttons */}
-                            {hasChanges && (
-                                <div className="flex gap-3 justify-end pt-4 border-t">
-                                    <Button
-                                        variant="ghost"
-                                        onClick={handleCancelChanges}
-                                        disabled={isSaving}
-                                    >
-                                        Cancel
-                                    </Button>
-                                    <Button
-                                        className="bg-black text-white hover:bg-gray-800"
-                                        onClick={handleSaveChanges}
-                                        disabled={isSaving}
-                                    >
-                                        {isSaving ? (
-                                            <>
-                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                Saving...
-                                            </>
-                                        ) : (
-                                            "Save Changes"
-                                        )}
-                                    </Button>
-                                </div>
-                            )}
                         </div>
                     </div>
-                </CardHeader>
-            </Card>
-            <Card className="mt-6 border border-gray-200 shadow-sm">
+                </CardContent>
+
                 <CardHeader className="pb-3">
                     <h2 className="text-lg font-semibold text-gray-800">
                         Connections
@@ -774,7 +757,9 @@ export default function AccountPage() {
                                                 <p className="text-xs text-gray-500 mt-0.5">
                                                     Uploaded on{" "}
                                                     {new Date(
-                                                        student.resume.uploadedAt._seconds * 1000
+                                                        student.resume
+                                                            .uploadedAt
+                                                            ._seconds * 1000
                                                     ).toLocaleDateString()}
                                                 </p>
                                             </div>
@@ -835,6 +820,31 @@ export default function AccountPage() {
                                         {resumeFile.name}
                                     </span>
                                 </p>
+                            )}
+                            {hasChanges && (
+                                <div className="flex gap-3 justify-end pt-4 border-t mt-14">
+                                    <Button
+                                        variant="ghost"
+                                        onClick={handleCancelChanges}
+                                        disabled={isSaving}
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        className="bg-black text-white hover:bg-gray-800"
+                                        onClick={handleSaveChanges}
+                                        disabled={isSaving}
+                                    >
+                                        {isSaving ? (
+                                            <>
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                Saving...
+                                            </>
+                                        ) : (
+                                            "Save Changes"
+                                        )}
+                                    </Button>
+                                </div>
                             )}
                         </div>
                     </div>
