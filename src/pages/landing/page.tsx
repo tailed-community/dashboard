@@ -214,7 +214,7 @@ git push origin feat/amazing-contribution
                   <div className="mt-4">
                     <a
                       className="text-primary underline underline-offset-4"
-                      href="/docs/CODE_OF_CONDUCT.md"
+                      href="https://github.com/tailed-community/dashboard/blob/main/docs/CODE_OF_CONDUCT.md"
                       target="_blank"
                       rel="noopener noreferrer"
                     >
@@ -236,7 +236,7 @@ git push origin feat/amazing-contribution
                   <div className="mt-4">
                     <a
                       className="text-primary underline underline-offset-4"
-                      href="/CONTRIBUTING.md"
+                      href="https://github.com/VedPatel2811/tailed-community-dashboard/blob/main/CONTRIBUTING.md"
                       target="_blank"
                       rel="noopener noreferrer"
                     >
