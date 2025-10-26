@@ -356,8 +356,129 @@ router.patch("/update", async (req, res) => {
     if (!userId) {
         return res.status(401).json({ error: "Unauthorized" });
     }
+
     try {
-        await db.collection("profiles").doc(userId).update(req.body);
+        const updates = req.body;
+
+        // Validation: Phone (optional, but if provided must be valid)
+        if (updates.phone && typeof updates.phone === "string") {
+            const trimmedPhone = updates.phone.trim();
+            if (trimmedPhone !== "") {
+                const phoneRegex = /^[\d\s\-\+\(\)]+$/;
+                if (!phoneRegex.test(trimmedPhone)) {
+                    return res.status(400).json({
+                        error: "Validation error",
+                        message:
+                            "Phone number can only contain digits, spaces, and +()-",
+                    });
+                }
+                if (trimmedPhone.replace(/\D/g, "").length < 10) {
+                    return res.status(400).json({
+                        error: "Validation error",
+                        message: "Phone number must be at least 10 digits",
+                    });
+                }
+            }
+        }
+
+        // Validation: Graduation year (optional, but if provided must be valid)
+        if (
+            updates.graduationYear &&
+            typeof updates.graduationYear === "string"
+        ) {
+            const trimmedYear = updates.graduationYear.trim();
+            if (trimmedYear !== "") {
+                const yearRegex = /^\d{4}$/;
+                if (!yearRegex.test(trimmedYear)) {
+                    return res.status(400).json({
+                        error: "Validation error",
+                        message:
+                            "Graduation year must be a 4-digit year (e.g., 2025)",
+                    });
+                }
+                const year = parseInt(trimmedYear);
+                const currentYear = new Date().getFullYear();
+                if (year < currentYear - 50 || year > currentYear + 6) {
+                    return res.status(400).json({
+                        error: "Validation error",
+                        message: `Graduation year must be between ${
+                            currentYear - 50
+                        } and ${currentYear + 6}`,
+                    });
+                }
+            }
+        }
+
+        // Validation: LinkedIn URL (optional, but if provided must be valid)
+        if (updates.linkedinUrl && typeof updates.linkedinUrl === "string") {
+            const trimmedUrl = updates.linkedinUrl.trim();
+            if (trimmedUrl !== "") {
+                const linkedinRegex =
+                    /^https?:\/\/(www\.)?linkedin\.com\/(in|company)\/[\w-]+\/?$/i;
+                if (!linkedinRegex.test(trimmedUrl)) {
+                    return res.status(400).json({
+                        error: "Validation error",
+                        message:
+                            "LinkedIn URL must be in format: https://linkedin.com/in/username",
+                    });
+                }
+            }
+        }
+
+        // Validation: Devpost username (optional, but if provided must be valid)
+        if (
+            updates.devpostUsername &&
+            typeof updates.devpostUsername === "string"
+        ) {
+            const trimmedUsername = updates.devpostUsername.trim();
+            if (trimmedUsername !== "") {
+                const usernameRegex = /^[a-zA-Z0-9_-]+$/;
+                if (!usernameRegex.test(trimmedUsername)) {
+                    return res.status(400).json({
+                        error: "Validation error",
+                        message:
+                            "Devpost username can only contain letters, numbers, hyphens, and underscores",
+                    });
+                }
+            }
+        }
+
+        // Validation: GitHub username (optional, but if provided must be valid)
+        if (
+            updates.githubUsername &&
+            typeof updates.githubUsername === "string"
+        ) {
+            const trimmedUsername = updates.githubUsername.trim();
+            if (trimmedUsername !== "") {
+                const githubRegex =
+                    /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$/;
+                if (!githubRegex.test(trimmedUsername)) {
+                    return res.status(400).json({
+                        error: "Validation error",
+                        message:
+                            "GitHub username must be 1-39 characters, alphanumeric or hyphens, and cannot start/end with a hyphen",
+                    });
+                }
+            }
+        }
+
+        // Trim all string fields before saving
+        const trimmedUpdates: any = {};
+        for (const [key, value] of Object.entries(updates)) {
+            if (typeof value === "string") {
+                trimmedUpdates[key] = value.trim();
+            } else {
+                trimmedUpdates[key] = value;
+            }
+        }
+
+        // Add updatedAt timestamp
+        trimmedUpdates.updatedAt = new Date();
+
+        // Update the profile with validated and trimmed data
+        await db.collection("profiles").doc(userId).update(trimmedUpdates);
+
+        logger.info(`Profile updated for user ${userId}`);
 
         return res.status(200).json({
             success: true,
