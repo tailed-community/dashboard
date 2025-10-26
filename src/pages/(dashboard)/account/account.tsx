@@ -171,10 +171,107 @@ export default function AccountPage() {
 
     const handleSaveChanges = async () => {
         setIsSaving(true);
+        // Validate all fields before saving
+
+        // Phone validation (optional, but if provided must be valid)
+        if (student.phone && student.phone.trim() !== "") {
+            const phoneRegex = /^[\d\s\-\+\(\)]+$/;
+            if (!phoneRegex.test(student.phone)) {
+                toast.error("Invalid phone number", {
+                    description:
+                        "Phone number can only contain digits, spaces, and +()-",
+                });
+                return setIsSaving(false);
+            }
+            if (student.phone.replace(/\D/g, "").length < 10) {
+                toast.error("Invalid phone number", {
+                    description: "Phone number must be at least 10 digits",
+                });
+                return setIsSaving(false);
+            }
+        }
+
+        // Graduation year validation (optional, but if provided must be valid)
+        if (student.graduationYear && student.graduationYear.trim() !== "") {
+            const yearRegex = /^\d{4}$/;
+            if (!yearRegex.test(student.graduationYear)) {
+                toast.error("Invalid graduation year", {
+                    description:
+                        "Graduation year must be a 4-digit year (e.g., 2025)",
+                });
+                return setIsSaving(false);
+            }
+            const year = parseInt(student.graduationYear);
+            const currentYear = new Date().getFullYear();
+            if (year < currentYear - 50 || year > currentYear + 6) {
+                toast.error("Invalid graduation year", {
+                    description: `Graduation year must be between ${
+                        currentYear - 50
+                    } and ${currentYear + 6}`,
+                });
+                return setIsSaving(false);
+            }
+        }
+
+        // LinkedIn URL validation (optional, but if provided must be valid)
+        if (student.linkedinUrl && student.linkedinUrl.trim() !== "") {
+            const linkedinRegex =
+                /^https?:\/\/(www\.)?linkedin\.com\/(in|company)\/[\w-]+\/?$/i;
+            if (!linkedinRegex.test(student.linkedinUrl.trim())) {
+                toast.error("Invalid LinkedIn URL", {
+                    description:
+                        "LinkedIn URL must be in format: https://linkedin.com/in/username",
+                });
+                return setIsSaving(false);
+            }
+        }
+
+        // Devpost username validation (optional, but if provided must be valid)
+        if (student.devpostUsername && student.devpostUsername.trim() !== "") {
+            const usernameRegex = /^[a-zA-Z0-9_-]+$/;
+            if (!usernameRegex.test(student.devpostUsername.trim())) {
+                toast.error("Invalid Devpost username", {
+                    description:
+                        "Devpost username can only contain letters, numbers, hyphens, and underscores",
+                });
+                return setIsSaving(false);
+            }
+        }
+
+        // GitHub username validation (optional, but if provided must be valid)
+        if (student.githubUsername && student.githubUsername.trim() !== "") {
+            const githubRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$/;
+            if (!githubRegex.test(student.githubUsername.trim())) {
+                toast.error("Invalid GitHub username", {
+                    description:
+                        "GitHub username must be 1-39 characters, alphanumeric or hyphens, and cannot start/end with a hyphen",
+                });
+                return setIsSaving(false);
+            }
+        }
+
+        // All validations passed, proceed with save
         try {
-            await apiService.updateStudent(student as StudentProps);
-            setOriginalStudent(student); // Update original to current
+            // Create a trimmed copy of the student data
+            const trimmedStudentData: StudentProps = {
+                ...student,
+                phone: student.phone?.trim() || "",
+                school: student.school?.trim() || "",
+                program: student.program?.trim() || "",
+                graduationYear: student.graduationYear?.trim() || "",
+                linkedinUrl: student.linkedinUrl?.trim() || "",
+                devpostUsername: student.devpostUsername?.trim() || "",
+                githubUsername: student.githubUsername?.trim() || "",
+            };
+
+            // Send trimmed data to backend
+            await apiService.updateStudent(trimmedStudentData);
+
+            // Update local state with trimmed data
+            setStudent(trimmedStudentData);
+            setOriginalStudent(trimmedStudentData);
             setHasChanges(false);
+
             // Reset all editing states
             setIsEditing({
                 phone: false,
@@ -462,7 +559,9 @@ export default function AccountPage() {
                                             onChange={handleStudentChange}
                                             placeholder="Phone Number"
                                             className="w-full"
-                                            disabled={!isEditing.phone}
+                                            disabled={
+                                                !isEditing.phone || isSaving
+                                            }
                                         />
                                         {isEditing.phone ? (
                                             <button
@@ -471,6 +570,7 @@ export default function AccountPage() {
                                                 }
                                                 className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
                                                 title="Discard changes"
+                                                disabled={isSaving}
                                             >
                                                 <X className="h-4 w-4 text-red-600" />
                                             </button>
@@ -481,6 +581,7 @@ export default function AccountPage() {
                                                 }
                                                 className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
                                                 title="Edit field"
+                                                disabled={isSaving}
                                             >
                                                 <PencilLine className="h-4 w-4 text-gray-600" />
                                             </button>
@@ -502,7 +603,9 @@ export default function AccountPage() {
                                             onChange={handleStudentChange}
                                             placeholder="University/College"
                                             className="w-full"
-                                            disabled={!isEditing.school}
+                                            disabled={
+                                                !isEditing.school || isSaving
+                                            }
                                         />
                                         {isEditing.school ? (
                                             <button
@@ -511,6 +614,7 @@ export default function AccountPage() {
                                                 }
                                                 className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
                                                 title="Discard changes"
+                                                disabled={isSaving}
                                             >
                                                 <X className="h-4 w-4 text-red-600" />
                                             </button>
@@ -521,6 +625,7 @@ export default function AccountPage() {
                                                 }
                                                 className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
                                                 title="Edit field"
+                                                disabled={isSaving}
                                             >
                                                 <PencilLine className="h-4 w-4 text-gray-600" />
                                             </button>
@@ -542,7 +647,9 @@ export default function AccountPage() {
                                             onChange={handleStudentChange}
                                             placeholder="Major/Program"
                                             className="w-full"
-                                            disabled={!isEditing.program}
+                                            disabled={
+                                                !isEditing.program || isSaving
+                                            }
                                         />
                                         {isEditing.program ? (
                                             <button
@@ -553,6 +660,7 @@ export default function AccountPage() {
                                                 }
                                                 className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
                                                 title="Discard changes"
+                                                disabled={isSaving}
                                             >
                                                 <X className="h-4 w-4 text-red-600" />
                                             </button>
@@ -563,6 +671,7 @@ export default function AccountPage() {
                                                 }
                                                 className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
                                                 title="Edit field"
+                                                disabled={isSaving}
                                             >
                                                 <PencilLine className="h-4 w-4 text-gray-600" />
                                             </button>
@@ -584,7 +693,10 @@ export default function AccountPage() {
                                             onChange={handleStudentChange}
                                             placeholder="Expected Graduation Year"
                                             className="w-full"
-                                            disabled={!isEditing.graduationYear}
+                                            disabled={
+                                                !isEditing.graduationYear ||
+                                                isSaving
+                                            }
                                         />
                                         {isEditing.graduationYear ? (
                                             <button
@@ -595,6 +707,7 @@ export default function AccountPage() {
                                                 }
                                                 className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
                                                 title="Discard changes"
+                                                disabled={isSaving}
                                             >
                                                 <X className="h-4 w-4 text-red-600" />
                                             </button>
@@ -607,6 +720,7 @@ export default function AccountPage() {
                                                 }
                                                 className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
                                                 title="Edit field"
+                                                disabled={isSaving}
                                             >
                                                 <PencilLine className="h-4 w-4 text-gray-600" />
                                             </button>
@@ -643,7 +757,9 @@ export default function AccountPage() {
                                     onChange={handleStudentChange}
                                     placeholder="https://linkedin.com/in/username"
                                     className="w-full border-gray-300 focus:ring-black focus:border-black"
-                                    disabled={!isEditing.linkedinUrl}
+                                    disabled={
+                                        !isEditing.linkedinUrl || isSaving
+                                    }
                                 />
                                 {isEditing.linkedinUrl ? (
                                     <button
@@ -652,6 +768,7 @@ export default function AccountPage() {
                                         }
                                         className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
                                         title="Discard changes"
+                                        disabled={isSaving}
                                     >
                                         <X className="h-4 w-4 text-red-600" />
                                     </button>
@@ -662,6 +779,7 @@ export default function AccountPage() {
                                         }
                                         className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
                                         title="Edit field"
+                                        disabled={isSaving}
                                     >
                                         <PencilLine className="h-4 w-4 text-gray-600" />
                                     </button>
@@ -684,7 +802,9 @@ export default function AccountPage() {
                                     onChange={handleStudentChange}
                                     placeholder="Devpost Username"
                                     className="w-full border-gray-300 focus:ring-black focus:border-black"
-                                    disabled={!isEditing.devpostUsername}
+                                    disabled={
+                                        !isEditing.devpostUsername || isSaving
+                                    }
                                 />
                                 {isEditing.devpostUsername ? (
                                     <button
@@ -695,6 +815,7 @@ export default function AccountPage() {
                                         }
                                         className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
                                         title="Discard changes"
+                                        disabled={isSaving}
                                     >
                                         <X className="h-4 w-4 text-red-600" />
                                     </button>
@@ -705,6 +826,7 @@ export default function AccountPage() {
                                         }
                                         className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
                                         title="Edit field"
+                                        disabled={isSaving}
                                     >
                                         <PencilLine className="h-4 w-4 text-gray-600" />
                                     </button>
@@ -727,7 +849,9 @@ export default function AccountPage() {
                                     onChange={handleStudentChange}
                                     placeholder="GitHub Username"
                                     className="w-full border-gray-300 focus:ring-black focus:border-black"
-                                    disabled={!isEditing.githubUsername}
+                                    disabled={
+                                        !isEditing.githubUsername || isSaving
+                                    }
                                 />
                                 {isEditing.githubUsername ? (
                                     <button
@@ -736,6 +860,7 @@ export default function AccountPage() {
                                         }
                                         className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
                                         title="Discard changes"
+                                        disabled={isSaving}
                                     >
                                         <X className="h-4 w-4 text-red-600" />
                                     </button>
@@ -746,6 +871,7 @@ export default function AccountPage() {
                                         }
                                         className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
                                         title="Edit field"
+                                        disabled={isSaving}
                                     >
                                         <PencilLine className="h-4 w-4 text-gray-600" />
                                     </button>
