@@ -31,6 +31,7 @@ type StudentProps = {
         };
     };
     appliedJobs: [];
+    organizations: string[];
 };
 
 // API service functions
@@ -86,6 +87,7 @@ export default function AccountPage() {
             },
         },
         appliedJobs: [],
+        organizations: [],
     } as StudentProps);
 
     const [originalStudent, setOriginalStudent] = useState<StudentProps | null>(
@@ -265,30 +267,43 @@ export default function AccountPage() {
             });
 
             if (!response.ok) throw new Error("Failed to upload resume");
-            const responseData = await response.json();
-            const body = {
-                resume: responseData.resume,
-                appliedJobs: student.appliedJobs,
-            };
-            try {
-                let endpoint = `/public/update-resume/${student!.id}`;
 
-                const response2 = await apiFetch(
-                    endpoint,
-                    {
-                        method: "PUT",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(body),
-                    },
-                    true
-                );
-                if (!response2.ok)
-                    throw new Error("Failed to add resume to candidate");
-            } catch (error) {
-                console.error("Error adding resume to candidate:", error);
-                toast.error("Error adding resume to candidate", {
-                    description: "Please try again later.",
+            const orgArray: string[] = [];
+
+            if (!student?.organizations || student.organizations.length === 0) {
+                student.appliedJobs.forEach((job: any) => {
+                    orgArray.push(job.orgId);
                 });
+            } else {
+                orgArray.push(...student.organizations);
+            }
+
+            if (orgArray?.length > 0) {
+                const responseData = await response.json();
+                const body = {
+                    resume: responseData.resume,
+                    organizations: orgArray,
+                };
+                try {
+                    let endpoint = `/public/update-resume/${student!.id}`;
+
+                    const response2 = await apiFetch(
+                        endpoint,
+                        {
+                            method: "PUT",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(body),
+                        },
+                        true
+                    );
+                    if (!response2.ok)
+                        throw new Error("Failed to add resume to candidate");
+                } catch (error) {
+                    console.error("Error adding resume to candidate:", error);
+                    toast.error("Error adding resume to candidate", {
+                        description: "Please try again later.",
+                    });
+                }
             }
             toast.success("Resume uploaded successfully!");
             setResumeFile(null);
