@@ -61,6 +61,44 @@ const apiService = {
             throw error;
         }
     },
+    updateCandidateProfile: async (studentData: any) => {
+        try {
+            const response = await apiFetch(
+                `/candidate/update`,
+                {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(studentData),
+                },
+                true
+            );
+            if (!response.ok)
+                throw new Error("Failed to update candidate profile");
+            return await response;
+        } catch (error) {
+            console.error("Error updating candidate profile:", error);
+            throw error;
+        }
+    },
+    updateCandidateResume: async (body: any, studentId: string) => {
+        try {
+            const response = await apiFetch(
+                `/candidate/update-resume/${studentId}`,
+                {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(body),
+                },
+                true
+            );
+            if (!response.ok)
+                throw new Error("Failed to update candidate resume");
+            return await response;
+        } catch (error) {
+            console.error("Error updating candidate resume:", error);
+            throw error;
+        }
+    },
 };
 
 export default function AccountPage() {
@@ -265,8 +303,41 @@ export default function AccountPage() {
             };
 
             // Send trimmed data to backend
-            await apiService.updateStudent(trimmedStudentData);
+            const response = await apiService.updateStudent(trimmedStudentData);
 
+            if (!response.ok) throw new Error("Failed to update student");
+
+            const orgSet = new Set<string>();
+
+            if (!student?.organizations || student.organizations.length === 0) {
+                student.appliedJobs.forEach((job: any) => {
+                    if (job.orgId) orgSet.add(job.orgId);
+                });
+            } else {
+                student.organizations.forEach((org) => {
+                    if (org) orgSet.add(org);
+                });
+            }
+
+            const orgArray = Array.from(orgSet);
+
+            // send the other request to the platform api to candidate profile
+            if (orgArray.length > 0) {
+                const platformResponse =
+                    await apiService.updateCandidateProfile({
+                        organizations: orgArray,
+                        phone: student.phone?.trim() || "",
+                        school: student.school?.trim() || "",
+                        major: student.program?.trim() || "",
+                        graduationYear: student.graduationYear?.trim() || "",
+                        linkedinUrl: student.linkedinUrl?.trim() || "",
+                        devpostUsername: student.devpostUsername?.trim() || "",
+                        githubUsername: student.githubUsername?.trim() || "",
+                    });
+
+                if (!platformResponse.ok)
+                    throw new Error("Failed to update candidate profile");
+            }
             // Update local state with trimmed data
             setStudent(trimmedStudentData);
             setOriginalStudent(trimmedStudentData);
@@ -365,33 +436,30 @@ export default function AccountPage() {
 
             if (!response.ok) throw new Error("Failed to upload resume");
 
-            const orgArray: string[] = [];
+            // Np duplicates
+            const orgSet = new Set<string>();
 
             if (!student?.organizations || student.organizations.length === 0) {
                 student.appliedJobs.forEach((job: any) => {
-                    orgArray.push(job.orgId);
+                    if (job.orgId) orgSet.add(job.orgId);
                 });
             } else {
-                orgArray.push(...student.organizations);
+                student.organizations.forEach((org) => {
+                    if (org) orgSet.add(org);
+                });
             }
+            const orgArray = Array.from(orgSet);
 
-            if (orgArray?.length > 0) {
+            if (orgArray.length > 0) {
                 const responseData = await response.json();
                 const body = {
                     resume: responseData.resume,
                     organizations: orgArray,
                 };
                 try {
-                    let endpoint = `/public/update-resume/${student!.id}`;
-
-                    const response2 = await apiFetch(
-                        endpoint,
-                        {
-                            method: "PUT",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify(body),
-                        },
-                        true
+                    const response2 = await apiService.updateCandidateResume(
+                        body,
+                        student.id
                     );
                     if (!response2.ok)
                         throw new Error("Failed to add resume to candidate");
