@@ -139,6 +139,7 @@ export default function ApplicationForm({
                 _nanoseconds: 0,
             },
         },
+        devpost: undefined,
     });
 
     const [githubProfile, setGithubProfile] = useState<GithubProfile | null>(
@@ -163,6 +164,19 @@ export default function ApplicationForm({
         e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
     ) => {
         const { name, value } = e.target;
+
+        // If devpostUsername changes, clear the verified profile and errors
+        if (name === "devpostUsername") {
+            setDevpostProfile(null);
+            setDevpostError(null);
+            setFormData((prevData) => ({
+                ...prevData,
+                [name]: value,
+                devpost: undefined,
+            }));
+            return;
+        }
+
         setFormData((prevData) => ({ ...prevData, [name]: value }));
     };
 
@@ -339,6 +353,12 @@ export default function ApplicationForm({
             }
 
             setDevpostProfile(responseData.data);
+
+            // Store the Devpost profile in formData for submission
+            setFormData((prevData) => ({
+                ...prevData,
+                devpost: responseData.data,
+            }));
         } catch (error) {
             setDevpostError(
                 "Could not load Devpost profile. Please check the username and try again."
@@ -349,7 +369,28 @@ export default function ApplicationForm({
         }
     };
 
+    const isDevpostValid = () => {
+        // If no username provided, it's valid (optional field)
+        if (
+            !formData.devpostUsername ||
+            formData.devpostUsername.trim() === ""
+        ) {
+            return true;
+        }
+        // If username provided, must have matching verified profile (case-insensitive)
+        return (
+            devpostProfile &&
+            devpostProfile.username.toLowerCase() ===
+                formData.devpostUsername.toLowerCase()
+        );
+    };
+
     const validateCurrentStep = (): boolean => {
+        // Step 2: Devpost validation (after step 2, always validate Devpost)
+        if (currentStep >= 2 && !isDevpostValid()) {
+            return false;
+        }
+
         // Step 3 is the Resume step (index 3)
         if (currentStep === 3) {
             // Check if resume exists (either File or existing resume object)
@@ -366,10 +407,19 @@ export default function ApplicationForm({
             }
             return false;
         }
+
         return true; // All other steps are valid by default
     };
 
     const handleStepNext = () => {
+        // Validate and show appropriate error messages
+        if (currentStep >= 2 && !isDevpostValid()) {
+            setDevpostError(
+                "Please verify your Devpost username before continuing"
+            );
+            return;
+        }
+
         if (!validateCurrentStep()) {
             return; // Don't proceed if validation fails
         }
@@ -382,6 +432,16 @@ export default function ApplicationForm({
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        // Validate Devpost before submission
+        if (!isDevpostValid()) {
+            setDevpostError(
+                "Please verify your Devpost username before submitting"
+            );
+            // Navigate back to Devpost step to show the error
+            setCurrentStep(2);
+            return;
+        }
 
         // Validate that resume exists before submission
         if (!formData.resume) {
@@ -416,7 +476,8 @@ export default function ApplicationForm({
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
         // Prevent Enter key from submitting the form unless we're on the last step
-        if (e.key === "Enter" && currentStep < 4) {
+        // Also prevent if Devpost validation fails
+        if (e.key === "Enter" && (currentStep < 4 || !isDevpostValid())) {
             e.preventDefault();
         }
     };
@@ -581,7 +642,10 @@ export default function ApplicationForm({
                             </Button>
                         </div>
                     ) : (
-                        <Button onClick={handleSubmit} disabled={isSubmitting}>
+                        <Button
+                            onClick={handleSubmit}
+                            disabled={isSubmitting || !isDevpostValid()}
+                        >
                             {isSubmitting ? (
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             ) : null}

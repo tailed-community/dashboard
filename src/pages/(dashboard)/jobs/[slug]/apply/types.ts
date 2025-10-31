@@ -70,6 +70,7 @@ export interface ApplicationFormData {
           }
         | File
         | null;
+    devpost?: DevpostProfile;
 }
 
 export interface DevpostProfile {
