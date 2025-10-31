@@ -19,6 +19,7 @@ type StudentProps = {
     program: string;
     graduationYear: string;
     devpostUsername: string;
+    devpost?: any; // Full Devpost profile data (saved in /devpost route)
     linkedinUrl: string;
     githubUsername: string;
     resume: {
@@ -128,6 +129,7 @@ export default function AccountPage() {
         organizations: [],
     } as StudentProps);
 
+    console.log(student);
     const [originalStudent, setOriginalStudent] = useState<StudentProps | null>(
         null
     );
@@ -148,6 +150,10 @@ export default function AccountPage() {
 
     const [resumeFile, setResumeFile] = useState<File | null>(null);
     const [isUploadingResume, setIsUploadingResume] = useState(false);
+
+    // Devpost verification state
+    const [isLoadingDevpost, setIsLoadingDevpost] = useState(false);
+    const [devpostError, setDevpostError] = useState<string | null>(null);
 
     // Resolve Firebase storage path to URL when organization changes
     useEffect(() => {
@@ -190,7 +196,17 @@ export default function AccountPage() {
 
     const handleStudentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
-        setStudent((prev) => ({ ...prev, [name]: value }));
+
+        // If devpostUsername changes, clear the verified profile
+        if (name === "devpostUsername") {
+            setStudent((prev) => ({
+                ...prev,
+                [name]: value,
+                devpost: null, // Clear verified profile when username changes
+            }));
+        } else {
+            setStudent((prev) => ({ ...prev, [name]: value }));
+        }
     };
 
     const handleToggleEdit = (field: keyof typeof isEditing) => {
@@ -199,10 +215,20 @@ export default function AccountPage() {
 
     const handleDiscardField = (field: keyof typeof isEditing) => {
         if (originalStudent) {
-            setStudent((prev) => ({
-                ...prev,
-                [field]: originalStudent[field as keyof StudentProps],
-            }));
+            // If discarding devpostUsername, also restore the devpost profile and clear errors
+            if (field === "devpostUsername") {
+                setStudent((prev) => ({
+                    ...prev,
+                    devpostUsername: originalStudent.devpostUsername,
+                    devpost: originalStudent.devpost,
+                }));
+                setDevpostError(null); // Clear any error messages
+            } else {
+                setStudent((prev) => ({
+                    ...prev,
+                    [field]: originalStudent[field as keyof StudentProps],
+                }));
+            }
             setIsEditing((prev) => ({ ...prev, [field]: false }));
         }
     };
@@ -210,6 +236,21 @@ export default function AccountPage() {
     const handleSaveChanges = async () => {
         setIsSaving(true);
         // Validate all fields before saving
+
+        // Devpost validation: if username is provided, must be verified (case-insensitive)
+        if (student.devpostUsername && student.devpostUsername.trim() !== "") {
+            if (
+                !student.devpost ||
+                student.devpost.username.toLowerCase() !==
+                    student.devpostUsername.toLowerCase()
+            ) {
+                toast.error("Devpost verification required", {
+                    description:
+                        "Please verify your Devpost username before saving",
+                });
+                return setIsSaving(false);
+            }
+        }
 
         // Phone validation (optional, but if provided must be valid)
         if (student.phone && student.phone.trim() !== "") {
@@ -309,7 +350,11 @@ export default function AccountPage() {
 
             const orgSet = new Set<string>();
 
-            if (!student?.organizations || student.organizations.length === 0) {
+            if (
+                (!student?.organizations ||
+                    student.organizations.length === 0) &&
+                student?.appliedJobs.length > 0
+            ) {
                 student.appliedJobs.forEach((job: any) => {
                     if (job.orgId) orgSet.add(job.orgId);
                 });
@@ -333,11 +378,39 @@ export default function AccountPage() {
                         linkedinUrl: student.linkedinUrl?.trim() || "",
                         devpostUsername: student.devpostUsername?.trim() || "",
                         githubUsername: student.githubUsername?.trim() || "",
+                        devpost: student.devpost,
                     });
 
                 if (!platformResponse.ok)
                     throw new Error("Failed to update candidate profile");
             }
+
+            // Save Devpost profile if it exists and was verified
+            if (student.devpost && student.devpost.username) {
+                try {
+                    const saveResponse = await apiFetch(`/devpost/save`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({ devpostProfile: student.devpost }),
+                    });
+
+                    if (!saveResponse.ok) {
+                        toast.warning("Devpost profile not saved", {
+                            description:
+                                "Profile updated but Devpost could not be saved. Please try again.",
+                        });
+                    }
+                } catch (saveError) {
+                    // Don't block the user if save fails, just show warning
+                    toast.warning("Error saving Devpost profile", {
+                        description:
+                            "Your profile was saved but Devpost could not be updated.",
+                    });
+                }
+            }
+
             // Update local state with trimmed data
             setStudent(trimmedStudentData);
             setOriginalStudent(trimmedStudentData);
@@ -419,6 +492,68 @@ export default function AccountPage() {
         });
 
         setResumeFile(cleanFile);
+    };
+
+    const fetchDevpostProfile = async () => {
+        if (!student.devpostUsername) {
+            toast.error("Please enter a Devpost username first");
+            return;
+        }
+
+        setIsLoadingDevpost(true);
+        setDevpostError(null);
+
+        try {
+            const response = await apiFetch(`/devpost/profile`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ username: student.devpostUsername }),
+            });
+
+            if (!response.ok) {
+                throw new Error("Failed to fetch Devpost profile");
+            }
+
+            const responseData = await response.json();
+            if (!responseData.success) {
+                throw new Error(
+                    responseData.error || "Failed to fetch Devpost profile"
+                );
+            }
+
+            // Update student state with the verified profile
+            setStudent((prev) => ({
+                ...prev,
+                devpost: responseData.data,
+            }));
+
+            // Also update original student to reflect saved state
+            setOriginalStudent((prev) =>
+                prev
+                    ? {
+                          ...prev,
+                          devpost: responseData.data,
+                      }
+                    : null
+            );
+
+            toast.success("Devpost profile verified!", {
+                description: `Found ${responseData.data.stats.projectCount} projects and ${responseData.data.stats.hackathonCount} hackathons`,
+            });
+        } catch (error) {
+            setDevpostError(
+                "Could not load Devpost profile. Please check the username and try again."
+            );
+            toast.error("Verification failed", {
+                description:
+                    "Could not load Devpost profile. Please check the username and try again.",
+            });
+            console.error(error);
+        } finally {
+            setIsLoadingDevpost(false);
+        }
     };
 
     const handleResumeUpload = async () => {
@@ -801,7 +936,7 @@ export default function AccountPage() {
                 </CardContent>
 
                 <CardHeader className="pb-3">
-                    <h2 className="text-lg font-semibold text-gray-800">
+                    <h2 className="text-lg font-semibold text-gray-800 border-t-3 pt-3">
                         Connections
                     </h2>
                     <p className="text-sm text-gray-500">
@@ -869,11 +1004,33 @@ export default function AccountPage() {
                                     value={student.devpostUsername || ""}
                                     onChange={handleStudentChange}
                                     placeholder="Devpost Username"
-                                    className="w-full border-gray-300 focus:ring-black focus:border-black"
+                                    className="flex-1 border-gray-300 focus:ring-black focus:border-black"
                                     disabled={
-                                        !isEditing.devpostUsername || isSaving
+                                        !isEditing.devpostUsername ||
+                                        isSaving ||
+                                        isLoadingDevpost
                                     }
                                 />
+                                {/* Only show Verify button when editing */}
+                                {isEditing.devpostUsername && (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={fetchDevpostProfile}
+                                        disabled={
+                                            isLoadingDevpost ||
+                                            !student.devpostUsername ||
+                                            isSaving
+                                        }
+                                        className="whitespace-nowrap"
+                                    >
+                                        {isLoadingDevpost ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                            "Verify"
+                                        )}
+                                    </Button>
+                                )}
                                 {isEditing.devpostUsername ? (
                                     <button
                                         onClick={() =>
@@ -883,7 +1040,7 @@ export default function AccountPage() {
                                         }
                                         className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
                                         title="Discard changes"
-                                        disabled={isSaving}
+                                        disabled={isSaving || isLoadingDevpost}
                                     >
                                         <X className="h-4 w-4 text-red-600" />
                                     </button>
@@ -900,6 +1057,107 @@ export default function AccountPage() {
                                     </button>
                                 )}
                             </div>
+                            {devpostError && (
+                                <p className="text-sm text-red-600 mt-1">
+                                    {devpostError}
+                                </p>
+                            )}
+
+                            {/* Warning message if username is entered but not verified (only show when editing) */}
+                            {isEditing.devpostUsername &&
+                                student.devpostUsername &&
+                                student.devpostUsername.trim() !== "" &&
+                                (!student.devpost ||
+                                    student.devpost.username.toLowerCase() !==
+                                        student.devpostUsername.toLowerCase()) && (
+                                    <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                        <p className="text-sm text-yellow-800">
+                                            ⚠️ Please verify your Devpost
+                                            username before saving
+                                        </p>
+                                    </div>
+                                )}
+
+                            {/* Display verified Devpost profile (case-insensitive) */}
+                            {student.devpost &&
+                                student.devpost.username.toLowerCase() ===
+                                    student.devpostUsername.toLowerCase() && (
+                                    <div className="mt-3 rounded-lg border p-4 bg-green-50 border-green-200">
+                                        <div className="flex items-start justify-between">
+                                            <div>
+                                                <h4 className="font-medium text-gray-900">
+                                                    {student.devpost.name ||
+                                                        student.devpost
+                                                            .username}
+                                                </h4>
+                                                <p className="text-sm text-gray-600">
+                                                    @{student.devpost.username}
+                                                </p>
+                                                <div className="mt-2 grid grid-cols-4 gap-4 text-center">
+                                                    <div>
+                                                        <p className="text-lg font-semibold text-gray-900">
+                                                            {
+                                                                student.devpost
+                                                                    .stats
+                                                                    .projectCount
+                                                            }
+                                                        </p>
+                                                        <p className="text-xs text-gray-600">
+                                                            Projects
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-lg font-semibold text-gray-900">
+                                                            {
+                                                                student.devpost
+                                                                    .stats
+                                                                    .hackathonCount
+                                                            }
+                                                        </p>
+                                                        <p className="text-xs text-gray-600">
+                                                            Hackathons
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-lg font-semibold text-gray-900">
+                                                            {
+                                                                student.devpost
+                                                                    .stats
+                                                                    .winCount
+                                                            }
+                                                        </p>
+                                                        <p className="text-xs text-gray-600">
+                                                            Wins
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-lg font-semibold text-gray-900">
+                                                            {student.devpost
+                                                                .achievements
+                                                                ?.firstPlaceWins ||
+                                                                0}
+                                                        </p>
+                                                        <p className="text-xs text-gray-600">
+                                                            1st Places
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <p className="text-xs text-gray-500 mt-3">
+                                            ✓ Profile verified and saved
+                                        </p>
+                                    </div>
+                                )}
+
+                            {/* Info message when no username is entered */}
+                            {(!student.devpostUsername ||
+                                student.devpostUsername.trim() === "") && (
+                                <p className="text-xs text-gray-500 mt-2">
+                                    Enter your Devpost username and click
+                                    "Verify" to connect your profile
+                                </p>
+                            )}
                         </div>
 
                         <div>

@@ -63,14 +63,36 @@ export default function DevpostProfileSection({
                         )}
                     </Button>
                 </div>
+
+                {/* Red error message if verification failed */}
                 {devpostError && (
-                    <p className="text-sm text-destructive mt-1">
-                        {devpostError}
-                    </p>
+                    <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <p className="text-sm text-red-800 font-medium">
+                            ❌ {devpostError}
+                        </p>
+                    </div>
                 )}
+
+                {/* Yellow warning message if username is entered but not verified yet (and no error) */}
+                {formData.devpostUsername &&
+                    formData.devpostUsername.trim() !== "" &&
+                    (!devpostProfile ||
+                        devpostProfile.username.toLowerCase() !==
+                            formData.devpostUsername.toLowerCase()) &&
+                    !devpostError && (
+                        <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                            <p className="text-sm text-yellow-800">
+                                ⚠️ Please verify your Devpost username to
+                                continue
+                            </p>
+                        </div>
+                    )}
             </div>
 
-            {devpostProfile && renderDevpostProfile(devpostProfile)}
+            {devpostProfile &&
+                devpostProfile.username.toLowerCase() ===
+                    formData.devpostUsername.toLowerCase() &&
+                renderDevpostProfile(devpostProfile)}
 
             <div className="p-4 bg-muted rounded-lg">
                 <p className="text-sm">
