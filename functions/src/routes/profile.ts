@@ -52,33 +52,7 @@ router.get("/", async (req, res) => {
         const profileData = profileDoc.data()!;
 
         // Return the profile data
-        return res.status(200).json({
-            appliedJobs: profileData.appliedJobs || [],
-            id: profileData.id,
-            name: `${profileData.firstName} ${profileData.lastName}`,
-            firstName: profileData.firstName,
-            lastName: profileData.lastName,
-            email: profileData.email,
-            initials:
-                profileData.initials ||
-                profileData.firstName?.charAt(0) +
-                    profileData.lastName?.charAt(0) ||
-                "U",
-            avatar: profileData.avatar || null,
-            phone: profileData.phone || null,
-            githubUsername: profileData.githubUsername || null,
-            devpostUsername: profileData.devpostUsername || null,
-            devpost: profileData.devpost || null,
-            linkedinUrl: profileData.linkedinUrl || null,
-            school: profileData.school || null,
-            program: profileData.program || null,
-            graduationYear: profileData.graduationYear || null,
-            createdAt: profileData.createdAt,
-            updatedAt: profileData.updatedAt,
-            portfolioUrl: profileData.portfolioUrl || null,
-            resume: profileData.resume || null,
-            // Include any other profile data you want to expose
-        });
+        return res.status(200).json(profileData);
     } catch (error) {
         logger.error("Error fetching user profile:", error);
         return res.status(500).json({
@@ -458,6 +432,23 @@ router.patch("/update", async (req, res) => {
                         error: "Validation error",
                         message:
                             "GitHub username must be 1-39 characters, alphanumeric or hyphens, and cannot start/end with a hyphen",
+                    });
+                }
+            }
+        }
+
+        // Validation: Skills (optional, comma-separated string)
+        if (updates.skills && typeof updates.skills === "string") {
+            const trimmedSkills = updates.skills.trim();
+            if (trimmedSkills !== "") {
+                const skillsArray = trimmedSkills
+                    .split(",")
+                    .map((s: string) => s.trim())
+                    .filter((s: string) => s.length > 0);
+                if (skillsArray.length > 15) {
+                    return res.status(400).json({
+                        error: "Validation error",
+                        message: "Maximum 15 skills allowed",
                     });
                 }
             }

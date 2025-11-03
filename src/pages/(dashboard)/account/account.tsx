@@ -1,6 +1,6 @@
 import type React from "react";
 import { useState, useEffect } from "react";
-import { Upload, Loader2, PencilLine, X } from "lucide-react";
+import { Upload, Loader2, PencilLine, X, Github } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,22 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/fetch";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+    Accordion,
+    AccordionContent,
+    AccordionItem,
+    AccordionTrigger,
+} from "@/components/ui/accordion";
+import { fetchGithubUserProfile, type GithubProfile } from "@/lib/github";
+import { studentAuth, initializeStudentSession } from "@/lib/auth";
+import {
+    linkWithPopup,
+    GithubAuthProvider,
+    signInWithCredential,
+    unlink,
+} from "firebase/auth";
+import { FirebaseError } from "firebase/app";
+import type { DevpostProfile } from "../jobs/[slug]/apply/types";
 
 type StudentProps = {
     email: string;
@@ -19,9 +35,12 @@ type StudentProps = {
     program: string;
     graduationYear: string;
     devpostUsername: string;
-    devpost?: any; // Full Devpost profile data (saved in /devpost route)
+    devpost?: DevpostProfile; // Full Devpost profile data (saved in /devpost route)
     linkedinUrl: string;
+    portfolioUrl: string;
     githubUsername: string;
+    github?: GithubProfile; // Full GitHub profile data
+    skills: string;
     resume: {
         id: string;
         name: string;
@@ -62,44 +81,6 @@ const apiService = {
             throw error;
         }
     },
-    updateCandidateProfile: async (studentData: any) => {
-        try {
-            const response = await apiFetch(
-                `/candidate/update`,
-                {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(studentData),
-                },
-                true
-            );
-            if (!response.ok)
-                throw new Error("Failed to update candidate profile");
-            return await response;
-        } catch (error) {
-            console.error("Error updating candidate profile:", error);
-            throw error;
-        }
-    },
-    updateCandidateResume: async (body: any, studentId: string) => {
-        try {
-            const response = await apiFetch(
-                `/candidate/update-resume/${studentId}`,
-                {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(body),
-                },
-                true
-            );
-            if (!response.ok)
-                throw new Error("Failed to update candidate resume");
-            return await response;
-        } catch (error) {
-            console.error("Error updating candidate resume:", error);
-            throw error;
-        }
-    },
 };
 
 export default function AccountPage() {
@@ -114,8 +95,10 @@ export default function AccountPage() {
         program: "",
         graduationYear: "",
         linkedinUrl: "",
+        portfolioUrl: "",
         devpostUsername: "",
         githubUsername: "",
+        skills: "",
         resume: {
             id: "",
             name: "",
@@ -129,7 +112,6 @@ export default function AccountPage() {
         organizations: [],
     } as StudentProps);
 
-    console.log(student);
     const [originalStudent, setOriginalStudent] = useState<StudentProps | null>(
         null
     );
@@ -144,6 +126,7 @@ export default function AccountPage() {
         program: false,
         graduationYear: false,
         linkedinUrl: false,
+        portfolioUrl: false,
         devpostUsername: false,
         githubUsername: false,
     });
@@ -154,6 +137,21 @@ export default function AccountPage() {
     // Devpost verification state
     const [isLoadingDevpost, setIsLoadingDevpost] = useState(false);
     const [devpostError, setDevpostError] = useState<string | null>(null);
+
+    // GitHub verification state
+    const [isLoadingGithub, setIsLoadingGithub] = useState(false);
+    const [githubError, setGithubError] = useState<string | null>(null);
+
+    // Skills state
+    const [skillsArray, setSkillsArray] = useState<string[]>([]);
+    const [newSkill, setNewSkill] = useState("");
+
+    // Initialize anonymous session when component mounts
+    useEffect(() => {
+        initializeStudentSession().catch((error) => {
+            console.error("Failed to initialize student session:", error);
+        });
+    }, []);
 
     // Resolve Firebase storage path to URL when organization changes
     useEffect(() => {
@@ -178,6 +176,19 @@ export default function AccountPage() {
         fetchData();
     }, []);
 
+    // Parse skills string into array when student data changes
+    useEffect(() => {
+        if (student.skills) {
+            const skills = student.skills
+                .split(",")
+                .map((s) => s.trim())
+                .filter((s) => s.length > 0);
+            setSkillsArray(skills);
+        } else {
+            setSkillsArray([]);
+        }
+    }, [student.skills]);
+
     // Check if there are any changes
     useEffect(() => {
         if (!originalStudent) return;
@@ -188,8 +199,10 @@ export default function AccountPage() {
             student.program !== originalStudent.program ||
             student.graduationYear !== originalStudent.graduationYear ||
             student.linkedinUrl !== originalStudent.linkedinUrl ||
+            student.portfolioUrl !== originalStudent.portfolioUrl ||
             student.devpostUsername !== originalStudent.devpostUsername ||
-            student.githubUsername !== originalStudent.githubUsername;
+            student.githubUsername !== originalStudent.githubUsername ||
+            student.skills !== originalStudent.skills;
 
         setHasChanges(changed);
     }, [student, originalStudent]);
@@ -204,6 +217,17 @@ export default function AccountPage() {
                 [name]: value,
                 devpost: null, // Clear verified profile when username changes
             }));
+        } else if (name === "githubUsername") {
+            // If githubUsername changes, clear the verified profile and errors
+            setStudent((prev) => {
+                const updated = {
+                    ...prev,
+                    [name]: value,
+                    github: undefined, // Clear verified profile when username changes
+                };
+                return updated;
+            });
+            setGithubError(null);
         } else {
             setStudent((prev) => ({ ...prev, [name]: value }));
         }
@@ -223,6 +247,14 @@ export default function AccountPage() {
                     devpost: originalStudent.devpost,
                 }));
                 setDevpostError(null); // Clear any error messages
+            } else if (field === "githubUsername") {
+                // If discarding githubUsername, also restore the github profile and clear errors
+                setStudent((prev) => ({
+                    ...prev,
+                    githubUsername: originalStudent.githubUsername,
+                    github: originalStudent.github,
+                }));
+                setGithubError(null); // Clear any error messages
             } else {
                 setStudent((prev) => ({
                     ...prev,
@@ -305,6 +337,18 @@ export default function AccountPage() {
             }
         }
 
+        // Portfolio URL validation (optional, but if provided must be valid)
+        if (student.portfolioUrl && student.portfolioUrl.trim() !== "") {
+            const urlRegex = /^https?:\/\/.+\..+/i;
+            if (!urlRegex.test(student.portfolioUrl.trim())) {
+                toast.error("Invalid Portfolio URL", {
+                    description:
+                        "Portfolio URL must be a valid URL (e.g., https://yourportfolio.com)",
+                });
+                return setIsSaving(false);
+            }
+        }
+
         // Devpost username validation (optional, but if provided must be valid)
         if (student.devpostUsername && student.devpostUsername.trim() !== "") {
             const usernameRegex = /^[a-zA-Z0-9_-]+$/;
@@ -331,6 +375,60 @@ export default function AccountPage() {
 
         // All validations passed, proceed with save
         try {
+            // Check against ORIGINAL student data (before editing)
+            // because handleStudentChange clears the github field when username changes
+            let finalGithubProfile = student.github;
+
+            // Check if we need to disconnect GitHub
+            const shouldDisconnectGithub =
+                originalStudent?.github &&
+                (!student.githubUsername ||
+                    student.githubUsername.trim() === "" ||
+                    (originalStudent.github.username &&
+                        originalStudent.github.username.toLowerCase() !==
+                            student.githubUsername.trim().toLowerCase()));
+
+            if (shouldDisconnectGithub) {
+                // Username changed without reconnecting - disconnect
+                finalGithubProfile = undefined;
+
+                // Unlink GitHub provider from Firebase Auth
+                try {
+                    if (studentAuth.currentUser) {
+                        await unlink(studentAuth.currentUser, "github.com");
+                    } else {
+                        console.warn("No current user to unlink from");
+                    }
+                } catch (unlinkError: any) {
+                    console.error(
+                        "❌ Error unlinking GitHub provider:",
+                        unlinkError.code,
+                        unlinkError.message
+                    );
+                    // Continue even if unlink fails
+                }
+
+                // Call delete endpoint to remove GitHub profile from database
+                try {
+                    const deleteResponse = await apiFetch("/github/delete", {
+                        method: "DELETE",
+                    });
+
+                    if (!deleteResponse.ok) {
+                        toast.warning(
+                            "❌ Failed to delete GitHub profile from database:"
+                        );
+                    }
+                } catch (deleteError) {
+                    toast.error("❌ Error deleting GitHub profile:");
+                }
+
+                toast.info("GitHub disconnected", {
+                    description:
+                        "Username changed. Connect again to restore extended profile data.",
+                });
+            }
+
             // Create a trimmed copy of the student data
             const trimmedStudentData: StudentProps = {
                 ...student,
@@ -339,51 +437,17 @@ export default function AccountPage() {
                 program: student.program?.trim() || "",
                 graduationYear: student.graduationYear?.trim() || "",
                 linkedinUrl: student.linkedinUrl?.trim() || "",
+                portfolioUrl: student.portfolioUrl?.trim() || "",
                 devpostUsername: student.devpostUsername?.trim() || "",
                 githubUsername: student.githubUsername?.trim() || "",
+                skills: student.skills?.trim() || "",
+                github: finalGithubProfile,
             };
 
             // Send trimmed data to backend
             const response = await apiService.updateStudent(trimmedStudentData);
 
             if (!response.ok) throw new Error("Failed to update student");
-
-            const orgSet = new Set<string>();
-
-            if (
-                (!student?.organizations ||
-                    student.organizations.length === 0) &&
-                student?.appliedJobs.length > 0
-            ) {
-                student.appliedJobs.forEach((job: any) => {
-                    if (job.orgId) orgSet.add(job.orgId);
-                });
-            } else {
-                student.organizations.forEach((org) => {
-                    if (org) orgSet.add(org);
-                });
-            }
-
-            const orgArray = Array.from(orgSet);
-
-            // send the other request to the platform api to candidate profile
-            if (orgArray.length > 0) {
-                const platformResponse =
-                    await apiService.updateCandidateProfile({
-                        organizations: orgArray,
-                        phone: student.phone?.trim() || "",
-                        school: student.school?.trim() || "",
-                        major: student.program?.trim() || "",
-                        graduationYear: student.graduationYear?.trim() || "",
-                        linkedinUrl: student.linkedinUrl?.trim() || "",
-                        devpostUsername: student.devpostUsername?.trim() || "",
-                        githubUsername: student.githubUsername?.trim() || "",
-                        devpost: student.devpost,
-                    });
-
-                if (!platformResponse.ok)
-                    throw new Error("Failed to update candidate profile");
-            }
 
             // Save Devpost profile if it exists and was verified
             if (student.devpost && student.devpost.username) {
@@ -393,7 +457,9 @@ export default function AccountPage() {
                         headers: {
                             "Content-Type": "application/json",
                         },
-                        body: JSON.stringify({ devpostProfile: student.devpost }),
+                        body: JSON.stringify({
+                            devpostProfile: student.devpost,
+                        }),
                     });
 
                     if (!saveResponse.ok) {
@@ -411,6 +477,9 @@ export default function AccountPage() {
                 }
             }
 
+            // Note: GitHub profile is already saved in the database during the OAuth flow
+            // in the /github/profile endpoint, so no separate save call is needed here
+
             // Update local state with trimmed data
             setStudent(trimmedStudentData);
             setOriginalStudent(trimmedStudentData);
@@ -423,6 +492,7 @@ export default function AccountPage() {
                 program: false,
                 graduationYear: false,
                 linkedinUrl: false,
+                portfolioUrl: false,
                 devpostUsername: false,
                 githubUsername: false,
             });
@@ -450,6 +520,7 @@ export default function AccountPage() {
                 program: false,
                 graduationYear: false,
                 linkedinUrl: false,
+                portfolioUrl: false,
                 devpostUsername: false,
                 githubUsername: false,
             });
@@ -556,6 +627,143 @@ export default function AccountPage() {
         }
     };
 
+    const fetchGithubProfile = async () => {
+        setIsLoadingGithub(true);
+        setGithubError(null);
+
+        try {
+            // Ensure we have a session before attempting GitHub auth
+            if (!studentAuth.currentUser) {
+                await initializeStudentSession();
+            }
+
+            // Create GitHub provider
+            const githubProvider = new GithubAuthProvider();
+            githubProvider.addScope("read:user");
+
+            // Check if the user already has GitHub provider linked
+            const providerData = studentAuth.currentUser?.providerData || [];
+            const githubProviderData = providerData.find(
+                (p) => p.providerId === "github.com"
+            );
+
+            let token = null;
+
+            if (githubProviderData) {
+                // User is already linked with GitHub
+                // We need to reauthenticate to get a fresh token
+                try {
+                    if (!studentAuth.currentUser)
+                        throw new Error("User not authenticated");
+                    const result = await linkWithPopup(
+                        studentAuth.currentUser,
+                        githubProvider
+                    );
+                    const credential =
+                        GithubAuthProvider.credentialFromResult(result);
+                    token = credential?.accessToken;
+                } catch (error) {
+                    // If we get credential-already-in-use, that's expected
+                    if (
+                        error instanceof FirebaseError &&
+                        error.code === "auth/credential-already-in-use"
+                    ) {
+                        const credential =
+                            GithubAuthProvider.credentialFromError(error);
+                        if (credential) {
+                            // Sign in with the existing credential to get a fresh token
+                            const result = await signInWithCredential(
+                                studentAuth,
+                                credential
+                            );
+                            const userCred =
+                                GithubAuthProvider.credentialFromResult(result);
+                            token = userCred?.accessToken;
+                        }
+                    } else {
+                        throw error;
+                    }
+                }
+            } else {
+                // User is not linked with GitHub yet, proceed with normal linking
+                try {
+                    if (!studentAuth.currentUser)
+                        throw new Error("User not authenticated");
+                    const result = await linkWithPopup(
+                        studentAuth.currentUser,
+                        githubProvider
+                    );
+                    const credential =
+                        GithubAuthProvider.credentialFromResult(result);
+                    token = credential?.accessToken;
+                } catch (error) {
+                    // Handle credential-already-in-use error
+                    if (
+                        error instanceof FirebaseError &&
+                        error.code === "auth/credential-already-in-use"
+                    ) {
+                        const credential =
+                            GithubAuthProvider.credentialFromError(error);
+                        if (credential) {
+                            // Sign in with the existing credential
+                            const result = await signInWithCredential(
+                                studentAuth,
+                                credential
+                            );
+                            const userCred =
+                                GithubAuthProvider.credentialFromResult(result);
+                            token = userCred?.accessToken;
+                        }
+                    } else {
+                        throw error;
+                    }
+                }
+            }
+
+            if (token) {
+                const profileData = await fetchGithubUserProfile(token);
+
+                // Update student state with the verified profile
+                setStudent((prev) => {
+                    const updated = {
+                        ...prev,
+                        githubUsername: profileData.username,
+                        github: profileData,
+                    };
+                    return updated;
+                });
+
+                // Also update original student to reflect saved state
+                setOriginalStudent((prev) =>
+                    prev
+                        ? {
+                              ...prev,
+                              githubUsername: profileData.username,
+                              github: profileData,
+                          }
+                        : null
+                );
+
+                toast.success("GitHub profile connected!", {
+                    description: `Connected ${profileData.username} with ${profileData.repoCount} repositories`,
+                });
+            } else {
+                throw new Error("Failed to get GitHub token");
+            }
+        } catch (error) {
+            setGithubError(
+                "Could not connect GitHub profile. Please try again."
+            );
+            toast.error("Connection failed", {
+                description:
+                    "Could not connect GitHub profile. Please try again.",
+            });
+            console.error(error);
+        } finally {
+            setIsLoadingGithub(false);
+        }
+    };
+
     const handleResumeUpload = async () => {
         if (!resumeFile) return;
 
@@ -571,40 +779,6 @@ export default function AccountPage() {
 
             if (!response.ok) throw new Error("Failed to upload resume");
 
-            // Np duplicates
-            const orgSet = new Set<string>();
-
-            if (!student?.organizations || student.organizations.length === 0) {
-                student.appliedJobs.forEach((job: any) => {
-                    if (job.orgId) orgSet.add(job.orgId);
-                });
-            } else {
-                student.organizations.forEach((org) => {
-                    if (org) orgSet.add(org);
-                });
-            }
-            const orgArray = Array.from(orgSet);
-
-            if (orgArray.length > 0) {
-                const responseData = await response.json();
-                const body = {
-                    resume: responseData.resume,
-                    organizations: orgArray,
-                };
-                try {
-                    const response2 = await apiService.updateCandidateResume(
-                        body,
-                        student.id
-                    );
-                    if (!response2.ok)
-                        throw new Error("Failed to add resume to candidate");
-                } catch (error) {
-                    console.error("Error adding resume to candidate:", error);
-                    toast.error("Error adding resume to candidate", {
-                        description: "Please try again later.",
-                    });
-                }
-            }
             toast.success("Resume uploaded successfully!");
             setResumeFile(null);
         } catch (error) {
@@ -614,6 +788,52 @@ export default function AccountPage() {
             });
         } finally {
             setIsUploadingResume(false);
+        }
+    };
+
+    // Skills management functions
+    const handleAddSkill = () => {
+        const trimmedSkill = newSkill.trim();
+
+        if (!trimmedSkill) {
+            toast.error("Please enter a skill");
+            return;
+        }
+
+        if (skillsArray.length >= 15) {
+            toast.error("Maximum 15 skills allowed");
+            return;
+        }
+
+        if (
+            skillsArray.some(
+                (skill) => skill.toLowerCase() === trimmedSkill.toLowerCase()
+            )
+        ) {
+            toast.error("Skill already exists");
+            return;
+        }
+
+        const updatedSkills = [...skillsArray, trimmedSkill];
+        setSkillsArray(updatedSkills);
+        setStudent((prev) => ({ ...prev, skills: updatedSkills.join(", ") }));
+        setNewSkill("");
+        toast.success("Skill added");
+    };
+
+    const handleRemoveSkill = (indexToRemove: number) => {
+        const updatedSkills = skillsArray.filter(
+            (_, index) => index !== indexToRemove
+        );
+        setSkillsArray(updatedSkills);
+        setStudent((prev) => ({ ...prev, skills: updatedSkills.join(", ") }));
+        toast.success("Skill removed");
+    };
+
+    const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            handleAddSkill();
         }
     };
 
@@ -675,7 +895,7 @@ export default function AccountPage() {
             <Card>
                 <CardHeader>
                     {/* TODO: Add profile picture functionality */}
-                    <div className="relative my-3 border-b-3 pb-4">
+                    <div className="relative my-3 pb-4">
                         <img
                             src="https://www.placeholderimage.online/images/generic/users-profile.jpg"
                             alt="Profile"
@@ -688,633 +908,1064 @@ export default function AccountPage() {
                             <Upload className="w-4 h-4" />
                         </button> */}
                     </div>
-                    <h2 className="text-lg font-semibold text-gray-800">
-                        Personal Information
-                    </h2>
-                    <p className="text-sm text-gray-500">
-                        Edit your profiles information.
-                    </p>
                 </CardHeader>
                 <CardContent>
-                    <div className="flex items-center space-x-4">
-                        <div className="flex-grow space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <Label
-                                        htmlFor="firstName"
-                                        className="block mb-1"
-                                    >
-                                        First Name
-                                    </Label>
-                                    <Input
-                                        id="firstName"
-                                        name="firstName"
-                                        value={student.firstName}
-                                        placeholder="First Name"
-                                        className="w-full"
-                                        disabled
-                                    />
-                                </div>
-                                <div>
-                                    <Label
-                                        htmlFor="lastName"
-                                        className="block mb-1"
-                                    >
-                                        Last Name
-                                    </Label>
-                                    <Input
-                                        id="lastName"
-                                        name="lastName"
-                                        value={student.lastName}
-                                        placeholder="Last Name"
-                                        className="w-full"
-                                        disabled
-                                    />
-                                </div>
-                                <div className="col-span-2">
-                                    <Label
-                                        htmlFor="email"
-                                        className="block mb-1"
-                                    >
-                                        Email
-                                    </Label>
-                                    <Input
-                                        id="email"
-                                        name="email"
-                                        value={student.email}
-                                        placeholder="Email"
-                                        className="w-full"
-                                        disabled
-                                    />
-                                </div>
-                                <div>
-                                    <Label
-                                        htmlFor="phone"
-                                        className="block mb-1"
-                                    >
-                                        Phone Number
-                                    </Label>
-                                    <div className="flex items-center gap-2">
-                                        <Input
-                                            id="phone"
-                                            name="phone"
-                                            value={student.phone}
-                                            onChange={handleStudentChange}
-                                            placeholder="Phone Number"
-                                            className="w-full"
-                                            disabled={
-                                                !isEditing.phone || isSaving
-                                            }
-                                        />
-                                        {isEditing.phone ? (
-                                            <button
-                                                onClick={() =>
-                                                    handleDiscardField("phone")
-                                                }
-                                                className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
-                                                title="Discard changes"
-                                                disabled={isSaving}
-                                            >
-                                                <X className="h-4 w-4 text-red-600" />
-                                            </button>
-                                        ) : (
-                                            <button
-                                                onClick={() =>
-                                                    handleToggleEdit("phone")
-                                                }
-                                                className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
-                                                title="Edit field"
-                                                disabled={isSaving}
-                                            >
-                                                <PencilLine className="h-4 w-4 text-gray-600" />
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                                <div>
-                                    <Label
-                                        htmlFor="school"
-                                        className="block mb-1"
-                                    >
-                                        University/College
-                                    </Label>
-                                    <div className="flex items-center gap-2">
-                                        <Input
-                                            id="school"
-                                            name="school"
-                                            value={student.school}
-                                            onChange={handleStudentChange}
-                                            placeholder="University/College"
-                                            className="w-full"
-                                            disabled={
-                                                !isEditing.school || isSaving
-                                            }
-                                        />
-                                        {isEditing.school ? (
-                                            <button
-                                                onClick={() =>
-                                                    handleDiscardField("school")
-                                                }
-                                                className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
-                                                title="Discard changes"
-                                                disabled={isSaving}
-                                            >
-                                                <X className="h-4 w-4 text-red-600" />
-                                            </button>
-                                        ) : (
-                                            <button
-                                                onClick={() =>
-                                                    handleToggleEdit("school")
-                                                }
-                                                className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
-                                                title="Edit field"
-                                                disabled={isSaving}
-                                            >
-                                                <PencilLine className="h-4 w-4 text-gray-600" />
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                                <div>
-                                    <Label
-                                        htmlFor="program"
-                                        className="block mb-1"
-                                    >
-                                        Major/Program
-                                    </Label>
-                                    <div className="flex items-center gap-2">
-                                        <Input
-                                            id="program"
-                                            name="program"
-                                            value={student.program}
-                                            onChange={handleStudentChange}
-                                            placeholder="Major/Program"
-                                            className="w-full"
-                                            disabled={
-                                                !isEditing.program || isSaving
-                                            }
-                                        />
-                                        {isEditing.program ? (
-                                            <button
-                                                onClick={() =>
-                                                    handleDiscardField(
-                                                        "program"
-                                                    )
-                                                }
-                                                className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
-                                                title="Discard changes"
-                                                disabled={isSaving}
-                                            >
-                                                <X className="h-4 w-4 text-red-600" />
-                                            </button>
-                                        ) : (
-                                            <button
-                                                onClick={() =>
-                                                    handleToggleEdit("program")
-                                                }
-                                                className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
-                                                title="Edit field"
-                                                disabled={isSaving}
-                                            >
-                                                <PencilLine className="h-4 w-4 text-gray-600" />
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                                <div>
-                                    <Label
-                                        htmlFor="graduationYear"
-                                        className="block mb-1"
-                                    >
-                                        Expected Graduation Year
-                                    </Label>
-                                    <div className="flex items-center gap-2">
-                                        <Input
-                                            id="graduationYear"
-                                            name="graduationYear"
-                                            value={student.graduationYear}
-                                            onChange={handleStudentChange}
-                                            placeholder="Expected Graduation Year"
-                                            className="w-full"
-                                            disabled={
-                                                !isEditing.graduationYear ||
-                                                isSaving
-                                            }
-                                        />
-                                        {isEditing.graduationYear ? (
-                                            <button
-                                                onClick={() =>
-                                                    handleDiscardField(
-                                                        "graduationYear"
-                                                    )
-                                                }
-                                                className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
-                                                title="Discard changes"
-                                                disabled={isSaving}
-                                            >
-                                                <X className="h-4 w-4 text-red-600" />
-                                            </button>
-                                        ) : (
-                                            <button
-                                                onClick={() =>
-                                                    handleToggleEdit(
-                                                        "graduationYear"
-                                                    )
-                                                }
-                                                className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
-                                                title="Edit field"
-                                                disabled={isSaving}
-                                            >
-                                                <PencilLine className="h-4 w-4 text-gray-600" />
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </CardContent>
-
-                <CardHeader className="pb-3">
-                    <h2 className="text-lg font-semibold text-gray-800 border-t-3 pt-3">
-                        Connections
-                    </h2>
-                    <p className="text-sm text-gray-500">
-                        Link your external accounts and profiles.
-                    </p>
-                </CardHeader>
-                <CardContent>
-                    <div className="space-y-4">
-                        <div>
-                            <Label
-                                htmlFor="linkedin"
-                                className="block text-sm font-medium text-gray-700 mb-1"
-                            >
-                                LinkedIn URL
-                            </Label>
-                            <div className="flex items-center gap-2">
-                                <Input
-                                    id="linkedin"
-                                    name="linkedinUrl"
-                                    value={student.linkedinUrl || ""}
-                                    onChange={handleStudentChange}
-                                    placeholder="https://linkedin.com/in/username"
-                                    className="w-full border-gray-300 focus:ring-black focus:border-black"
-                                    disabled={
-                                        !isEditing.linkedinUrl || isSaving
-                                    }
-                                />
-                                {isEditing.linkedinUrl ? (
-                                    <button
-                                        onClick={() =>
-                                            handleDiscardField("linkedinUrl")
-                                        }
-                                        className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
-                                        title="Discard changes"
-                                        disabled={isSaving}
-                                    >
-                                        <X className="h-4 w-4 text-red-600" />
-                                    </button>
-                                ) : (
-                                    <button
-                                        onClick={() =>
-                                            handleToggleEdit("linkedinUrl")
-                                        }
-                                        className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
-                                        title="Edit field"
-                                        disabled={isSaving}
-                                    >
-                                        <PencilLine className="h-4 w-4 text-gray-600" />
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-
-                        <div>
-                            <Label
-                                htmlFor="devpostUsername"
-                                className="block text-sm font-medium text-gray-700 mb-1"
-                            >
-                                Devpost Username
-                            </Label>
-                            <div className="flex items-center gap-2">
-                                <Input
-                                    id="devpostUsername"
-                                    name="devpostUsername"
-                                    value={student.devpostUsername || ""}
-                                    onChange={handleStudentChange}
-                                    placeholder="Devpost Username"
-                                    className="flex-1 border-gray-300 focus:ring-black focus:border-black"
-                                    disabled={
-                                        !isEditing.devpostUsername ||
-                                        isSaving ||
-                                        isLoadingDevpost
-                                    }
-                                />
-                                {/* Only show Verify button when editing */}
-                                {isEditing.devpostUsername && (
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        onClick={fetchDevpostProfile}
-                                        disabled={
-                                            isLoadingDevpost ||
-                                            !student.devpostUsername ||
-                                            isSaving
-                                        }
-                                        className="whitespace-nowrap"
-                                    >
-                                        {isLoadingDevpost ? (
-                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                        ) : (
-                                            "Verify"
-                                        )}
-                                    </Button>
-                                )}
-                                {isEditing.devpostUsername ? (
-                                    <button
-                                        onClick={() =>
-                                            handleDiscardField(
-                                                "devpostUsername"
-                                            )
-                                        }
-                                        className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
-                                        title="Discard changes"
-                                        disabled={isSaving || isLoadingDevpost}
-                                    >
-                                        <X className="h-4 w-4 text-red-600" />
-                                    </button>
-                                ) : (
-                                    <button
-                                        onClick={() =>
-                                            handleToggleEdit("devpostUsername")
-                                        }
-                                        className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
-                                        title="Edit field"
-                                        disabled={isSaving}
-                                    >
-                                        <PencilLine className="h-4 w-4 text-gray-600" />
-                                    </button>
-                                )}
-                            </div>
-                            {devpostError && (
-                                <p className="text-sm text-red-600 mt-1">
-                                    {devpostError}
-                                </p>
-                            )}
-
-                            {/* Warning message if username is entered but not verified (only show when editing) */}
-                            {isEditing.devpostUsername &&
-                                student.devpostUsername &&
-                                student.devpostUsername.trim() !== "" &&
-                                (!student.devpost ||
-                                    student.devpost.username.toLowerCase() !==
-                                        student.devpostUsername.toLowerCase()) && (
-                                    <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                                        <p className="text-sm text-yellow-800">
-                                            ⚠️ Please verify your Devpost
-                                            username before saving
-                                        </p>
-                                    </div>
-                                )}
-
-                            {/* Display verified Devpost profile (case-insensitive) */}
-                            {student.devpost &&
-                                student.devpost.username.toLowerCase() ===
-                                    student.devpostUsername.toLowerCase() && (
-                                    <div className="mt-3 rounded-lg border p-4 bg-green-50 border-green-200">
-                                        <div className="flex items-start justify-between">
+                    <Accordion
+                        type="single"
+                        collapsible
+                        defaultValue="personal"
+                        className="w-full space-y-4"
+                    >
+                        <AccordionItem
+                            value="personal"
+                            className="border-2 border-gray-200 rounded-lg px-4 !border-b-2"
+                        >
+                            <AccordionTrigger className="text-lg font-semibold hover:no-underline cursor-pointer py-4">
+                                Personal Information
+                            </AccordionTrigger>
+                            <AccordionContent className="pb-4 pt-0">
+                                <div className="flex items-center space-x-4">
+                                    <div className="flex-grow space-y-4">
+                                        <div className="grid grid-cols-2 gap-4">
                                             <div>
-                                                <h4 className="font-medium text-gray-900">
-                                                    {student.devpost.name ||
-                                                        student.devpost
-                                                            .username}
-                                                </h4>
-                                                <p className="text-sm text-gray-600">
-                                                    @{student.devpost.username}
-                                                </p>
-                                                <div className="mt-2 grid grid-cols-4 gap-4 text-center">
-                                                    <div>
-                                                        <p className="text-lg font-semibold text-gray-900">
-                                                            {
-                                                                student.devpost
-                                                                    .stats
-                                                                    .projectCount
+                                                <Label
+                                                    htmlFor="firstName"
+                                                    className="block mb-1"
+                                                >
+                                                    First Name
+                                                </Label>
+                                                <Input
+                                                    id="firstName"
+                                                    name="firstName"
+                                                    value={student.firstName}
+                                                    placeholder="First Name"
+                                                    className="w-full"
+                                                    disabled
+                                                />
+                                            </div>
+                                            <div>
+                                                <Label
+                                                    htmlFor="lastName"
+                                                    className="block mb-1"
+                                                >
+                                                    Last Name
+                                                </Label>
+                                                <Input
+                                                    id="lastName"
+                                                    name="lastName"
+                                                    value={student.lastName}
+                                                    placeholder="Last Name"
+                                                    className="w-full"
+                                                    disabled
+                                                />
+                                            </div>
+                                            <div className="col-span-2">
+                                                <Label
+                                                    htmlFor="email"
+                                                    className="block mb-1"
+                                                >
+                                                    Email
+                                                </Label>
+                                                <Input
+                                                    id="email"
+                                                    name="email"
+                                                    value={student.email}
+                                                    placeholder="Email"
+                                                    className="w-full"
+                                                    disabled
+                                                />
+                                            </div>
+                                            <div>
+                                                <Label
+                                                    htmlFor="phone"
+                                                    className="block mb-1"
+                                                >
+                                                    Phone Number
+                                                </Label>
+                                                <div className="flex items-center gap-2">
+                                                    <Input
+                                                        id="phone"
+                                                        name="phone"
+                                                        value={student.phone}
+                                                        onChange={
+                                                            handleStudentChange
+                                                        }
+                                                        placeholder="Phone Number"
+                                                        className="w-full"
+                                                        disabled={
+                                                            !isEditing.phone ||
+                                                            isSaving
+                                                        }
+                                                    />
+                                                    {isEditing.phone ? (
+                                                        <button
+                                                            onClick={() =>
+                                                                handleDiscardField(
+                                                                    "phone"
+                                                                )
                                                             }
-                                                        </p>
-                                                        <p className="text-xs text-gray-600">
-                                                            Projects
-                                                        </p>
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-lg font-semibold text-gray-900">
-                                                            {
-                                                                student.devpost
-                                                                    .stats
-                                                                    .hackathonCount
+                                                            className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                                            title="Discard changes"
+                                                            disabled={isSaving}
+                                                        >
+                                                            <X className="h-4 w-4 text-red-600" />
+                                                        </button>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() =>
+                                                                handleToggleEdit(
+                                                                    "phone"
+                                                                )
                                                             }
-                                                        </p>
-                                                        <p className="text-xs text-gray-600">
-                                                            Hackathons
-                                                        </p>
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-lg font-semibold text-gray-900">
-                                                            {
-                                                                student.devpost
-                                                                    .stats
-                                                                    .winCount
+                                                            className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                                            title="Edit field"
+                                                            disabled={isSaving}
+                                                        >
+                                                            <PencilLine className="h-4 w-4 text-gray-600" />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <Label
+                                                    htmlFor="school"
+                                                    className="block mb-1"
+                                                >
+                                                    University/College
+                                                </Label>
+                                                <div className="flex items-center gap-2">
+                                                    <Input
+                                                        id="school"
+                                                        name="school"
+                                                        value={student.school}
+                                                        onChange={
+                                                            handleStudentChange
+                                                        }
+                                                        placeholder="University/College"
+                                                        className="w-full"
+                                                        disabled={
+                                                            !isEditing.school ||
+                                                            isSaving
+                                                        }
+                                                    />
+                                                    {isEditing.school ? (
+                                                        <button
+                                                            onClick={() =>
+                                                                handleDiscardField(
+                                                                    "school"
+                                                                )
                                                             }
-                                                        </p>
-                                                        <p className="text-xs text-gray-600">
-                                                            Wins
-                                                        </p>
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-lg font-semibold text-gray-900">
-                                                            {student.devpost
-                                                                .achievements
-                                                                ?.firstPlaceWins ||
-                                                                0}
-                                                        </p>
-                                                        <p className="text-xs text-gray-600">
-                                                            1st Places
-                                                        </p>
-                                                    </div>
+                                                            className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                                            title="Discard changes"
+                                                            disabled={isSaving}
+                                                        >
+                                                            <X className="h-4 w-4 text-red-600" />
+                                                        </button>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() =>
+                                                                handleToggleEdit(
+                                                                    "school"
+                                                                )
+                                                            }
+                                                            className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                                            title="Edit field"
+                                                            disabled={isSaving}
+                                                        >
+                                                            <PencilLine className="h-4 w-4 text-gray-600" />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <Label
+                                                    htmlFor="program"
+                                                    className="block mb-1"
+                                                >
+                                                    Major/Program
+                                                </Label>
+                                                <div className="flex items-center gap-2">
+                                                    <Input
+                                                        id="program"
+                                                        name="program"
+                                                        value={student.program}
+                                                        onChange={
+                                                            handleStudentChange
+                                                        }
+                                                        placeholder="Major/Program"
+                                                        className="w-full"
+                                                        disabled={
+                                                            !isEditing.program ||
+                                                            isSaving
+                                                        }
+                                                    />
+                                                    {isEditing.program ? (
+                                                        <button
+                                                            onClick={() =>
+                                                                handleDiscardField(
+                                                                    "program"
+                                                                )
+                                                            }
+                                                            className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                                            title="Discard changes"
+                                                            disabled={isSaving}
+                                                        >
+                                                            <X className="h-4 w-4 text-red-600" />
+                                                        </button>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() =>
+                                                                handleToggleEdit(
+                                                                    "program"
+                                                                )
+                                                            }
+                                                            className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                                            title="Edit field"
+                                                            disabled={isSaving}
+                                                        >
+                                                            <PencilLine className="h-4 w-4 text-gray-600" />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <Label
+                                                    htmlFor="graduationYear"
+                                                    className="block mb-1"
+                                                >
+                                                    Expected Graduation Year
+                                                </Label>
+                                                <div className="flex items-center gap-2">
+                                                    <Input
+                                                        id="graduationYear"
+                                                        name="graduationYear"
+                                                        value={
+                                                            student.graduationYear
+                                                        }
+                                                        onChange={
+                                                            handleStudentChange
+                                                        }
+                                                        placeholder="Expected Graduation Year"
+                                                        className="w-full"
+                                                        disabled={
+                                                            !isEditing.graduationYear ||
+                                                            isSaving
+                                                        }
+                                                    />
+                                                    {isEditing.graduationYear ? (
+                                                        <button
+                                                            onClick={() =>
+                                                                handleDiscardField(
+                                                                    "graduationYear"
+                                                                )
+                                                            }
+                                                            className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                                            title="Discard changes"
+                                                            disabled={isSaving}
+                                                        >
+                                                            <X className="h-4 w-4 text-red-600" />
+                                                        </button>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() =>
+                                                                handleToggleEdit(
+                                                                    "graduationYear"
+                                                                )
+                                                            }
+                                                            className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                                            title="Edit field"
+                                                            disabled={isSaving}
+                                                        >
+                                                            <PencilLine className="h-4 w-4 text-gray-600" />
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
-                                        <p className="text-xs text-gray-500 mt-3">
-                                            ✓ Profile verified and saved
+                                    </div>
+                                </div>
+                            </AccordionContent>
+                        </AccordionItem>
+
+                        <AccordionItem
+                            value="connections"
+                            className="border-2 border-gray-200 rounded-lg px-4 !border-b-2"
+                        >
+                            <AccordionTrigger className="text-lg font-semibold hover:no-underline cursor-pointer py-4">
+                                Connections
+                            </AccordionTrigger>
+                            <AccordionContent className="pb-4 pt-0">
+                                <div className="space-y-4">
+                                    <div>
+                                        <Label
+                                            htmlFor="linkedin"
+                                            className="block text-sm font-medium text-gray-700 mb-1"
+                                        >
+                                            LinkedIn URL
+                                        </Label>
+                                        <div className="flex items-center gap-2">
+                                            <Input
+                                                id="linkedin"
+                                                name="linkedinUrl"
+                                                value={
+                                                    student.linkedinUrl || ""
+                                                }
+                                                onChange={handleStudentChange}
+                                                placeholder="https://linkedin.com/in/username"
+                                                className="w-full border-gray-300 focus:ring-black focus:border-black"
+                                                disabled={
+                                                    !isEditing.linkedinUrl ||
+                                                    isSaving
+                                                }
+                                            />
+                                            {isEditing.linkedinUrl ? (
+                                                <button
+                                                    onClick={() =>
+                                                        handleDiscardField(
+                                                            "linkedinUrl"
+                                                        )
+                                                    }
+                                                    className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                                    title="Discard changes"
+                                                    disabled={isSaving}
+                                                >
+                                                    <X className="h-4 w-4 text-red-600" />
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    onClick={() =>
+                                                        handleToggleEdit(
+                                                            "linkedinUrl"
+                                                        )
+                                                    }
+                                                    className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                                    title="Edit field"
+                                                    disabled={isSaving}
+                                                >
+                                                    <PencilLine className="h-4 w-4 text-gray-600" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <Label
+                                            htmlFor="portfolioUrl"
+                                            className="block text-sm font-medium text-gray-700 mb-1"
+                                        >
+                                            Portfolio URL
+                                        </Label>
+                                        <div className="flex items-center gap-2">
+                                            <Input
+                                                id="portfolioUrl"
+                                                name="portfolioUrl"
+                                                value={
+                                                    student.portfolioUrl || ""
+                                                }
+                                                onChange={handleStudentChange}
+                                                placeholder="https://yourportfolio.com"
+                                                className="w-full border-gray-300 focus:ring-black focus:border-black"
+                                                disabled={
+                                                    !isEditing.portfolioUrl ||
+                                                    isSaving
+                                                }
+                                            />
+                                            {isEditing.portfolioUrl ? (
+                                                <button
+                                                    onClick={() =>
+                                                        handleDiscardField(
+                                                            "portfolioUrl"
+                                                        )
+                                                    }
+                                                    className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                                    title="Discard changes"
+                                                    disabled={isSaving}
+                                                >
+                                                    <X className="h-4 w-4 text-red-600" />
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    onClick={() =>
+                                                        handleToggleEdit(
+                                                            "portfolioUrl"
+                                                        )
+                                                    }
+                                                    className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                                    title="Edit field"
+                                                    disabled={isSaving}
+                                                >
+                                                    <PencilLine className="h-4 w-4 text-gray-600" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <Label
+                                            htmlFor="devpostUsername"
+                                            className="block text-sm font-medium text-gray-700 mb-1"
+                                        >
+                                            Devpost Username
+                                        </Label>
+                                        <div className="flex items-center gap-2">
+                                            <Input
+                                                id="devpostUsername"
+                                                name="devpostUsername"
+                                                value={
+                                                    student.devpostUsername ||
+                                                    ""
+                                                }
+                                                onChange={handleStudentChange}
+                                                placeholder="Devpost Username"
+                                                className="flex-1 border-gray-300 focus:ring-black focus:border-black"
+                                                disabled={
+                                                    !isEditing.devpostUsername ||
+                                                    isSaving ||
+                                                    isLoadingDevpost
+                                                }
+                                            />
+                                            {/* Only show Verify button when editing */}
+                                            {isEditing.devpostUsername && (
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    onClick={
+                                                        fetchDevpostProfile
+                                                    }
+                                                    disabled={
+                                                        isLoadingDevpost ||
+                                                        !student.devpostUsername ||
+                                                        isSaving
+                                                    }
+                                                    className="whitespace-nowrap"
+                                                >
+                                                    {isLoadingDevpost ? (
+                                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                                    ) : (
+                                                        "Verify"
+                                                    )}
+                                                </Button>
+                                            )}
+                                            {isEditing.devpostUsername ? (
+                                                <button
+                                                    onClick={() =>
+                                                        handleDiscardField(
+                                                            "devpostUsername"
+                                                        )
+                                                    }
+                                                    className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                                    title="Discard changes"
+                                                    disabled={
+                                                        isSaving ||
+                                                        isLoadingDevpost
+                                                    }
+                                                >
+                                                    <X className="h-4 w-4 text-red-600" />
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    onClick={() =>
+                                                        handleToggleEdit(
+                                                            "devpostUsername"
+                                                        )
+                                                    }
+                                                    className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                                    title="Edit field"
+                                                    disabled={isSaving}
+                                                >
+                                                    <PencilLine className="h-4 w-4 text-gray-600" />
+                                                </button>
+                                            )}
+                                        </div>
+                                        {devpostError && (
+                                            <p className="text-sm text-red-600 mt-1">
+                                                {devpostError}
+                                            </p>
+                                        )}
+
+                                        {/* Warning message if username is entered but not verified (only show when editing) */}
+                                        {isEditing.devpostUsername &&
+                                            student.devpostUsername &&
+                                            student.devpostUsername.trim() !==
+                                                "" &&
+                                            (!student.devpost ||
+                                                student.devpost.username.toLowerCase() !==
+                                                    student.devpostUsername.toLowerCase()) && (
+                                                <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                                    <p className="text-sm text-yellow-800">
+                                                        ⚠️ Please verify your
+                                                        Devpost username before
+                                                        saving
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                        {/* Display verified Devpost profile (case-insensitive) */}
+                                        {student.devpost &&
+                                            student.devpost.username.toLowerCase() ===
+                                                student.devpostUsername.toLowerCase() && (
+                                                <div className="mt-3 rounded-lg border p-4 bg-green-50 border-green-200">
+                                                    <div className="flex items-start justify-between">
+                                                        <div>
+                                                            <h4 className="font-medium text-gray-900">
+                                                                {student.devpost
+                                                                    .name ||
+                                                                    student
+                                                                        .devpost
+                                                                        .username}
+                                                            </h4>
+                                                            <p className="text-sm text-gray-600">
+                                                                @
+                                                                {
+                                                                    student
+                                                                        .devpost
+                                                                        .username
+                                                                }
+                                                            </p>
+                                                            <div className="mt-2 grid grid-cols-4 gap-4 text-center">
+                                                                <div>
+                                                                    <p className="text-lg font-semibold text-gray-900">
+                                                                        {
+                                                                            student
+                                                                                .devpost
+                                                                                .stats
+                                                                                .projectCount
+                                                                        }
+                                                                    </p>
+                                                                    <p className="text-xs text-gray-600">
+                                                                        Projects
+                                                                    </p>
+                                                                </div>
+                                                                <div>
+                                                                    <p className="text-lg font-semibold text-gray-900">
+                                                                        {
+                                                                            student
+                                                                                .devpost
+                                                                                .stats
+                                                                                .hackathonCount
+                                                                        }
+                                                                    </p>
+                                                                    <p className="text-xs text-gray-600">
+                                                                        Hackathons
+                                                                    </p>
+                                                                </div>
+                                                                <div>
+                                                                    <p className="text-lg font-semibold text-gray-900">
+                                                                        {
+                                                                            student
+                                                                                .devpost
+                                                                                .stats
+                                                                                .winCount
+                                                                        }
+                                                                    </p>
+                                                                    <p className="text-xs text-gray-600">
+                                                                        Wins
+                                                                    </p>
+                                                                </div>
+                                                                <div>
+                                                                    <p className="text-lg font-semibold text-gray-900">
+                                                                        {student
+                                                                            .devpost
+                                                                            .achievements
+                                                                            ?.firstPlaceWins ||
+                                                                            0}
+                                                                    </p>
+                                                                    <p className="text-xs text-gray-600">
+                                                                        1st
+                                                                        Places
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <p className="text-xs text-gray-500 mt-3">
+                                                        ✓ Profile verified and
+                                                        saved
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                        {/* Info message when no username is entered */}
+                                        {(!student.devpostUsername ||
+                                            student.devpostUsername.trim() ===
+                                                "") && (
+                                            <p className="text-xs text-gray-500 mt-2">
+                                                Enter your Devpost username and
+                                                click "Verify" to connect your
+                                                profile
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <Label
+                                            htmlFor="githubUsername"
+                                            className="block text-sm font-medium text-gray-700 mb-1"
+                                        >
+                                            GitHub Username
+                                        </Label>
+                                        <div className="flex items-center gap-2">
+                                            <Input
+                                                id="githubUsername"
+                                                name="githubUsername"
+                                                value={
+                                                    student.githubUsername || ""
+                                                }
+                                                onChange={handleStudentChange}
+                                                placeholder="GitHub Username"
+                                                className="flex-1 border-gray-300 focus:ring-black focus:border-black"
+                                                disabled={
+                                                    !isEditing.githubUsername ||
+                                                    isSaving ||
+                                                    isLoadingGithub
+                                                }
+                                            />
+                                            {/* Show Connect button when NOT connected OR when username changed (independent of editing state) */}
+                                            {(!student.github ||
+                                                (student.githubUsername &&
+                                                    student.github.username.toLowerCase() !==
+                                                        student.githubUsername.toLowerCase())) && (
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    onClick={fetchGithubProfile}
+                                                    disabled={
+                                                        isLoadingGithub ||
+                                                        isSaving
+                                                    }
+                                                    className="whitespace-nowrap"
+                                                >
+                                                    {isLoadingGithub ? (
+                                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                                    ) : (
+                                                        <>
+                                                            <Github className="h-4 w-4 mr-1" />
+                                                            Connect
+                                                        </>
+                                                    )}
+                                                </Button>
+                                            )}
+                                            {isEditing.githubUsername ? (
+                                                <button
+                                                    onClick={() =>
+                                                        handleDiscardField(
+                                                            "githubUsername"
+                                                        )
+                                                    }
+                                                    className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                                    title="Discard changes"
+                                                    disabled={
+                                                        isSaving ||
+                                                        isLoadingGithub
+                                                    }
+                                                >
+                                                    <X className="h-4 w-4 text-red-600" />
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    onClick={() =>
+                                                        handleToggleEdit(
+                                                            "githubUsername"
+                                                        )
+                                                    }
+                                                    className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                                    title="Edit field"
+                                                    disabled={isSaving}
+                                                >
+                                                    <PencilLine className="h-4 w-4 text-gray-600" />
+                                                </button>
+                                            )}
+                                        </div>
+                                        {githubError && (
+                                            <p className="text-sm text-red-600 mt-1">
+                                                {githubError}
+                                            </p>
+                                        )}
+
+                                        {/* Display connected GitHub profile */}
+                                        {student.github && (
+                                            <div className="mt-3 rounded-lg border p-4 bg-blue-50 border-blue-200">
+                                                <div className="flex items-start gap-4">
+                                                    <img
+                                                        src={
+                                                            student.github
+                                                                .avatarUrl
+                                                        }
+                                                        alt={
+                                                            student.github
+                                                                .username
+                                                        }
+                                                        className="w-16 h-16 rounded-full"
+                                                    />
+                                                    <div className="flex-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <h4 className="font-medium text-gray-900">
+                                                                {student.github
+                                                                    .name ||
+                                                                    student
+                                                                        .github
+                                                                        .username}
+                                                            </h4>
+                                                            <a
+                                                                href={`https://github.com/${student.github.username}`}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="text-sm text-blue-600 hover:text-blue-800"
+                                                            >
+                                                                @
+                                                                {
+                                                                    student
+                                                                        .github
+                                                                        .username
+                                                                }
+                                                            </a>
+                                                        </div>
+                                                        {student.github.bio && (
+                                                            <p className="text-sm text-gray-600 mt-1">
+                                                                {
+                                                                    student
+                                                                        .github
+                                                                        .bio
+                                                                }
+                                                            </p>
+                                                        )}
+                                                        <div className="mt-3 grid grid-cols-4 gap-4 text-center">
+                                                            <div>
+                                                                <p className="text-lg font-semibold text-gray-900">
+                                                                    {
+                                                                        student
+                                                                            .github
+                                                                            .repoCount
+                                                                    }
+                                                                </p>
+                                                                <p className="text-xs text-gray-600">
+                                                                    Repos
+                                                                </p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-lg font-semibold text-gray-900">
+                                                                    {
+                                                                        student
+                                                                            .github
+                                                                            .starsReceived
+                                                                    }
+                                                                </p>
+                                                                <p className="text-xs text-gray-600">
+                                                                    Stars
+                                                                </p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-lg font-semibold text-gray-900">
+                                                                    {
+                                                                        student
+                                                                            .github
+                                                                            .followers
+                                                                    }
+                                                                </p>
+                                                                <p className="text-xs text-gray-600">
+                                                                    Followers
+                                                                </p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-lg font-semibold text-gray-900">
+                                                                    {
+                                                                        student
+                                                                            .github
+                                                                            .contributionCount
+                                                                    }
+                                                                </p>
+                                                                <p className="text-xs text-gray-600">
+                                                                    Contributions
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        {student.github
+                                                            .topLanguages
+                                                            .length > 0 && (
+                                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                                {student.github.topLanguages
+                                                                    .slice(0, 5)
+                                                                    .map(
+                                                                        (
+                                                                            lang
+                                                                        ) => (
+                                                                            <span
+                                                                                key={
+                                                                                    lang
+                                                                                }
+                                                                                className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full"
+                                                                            >
+                                                                                {
+                                                                                    lang
+                                                                                }
+                                                                            </span>
+                                                                        )
+                                                                    )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <p className="text-xs text-gray-500 mt-3">
+                                                    ✓ Profile connected and
+                                                    saved
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        {/* Warning when username changed after connection */}
+                                        {originalStudent?.github &&
+                                            student.githubUsername &&
+                                            originalStudent.github.username.toLowerCase() !==
+                                                student.githubUsername.toLowerCase() && (
+                                                <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                                    <p className="text-sm text-yellow-800">
+                                                        ⚠️ Username changed -
+                                                        you'll be disconnected
+                                                        from extended GitHub
+                                                        data. Click "X" to
+                                                        discard changes and keep
+                                                        your current connection
+                                                        or save changes to
+                                                        disconnect.
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                        {/* Info message when no connection */}
+                                        {!student.github && (
+                                            <p className="text-xs text-gray-500 mt-2">
+                                                {student.githubUsername &&
+                                                student.githubUsername.trim() !==
+                                                    ""
+                                                    ? "Press 'Save Changes' to save your username or Click 'Connect' to link your profile for extended data."
+                                                    : "Enter your GitHub username or click 'Connect' to link your profile"}
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                            </AccordionContent>
+                        </AccordionItem>
+
+                        <AccordionItem
+                            value="skills"
+                            className="border-2 border-gray-200 rounded-lg px-4 !border-b-2"
+                        >
+                            <AccordionTrigger className="text-lg font-semibold hover:no-underline cursor-pointer py-4">
+                                Skills
+                            </AccordionTrigger>
+                            <AccordionContent className="pb-6 pt-0">
+                                <div className="space-y-4">
+                                    <div>
+                                        <Label
+                                            htmlFor="newSkill"
+                                            className="block text-sm font-medium text-gray-700 mb-2"
+                                        >
+                                            Add a new skill
+                                        </Label>
+                                        <div className="flex gap-2">
+                                            <Input
+                                                id="newSkill"
+                                                value={newSkill}
+                                                onChange={(e) =>
+                                                    setNewSkill(e.target.value)
+                                                }
+                                                onKeyPress={handleKeyPress}
+                                                placeholder="e.g., React, Python, Design..."
+                                                className="flex-1"
+                                                maxLength={50}
+                                                disabled={
+                                                    skillsArray.length >= 15
+                                                }
+                                            />
+                                            <Button
+                                                type="button"
+                                                onClick={handleAddSkill}
+                                                disabled={
+                                                    skillsArray.length >= 15 ||
+                                                    !newSkill.trim()
+                                                }
+                                                className="bg-black text-white hover:bg-gray-800"
+                                            >
+                                                Add
+                                            </Button>
+                                        </div>
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            {skillsArray.length >= 15
+                                                ? "Maximum skills reached"
+                                                : `You can add ${
+                                                      15 - skillsArray.length
+                                                  } more skill${
+                                                      15 -
+                                                          skillsArray.length !==
+                                                      1
+                                                          ? "s"
+                                                          : ""
+                                                  }`}
+                                        </p>
+                                    </div>
+
+                                    {skillsArray.length > 0 ? (
+                                        <div>
+                                            <Label className="block text-sm font-medium text-gray-700 mb-2">
+                                                Your Skills
+                                            </Label>
+                                            <div className="flex flex-wrap gap-2">
+                                                {skillsArray.map(
+                                                    (skill, index) => (
+                                                        <div
+                                                            key={index}
+                                                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-full text-sm border border-blue-200"
+                                                        >
+                                                            <span>{skill}</span>
+                                                            <button
+                                                                onClick={() =>
+                                                                    handleRemoveSkill(
+                                                                        index
+                                                                    )
+                                                                }
+                                                                className="ml-1 hover:bg-blue-100 rounded-full p-0.5 transition-colors cursor-pointer"
+                                                                title="Remove skill"
+                                                            >
+                                                                <X className="h-3 w-3" />
+                                                            </button>
+                                                        </div>
+                                                    )
+                                                )}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
+                                            <p className="text-sm text-gray-500">
+                                                No skills added yet. Add your
+                                                first skill above!
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            </AccordionContent>
+                        </AccordionItem>
+
+                        <AccordionItem
+                            value="resume"
+                            className="border-2 border-gray-200 rounded-lg px-4 !border-b-2"
+                        >
+                            <AccordionTrigger className="text-lg font-semibold hover:no-underline cursor-pointer py-4">
+                                Resume
+                            </AccordionTrigger>
+                            <AccordionContent className="pb-6 pt-0">
+                                <div className="block text-sm font-medium text-gray-700 mb-2">
+                                    Resume (PDF)
+                                </div>
+                                {student.resume?.name ? (
+                                    <div className="mb-3 p-4 bg-green-50 border border-green-200 rounded-lg">
+                                        <div className="flex items-start justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className="bg-green-100 p-2 rounded-lg">
+                                                    <Upload className="h-5 w-5 text-green-600" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-semibold text-gray-900">
+                                                        {student.resume.name}
+                                                        .pdf
+                                                    </p>
+                                                    <p className="text-xs text-gray-500 mt-0.5">
+                                                        Uploaded on{" "}
+                                                        {new Date(
+                                                            student.resume
+                                                                .uploadedAt
+                                                                ._seconds * 1000
+                                                        ).toLocaleDateString()}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            {student.resume.url && (
+                                                <a
+                                                    href={student.resume.url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-xs font-medium text-green-700 hover:text-green-800 underline"
+                                                >
+                                                    View
+                                                </a>
+                                            )}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="mb-3 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                                        <p className="text-sm text-gray-500">
+                                            No resume uploaded yet.
                                         </p>
                                     </div>
                                 )}
 
-                            {/* Info message when no username is entered */}
-                            {(!student.devpostUsername ||
-                                student.devpostUsername.trim() === "") && (
-                                <p className="text-xs text-gray-500 mt-2">
-                                    Enter your Devpost username and click
-                                    "Verify" to connect your profile
-                                </p>
-                            )}
-                        </div>
-
-                        <div>
-                            <Label
-                                htmlFor="githubUsername"
-                                className="block text-sm font-medium text-gray-700 mb-1"
-                            >
-                                GitHub Username
-                            </Label>
-                            <div className="flex items-center gap-2">
-                                <Input
-                                    id="githubUsername"
-                                    name="githubUsername"
-                                    value={student.githubUsername || ""}
-                                    onChange={handleStudentChange}
-                                    placeholder="GitHub Username"
-                                    className="w-full border-gray-300 focus:ring-black focus:border-black"
-                                    disabled={
-                                        !isEditing.githubUsername || isSaving
-                                    }
-                                />
-                                {isEditing.githubUsername ? (
-                                    <button
-                                        onClick={() =>
-                                            handleDiscardField("githubUsername")
-                                        }
-                                        className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
-                                        title="Discard changes"
-                                        disabled={isSaving}
-                                    >
-                                        <X className="h-4 w-4 text-red-600" />
-                                    </button>
-                                ) : (
-                                    <button
-                                        onClick={() =>
-                                            handleToggleEdit("githubUsername")
-                                        }
-                                        className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
-                                        title="Edit field"
-                                        disabled={isSaving}
-                                    >
-                                        <PencilLine className="h-4 w-4 text-gray-600" />
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="mt-4">
-                            <div className="block text-sm font-medium text-gray-700 mb-2">
-                                Resume (PDF)
-                            </div>
-
-                            {student.resume?.name ? (
-                                <div className="mb-3 p-4 bg-green-50 border border-green-200 rounded-lg">
-                                    <div className="flex items-start justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <div className="bg-green-100 p-2 rounded-lg">
-                                                <Upload className="h-5 w-5 text-green-600" />
-                                            </div>
-                                            <div>
-                                                <p className="text-sm font-semibold text-gray-900">
-                                                    {student.resume.name}.pdf
-                                                </p>
-                                                <p className="text-xs text-gray-500 mt-0.5">
-                                                    Uploaded on{" "}
-                                                    {new Date(
-                                                        student.resume
-                                                            .uploadedAt
-                                                            ._seconds * 1000
-                                                    ).toLocaleDateString()}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        {student.resume.url && (
-                                            <a
-                                                href={student.resume.url}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-xs font-medium text-green-700 hover:text-green-800 underline"
-                                            >
-                                                View
-                                            </a>
-                                        )}
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="mb-3 p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                                    <p className="text-sm text-gray-500">
-                                        No resume uploaded yet.
-                                    </p>
-                                </div>
-                            )}
-
-                            <div className="flex items-center gap-2 mt-2">
-                                <Input
-                                    id="resume"
-                                    type="file"
-                                    accept="application/pdf"
-                                    onChange={handleResumeChange}
-                                    className="w-full cursor-pointer"
-                                />
-                                <Button
-                                    className="bg-black text-white"
-                                    disabled={!resumeFile || isUploadingResume}
-                                    onClick={async () => {
-                                        await handleResumeUpload();
-                                        const updatedStudent =
-                                            await apiService.getStudent();
-                                        setStudent(updatedStudent as any);
-                                        setOriginalStudent(
-                                            updatedStudent as any
-                                        );
-                                    }}
-                                >
-                                    {isUploadingResume ? (
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                    ) : (
-                                        "Upload"
-                                    )}
-                                </Button>
-                            </div>
-
-                            {resumeFile && (
-                                <p className="mt-1 text-sm text-gray-500">
-                                    Ready to upload:{" "}
-                                    <span className="font-medium">
-                                        {resumeFile.name}
-                                    </span>
-                                </p>
-                            )}
-                            {hasChanges && (
-                                <div className="flex gap-3 justify-end pt-4 border-t mt-14">
+                                <div className="flex items-center gap-2 mt-2">
+                                    <Input
+                                        id="resume"
+                                        type="file"
+                                        accept="application/pdf"
+                                        onChange={handleResumeChange}
+                                        className="w-full cursor-pointer"
+                                    />
                                     <Button
-                                        variant="ghost"
-                                        onClick={handleCancelChanges}
-                                        disabled={isSaving}
+                                        className="bg-black text-white"
+                                        disabled={
+                                            !resumeFile || isUploadingResume
+                                        }
+                                        onClick={async () => {
+                                            await handleResumeUpload();
+                                            const updatedStudent =
+                                                await apiService.getStudent();
+                                            setStudent(updatedStudent as any);
+                                            setOriginalStudent(
+                                                updatedStudent as any
+                                            );
+                                        }}
                                     >
-                                        Cancel
-                                    </Button>
-                                    <Button
-                                        className="bg-black text-white hover:bg-gray-800"
-                                        onClick={handleSaveChanges}
-                                        disabled={isSaving}
-                                    >
-                                        {isSaving ? (
-                                            <>
-                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                Saving...
-                                            </>
+                                        {isUploadingResume ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" />
                                         ) : (
-                                            "Save Changes"
+                                            "Upload"
                                         )}
                                     </Button>
                                 </div>
-                            )}
+
+                                {resumeFile && (
+                                    <p className="mt-1 text-sm text-gray-500">
+                                        Ready to upload:{" "}
+                                        <span className="font-medium">
+                                            {resumeFile.name}
+                                        </span>
+                                    </p>
+                                )}
+                            </AccordionContent>
+                        </AccordionItem>
+                    </Accordion>
+
+                    {hasChanges && (
+                        <div className="flex gap-3 justify-end pt-4 border-t mt-6">
+                            <Button
+                                variant="ghost"
+                                onClick={handleCancelChanges}
+                                disabled={isSaving}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                className="bg-black text-white hover:bg-gray-800"
+                                onClick={handleSaveChanges}
+                                disabled={isSaving}
+                            >
+                                {isSaving ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Saving...
+                                    </>
+                                ) : (
+                                    "Save Changes"
+                                )}
+                            </Button>
                         </div>
-                    </div>
+                    )}
                 </CardContent>
             </Card>
         </div>

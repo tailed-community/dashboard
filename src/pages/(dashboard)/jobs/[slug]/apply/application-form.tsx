@@ -218,8 +218,8 @@ export default function ApplicationForm({
             const githubProvider = new GithubAuthProvider();
 
             githubProvider.addScope("read:user");
-            githubProvider.addScope("repo");
-            githubProvider.addScope("read:org");
+            // githubProvider.addScope("repo");
+            // githubProvider.addScope("read:org");
 
             // Check if the user already has GitHub provider linked
             const providerData = studentAuth.currentUser?.providerData || [];
