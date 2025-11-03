@@ -128,8 +128,8 @@ export const signInWithGithub = async () => {
 
   // Add required scopes for retrieving user data
   provider.addScope("read:user");
-  provider.addScope("repo");
-  provider.addScope("read:org");
+  // provider.addScope("repo");
+  // provider.addScope("read:org");
 
   // provider.setCustomParameters({
   //   'auth_domain': import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
