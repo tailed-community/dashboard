@@ -48,6 +48,12 @@ export const sendLoginLink = async (
   tenantId = TENANT_IDS.STUDENTS,
   redirectUrl?: string // Add optional redirectUrl
 ) => {
+  const authDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN;
+  const isCustomDomain =
+    authDomain &&
+    !authDomain.endsWith(".web.app") &&
+    !authDomain.endsWith(".firebaseapp.com");
+
   const actionCodeSettings = {
     url: `${
       window.location.origin
@@ -55,9 +61,7 @@ export const sendLoginLink = async (
       redirectUrl || ""
     )}`, // Include tenantId in redirect URL
     handleCodeInApp: true,
-    ...(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN
-      ? { linkDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN }
-      : {}),
+    ...(isCustomDomain ? { linkDomain: authDomain } : {}),
   };
 
   const auth = tenantId ? getAuthForTenant(tenantId) : studentAuth;
