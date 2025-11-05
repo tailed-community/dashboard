@@ -31,6 +31,7 @@ type StudentProps = {
     firstName: string;
     lastName: string;
     phone: string;
+    location: string;
     school: string;
     program: string;
     graduationYear: string;
@@ -40,7 +41,7 @@ type StudentProps = {
     portfolioUrl: string;
     githubUsername: string;
     github?: GithubProfile; // Full GitHub profile data
-    skills: string;
+    skills: string[];
     resume: {
         id: string;
         name: string;
@@ -91,6 +92,7 @@ export default function AccountPage() {
         firstName: "",
         lastName: "",
         phone: "",
+        location: "",
         school: "",
         program: "",
         graduationYear: "",
@@ -98,7 +100,7 @@ export default function AccountPage() {
         portfolioUrl: "",
         devpostUsername: "",
         githubUsername: "",
-        skills: "",
+        skills: [],
         resume: {
             id: "",
             name: "",
@@ -122,6 +124,7 @@ export default function AccountPage() {
     // Track which fields are being edited
     const [isEditing, setIsEditing] = useState({
         phone: false,
+        location: false,
         school: false,
         program: false,
         graduationYear: false,
@@ -176,13 +179,16 @@ export default function AccountPage() {
         fetchData();
     }, []);
 
-    // Parse skills string into array when student data changes
+    // Parse skills array when student data changes
     useEffect(() => {
-        if (student.skills) {
-            const skills = student.skills
-                .split(",")
-                .map((s) => s.trim())
-                .filter((s) => s.length > 0);
+        if (student.skills && Array.isArray(student.skills)) {
+            // Flatten and trim all skills, also split by comma if any skill contains comma
+            const skills = student.skills.flatMap((skill) =>
+                skill
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter((s) => s.length > 0)
+            );
             setSkillsArray(skills);
         } else {
             setSkillsArray([]);
@@ -193,8 +199,15 @@ export default function AccountPage() {
     useEffect(() => {
         if (!originalStudent) return;
 
+        // Helper to compare arrays
+        const arraysEqual = (a: string[], b: string[]) => {
+            if (a.length !== b.length) return false;
+            return a.every((val, idx) => val === b[idx]);
+        };
+
         const changed =
             student.phone !== originalStudent.phone ||
+            student.location !== originalStudent.location ||
             student.school !== originalStudent.school ||
             student.program !== originalStudent.program ||
             student.graduationYear !== originalStudent.graduationYear ||
@@ -202,7 +215,7 @@ export default function AccountPage() {
             student.portfolioUrl !== originalStudent.portfolioUrl ||
             student.devpostUsername !== originalStudent.devpostUsername ||
             student.githubUsername !== originalStudent.githubUsername ||
-            student.skills !== originalStudent.skills;
+            !arraysEqual(student.skills, originalStudent.skills);
 
         setHasChanges(changed);
     }, [student, originalStudent]);
@@ -429,10 +442,12 @@ export default function AccountPage() {
                 });
             }
 
-            // Create a trimmed copy of the student data
+            // Create a trimmed copy of the student data with skills as array
+            const trimmedLocation = student.location?.trim() || "";
             const trimmedStudentData: StudentProps = {
                 ...student,
                 phone: student.phone?.trim() || "",
+                location: trimmedLocation === "" ? null : trimmedLocation,
                 school: student.school?.trim() || "",
                 program: student.program?.trim() || "",
                 graduationYear: student.graduationYear?.trim() || "",
@@ -440,9 +455,11 @@ export default function AccountPage() {
                 portfolioUrl: student.portfolioUrl?.trim() || "",
                 devpostUsername: student.devpostUsername?.trim() || "",
                 githubUsername: student.githubUsername?.trim() || "",
-                skills: student.skills?.trim() || "",
+                skills: student.skills
+                    .map((skill) => skill.trim())
+                    .filter((skill) => skill.length > 0),
                 github: finalGithubProfile,
-            };
+            } as any;
 
             // Send trimmed data to backend
             const response = await apiService.updateStudent(trimmedStudentData);
@@ -488,6 +505,7 @@ export default function AccountPage() {
             // Reset all editing states
             setIsEditing({
                 phone: false,
+                location: false,
                 school: false,
                 program: false,
                 graduationYear: false,
@@ -516,6 +534,7 @@ export default function AccountPage() {
             // Reset all editing states
             setIsEditing({
                 phone: false,
+                location: false,
                 school: false,
                 program: false,
                 graduationYear: false,
@@ -609,6 +628,9 @@ export default function AccountPage() {
                       }
                     : null
             );
+
+            // Remove edit state after successful verification
+            setIsEditing((prev) => ({ ...prev, devpostUsername: false }));
 
             toast.success("Devpost profile verified!", {
                 description: `Found ${responseData.data.stats.projectCount} projects and ${responseData.data.stats.hackathonCount} hackathons`,
@@ -800,25 +822,52 @@ export default function AccountPage() {
             return;
         }
 
-        if (skillsArray.length >= 15) {
-            toast.error("Maximum 15 skills allowed");
+        // Split by comma and process each skill
+        const newSkills = trimmedSkill
+            .split(",")
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0)
+            .filter(
+                (s) =>
+                    !skillsArray.some(
+                        (skill) => skill.toLowerCase() === s.toLowerCase()
+                    )
+            );
+
+        if (newSkills.length === 0) {
+            toast.error("Skill(s) already exist or invalid");
             return;
         }
 
-        if (
-            skillsArray.some(
-                (skill) => skill.toLowerCase() === trimmedSkill.toLowerCase()
-            )
-        ) {
-            toast.error("Skill already exists");
+        // Check if adding these skills would exceed the limit
+        const totalSkills = skillsArray.length + newSkills.length;
+        if (totalSkills > 15) {
+            const remaining = 15 - skillsArray.length;
+            if (remaining === 0) {
+                toast.error("Maximum 15 skills allowed", {
+                    description: "Remove some skills before adding more",
+                });
+                return;
+            }
+            // Add only what we can fit
+            const skillsToAdd = newSkills.slice(0, remaining);
+            const updatedSkills = [...skillsArray, ...skillsToAdd];
+            setSkillsArray(updatedSkills);
+            setStudent((prev) => ({ ...prev, skills: updatedSkills }));
+            setNewSkill("");
+            toast.warning(`Added ${skillsToAdd.length} skill(s)`, {
+                description: `Could not add ${
+                    newSkills.length - skillsToAdd.length
+                } skill(s). Maximum 15 skills allowed.`,
+            });
             return;
         }
 
-        const updatedSkills = [...skillsArray, trimmedSkill];
+        const updatedSkills = [...skillsArray, ...newSkills];
         setSkillsArray(updatedSkills);
-        setStudent((prev) => ({ ...prev, skills: updatedSkills.join(", ") }));
+        setStudent((prev) => ({ ...prev, skills: updatedSkills }));
         setNewSkill("");
-        toast.success("Skill added");
+        toast.success(`Added ${newSkills.length} skill(s)`);
     };
 
     const handleRemoveSkill = (indexToRemove: number) => {
@@ -826,7 +875,7 @@ export default function AccountPage() {
             (_, index) => index !== indexToRemove
         );
         setSkillsArray(updatedSkills);
-        setStudent((prev) => ({ ...prev, skills: updatedSkills.join(", ") }));
+        setStudent((prev) => ({ ...prev, skills: updatedSkills }));
         toast.success("Skill removed");
     };
 
@@ -959,7 +1008,7 @@ export default function AccountPage() {
                                                     disabled
                                                 />
                                             </div>
-                                            <div className="col-span-2">
+                                            <div>
                                                 <Label
                                                     htmlFor="email"
                                                     className="block mb-1"
@@ -974,6 +1023,57 @@ export default function AccountPage() {
                                                     className="w-full"
                                                     disabled
                                                 />
+                                            </div>
+                                            <div>
+                                                <Label
+                                                    htmlFor="location"
+                                                    className="block mb-1"
+                                                >
+                                                    Location
+                                                </Label>
+                                                <div className="flex items-center gap-2">
+                                                    <Input
+                                                        id="location"
+                                                        name="location"
+                                                        value={student.location}
+                                                        onChange={
+                                                            handleStudentChange
+                                                        }
+                                                        placeholder="City, Country"
+                                                        className="w-full"
+                                                        disabled={
+                                                            !isEditing.location ||
+                                                            isSaving
+                                                        }
+                                                    />
+                                                    {isEditing.location ? (
+                                                        <button
+                                                            onClick={() =>
+                                                                handleDiscardField(
+                                                                    "location"
+                                                                )
+                                                            }
+                                                            className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                                            title="Discard changes"
+                                                            disabled={isSaving}
+                                                        >
+                                                            <X className="h-4 w-4 text-red-600" />
+                                                        </button>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() =>
+                                                                handleToggleEdit(
+                                                                    "location"
+                                                                )
+                                                            }
+                                                            className="p-2 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                                            title="Edit field"
+                                                            disabled={isSaving}
+                                                        >
+                                                            <PencilLine className="h-4 w-4 text-gray-600" />
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </div>
                                             <div>
                                                 <Label
@@ -1324,8 +1424,14 @@ export default function AccountPage() {
                                                     isLoadingDevpost
                                                 }
                                             />
-                                            {/* Only show Verify button when editing */}
-                                            {isEditing.devpostUsername && (
+                                            {/* Show Verify button when editing or when username exists but not verified */}
+                                            {(isEditing.devpostUsername ||
+                                                (student.devpostUsername &&
+                                                    student.devpostUsername.trim() !==
+                                                        "" &&
+                                                    (!student.devpost ||
+                                                        student.devpost.username.toLowerCase() !==
+                                                            student.devpostUsername.toLowerCase()))) && (
                                                 <Button
                                                     type="button"
                                                     variant="outline"

@@ -437,21 +437,30 @@ router.patch("/update", async (req, res) => {
             }
         }
 
-        // Validation: Skills (optional, comma-separated string)
-        if (updates.skills && typeof updates.skills === "string") {
-            const trimmedSkills = updates.skills.trim();
-            if (trimmedSkills !== "") {
-                const skillsArray = trimmedSkills
-                    .split(",")
-                    .map((s: string) => s.trim())
-                    .filter((s: string) => s.length > 0);
-                if (skillsArray.length > 15) {
-                    return res.status(400).json({
-                        error: "Validation error",
-                        message: "Maximum 15 skills allowed",
-                    });
-                }
+        // Validation: Skills (optional, array of strings)
+        if (updates.skills && Array.isArray(updates.skills)) {
+            // Flatten and trim all skills, also split by comma if any skill contains comma
+            const processedSkills = updates.skills
+                .flatMap((skill: any) => {
+                    if (typeof skill === "string") {
+                        return skill
+                            .split(",")
+                            .map((s: string) => s.trim())
+                            .filter((s: string) => s.length > 0);
+                    }
+                    return [];
+                })
+                .filter((s: string) => s.length > 0);
+
+            if (processedSkills.length > 15) {
+                return res.status(400).json({
+                    error: "Validation error",
+                    message: "Maximum 15 skills allowed",
+                });
             }
+
+            // Update the skills with processed array
+            updates.skills = processedSkills;
         }
 
         // Trim all string fields before saving
