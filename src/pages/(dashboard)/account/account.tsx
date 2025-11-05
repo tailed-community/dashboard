@@ -199,10 +199,16 @@ export default function AccountPage() {
     useEffect(() => {
         if (!originalStudent) return;
 
-        // Helper to compare arrays
-        const arraysEqual = (a: string[], b: string[]) => {
-            if (a.length !== b.length) return false;
-            return a.every((val, idx) => val === b[idx]);
+        // Helper to compare arrays (handles null/undefined)
+        const arraysEqual = (
+            a: string[] | null | undefined,
+            b: string[] | null | undefined
+        ) => {
+            // Treat null/undefined as empty arrays
+            const arrA = a || [];
+            const arrB = b || [];
+            if (arrA.length !== arrB.length) return false;
+            return arrA.every((val, idx) => val === arrB[idx]);
         };
 
         const changed =
