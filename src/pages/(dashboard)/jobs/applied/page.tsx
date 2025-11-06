@@ -13,12 +13,14 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger, BreadcrumbSeparator } from "@/components/ui/sidebar";
+import { useNavigate } from "react-router-dom";
 
 type AppliedJob = Job & {
     appliedAt?: string; // If we have application date
 };
 
 export default function AppliedJobsPage() {
+    const navigate = useNavigate();
     const [appliedJobs, setAppliedJobs] = useState<AppliedJob[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -40,9 +42,32 @@ export default function AppliedJobsPage() {
 
                 // First, get the applied job IDs
                 const appliedIdsRes = await apiFetch("/job/applied-jobs");
+
+                // Handle case where profile doesn't exist yet
                 if (!appliedIdsRes.ok) {
-                    throw new Error("Failed to load applied jobs");
+                    // If profile not found (404), treat as empty applied jobs list
+                    if (appliedIdsRes.status === 404) {
+                        setAppliedJobs([]);
+                        return;
+                    }
+
+                    // Try to parse error message
+                    try {
+                        const errorData = await appliedIdsRes.json();
+                        // If profile not found error, treat as empty
+                        if (errorData.error === "Profile not found") {
+                            setAppliedJobs([]);
+                            return;
+                        }
+                        throw new Error(
+                            errorData.error || "Failed to load applied jobs"
+                        );
+                    } catch (parseError) {
+                        // If parsing fails, just show generic error
+                        throw new Error("Failed to load applied jobs");
+                    }
                 }
+
                 const appliedIds = await appliedIdsRes.json();
 
                 if (!Array.isArray(appliedIds) || appliedIds.length === 0) {
@@ -163,10 +188,7 @@ export default function AppliedJobsPage() {
                                     <Card
                                         className="transition-all cursor-pointer group"
                                         onClick={() =>
-                                            window.open(
-                                                `/jobs/${job.id}`,
-                                                "_blank"
-                                            )
+                                            navigate(`/jobs/${job.id}`)
                                         }
                                         tabIndex={0}
                                         aria-label={`View job: ${job.title}`}

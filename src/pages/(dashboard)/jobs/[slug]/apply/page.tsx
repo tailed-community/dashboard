@@ -49,6 +49,8 @@ export default function ApplyJobPage() {
     const [authLoading, setAuthLoading] = useState(false);
     const [authError, setAuthError] = useState<string | null>(null);
     const [accessType, setAccessType] = useState<AccessType | null>(null);
+    const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false);
+    const [checkingApplication, setCheckingApplication] = useState(false);
 
     // Determine access type and initialize
     useEffect(() => {
@@ -153,6 +155,8 @@ export default function ApplyJobPage() {
                 setNeedsAuth(true);
                 setIsLoading(false);
             } else {
+                // User is authenticated, check if they've already applied
+                await checkIfAlreadyApplied();
                 setIsLoading(false);
             }
         } catch (err) {
@@ -163,6 +167,36 @@ export default function ApplyJobPage() {
             );
             console.error(err);
             setIsLoading(false);
+        }
+    }
+
+    // Check if user has already applied to this job
+    async function checkIfAlreadyApplied() {
+        if (!studentAuth.currentUser || !slug) return;
+
+        try {
+            setCheckingApplication(true);
+            const appliedJobsResponse = await apiFetch("/job/applied-jobs");
+
+            // If request succeeds and user has profile
+            if (appliedJobsResponse.ok) {
+                const appliedJobIds = await appliedJobsResponse.json();
+
+                // Check if this job is in the applied jobs array
+                if (
+                    Array.isArray(appliedJobIds) &&
+                    appliedJobIds.includes(slug)
+                ) {
+                    setHasAlreadyApplied(true);
+                }
+            }
+            // If request fails (404 or any other error), user doesn't have a profile yet
+            // This is fine - they can continue with the application
+        } catch (err) {
+            // Ignore errors, allow user to proceed with application
+            console.error("Error checking applied jobs:", err);
+        } finally {
+            setCheckingApplication(false);
         }
     }
 
@@ -195,6 +229,9 @@ export default function ApplyJobPage() {
 
             await signInWithGoogle();
             setNeedsAuth(false);
+
+            // Check if user has already applied after authentication
+            await checkIfAlreadyApplied();
 
             // Fetch application details after authentication
             if (token) {
@@ -496,6 +533,63 @@ export default function ApplyJobPage() {
     // Needs authentication
     if (needsAuth) {
         return renderAuthStep();
+    }
+
+    // Already applied view
+    if (hasAlreadyApplied) {
+        return (
+            <div className="min-h-screen bg-background flex items-center justify-center p-4">
+                <div className="w-full max-w-md">
+                    <Card>
+                        <CardHeader className="text-center">
+                            {jobData?.organization?.logo && (
+                                <img
+                                    src={jobData.organization.logo}
+                                    alt={`${jobData.organization.name} logo`}
+                                    className="h-16 w-auto mx-auto mb-4"
+                                />
+                            )}
+                            <CardTitle className="text-2xl">
+                                Already Applied
+                            </CardTitle>
+                            <CardDescription>
+                                You have already submitted an application for
+                                this position.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="rounded-lg bg-muted p-4">
+                                <h3 className="font-semibold mb-2">
+                                    {jobData?.job?.title || "Job Position"}
+                                </h3>
+                                <p className="text-sm text-muted-foreground">
+                                    {jobData?.organization?.name || "Company"}
+                                </p>
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                                You can view the status of all your applications
+                                on your applications page.
+                            </p>
+                        </CardContent>
+                        <CardFooter className="flex flex-col gap-2">
+                            <Button
+                                className="w-full"
+                                onClick={() => navigate("/jobs/applied")}
+                            >
+                                View My Applications
+                            </Button>
+                            <Button
+                                variant="outline"
+                                className="w-full"
+                                onClick={() => navigate(`/jobs/${slug}`)}
+                            >
+                                Back to Job Details
+                            </Button>
+                        </CardFooter>
+                    </Card>
+                </div>
+            </div>
+        );
     }
 
     // Confirmation view
