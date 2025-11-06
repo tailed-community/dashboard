@@ -375,6 +375,25 @@ router.post("/profile", async (req, res) => {
             lastUpdated: new Date().toISOString(),
         };
 
+        // Save Devpost profile to user's profile immediately after verification
+        try {
+            await db.collection("profiles").doc(uid).set(
+                {
+                    devpost: comprehensiveProfile,
+                    devpostUsername: comprehensiveProfile.username,
+                    updatedAt: new Date(),
+                },
+                { merge: true }
+            );
+
+            logger.info(
+                `Saved Devpost profile for user ${uid}: ${comprehensiveProfile.username}`
+            );
+        } catch (dbError) {
+            logger.error("Error saving Devpost profile to database:", dbError);
+            // Don't fail the request if save fails, just log it
+        }
+
         return res.status(200).json({
             success: true,
             data: comprehensiveProfile,
@@ -384,69 +403,6 @@ router.post("/profile", async (req, res) => {
         return res.status(500).json({
             success: false,
             error: "Failed to fetch Devpost account data",
-        });
-    }
-});
-
-// POST /devpost/save - Save Devpost profile to student profile
-router.post("/save", async (req, res) => {
-    try {
-        const devpostProfile = req.body?.devpostProfile;
-        const uid = req.user?.uid || null;
-
-        if (!uid) {
-            return res.status(401).json({
-                success: false,
-                error: "Unauthorized - Missing user ID",
-            });
-        }
-
-        if (!devpostProfile || typeof devpostProfile !== "object") {
-            return res.status(400).json({
-                success: false,
-                error: "Valid Devpost profile data is required",
-            });
-        }
-
-        // Validate that the profile has required fields
-        if (!devpostProfile.username) {
-            return res.status(400).json({
-                success: false,
-                error: "Invalid Devpost profile - username is required",
-            });
-        }
-
-        try {
-            // Save to student profile under devpost field
-            await db.collection("profiles").doc(uid).set(
-                {
-                    devpost: devpostProfile,
-                    devpostUsername: devpostProfile.username,
-                },
-                { merge: true }
-            );
-
-            logger.info(
-                `Saved Devpost profile for user ${uid}: ${devpostProfile.username}`
-            );
-
-            return res.status(200).json({
-                success: true,
-                data: devpostProfile,
-                message: "Devpost profile saved successfully",
-            });
-        } catch (dbError) {
-            logger.error("Error saving Devpost profile to database:", dbError);
-            return res.status(500).json({
-                success: false,
-                error: "Failed to save Devpost profile to database",
-            });
-        }
-    } catch (error) {
-        logger.error("Error in Devpost save endpoint:", error);
-        return res.status(500).json({
-            success: false,
-            error: "Failed to save Devpost profile",
         });
     }
 });

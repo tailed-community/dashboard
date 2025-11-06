@@ -18,17 +18,6 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 
-interface DevpostProfileSectionProps {
-    formData: FormData;
-    handleInputChange: (
-        e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-    ) => void;
-    devpostProfile: DevpostProfile | null;
-    isLoadingDevpost: boolean;
-    devpostError: string | null;
-    fetchDevpostProfile: () => Promise<void>;
-}
-
 export default function DevpostProfileSection({
     formData,
     handleInputChange,
@@ -49,6 +38,11 @@ export default function DevpostProfileSection({
                         name="devpostUsername"
                         value={formData.devpostUsername}
                         onChange={handleInputChange}
+                        placeholder={
+                            devpostProfile
+                                ? "Already verified"
+                                : "Enter username"
+                        }
                     />
                     <Button
                         type="button"
@@ -58,6 +52,10 @@ export default function DevpostProfileSection({
                     >
                         {isLoadingDevpost ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : devpostProfile &&
+                          devpostProfile.username.toLowerCase() ===
+                              formData.devpostUsername.toLowerCase() ? (
+                            "✓ Verified"
                         ) : (
                             "Verify"
                         )}

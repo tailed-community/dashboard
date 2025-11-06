@@ -80,7 +80,7 @@ export default function ApplicationForm({
         };
     }
 
-    // Fetch /profile and prefill form fields on mount (easy apply)
+    // Fetch profile and prefill form fields on mount (easy apply)
     useEffect(() => {
         let ignore = false;
         async function fetchProfileAndPrefill() {
@@ -159,11 +159,71 @@ export default function ApplicationForm({
     const [githubError, setGithubError] = useState<string | null>(null);
     const [devpostError, setDevpostError] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [validationErrors, setValidationErrors] = useState<{
+        firstName?: string;
+        lastName?: string;
+        phone?: string;
+    }>({});
+
+    // Validation functions
+    const validateName = (name: string, fieldName: string): string | null => {
+        if (!name || name.trim() === "") {
+            return `${fieldName} is required`;
+        }
+        if (name.trim().length < 2) {
+            return `${fieldName} must be at least 2 characters`;
+        }
+        if (name.trim().length > 50) {
+            return `${fieldName} must not exceed 50 characters`;
+        }
+        // Allow letters, spaces, hyphens, and apostrophes (for names like O'Brien, Anne-Marie)
+        const nameRegex = /^[a-zA-Z\s\-']+$/;
+        if (!nameRegex.test(name.trim())) {
+            return `${fieldName} can only contain letters, spaces, hyphens, and apostrophes`;
+        }
+        return null;
+    };
+
+    const validatePhone = (phone: string): string | null => {
+        if (!phone || phone.trim() === "") {
+            return "Phone number is required";
+        }
+
+        // Check if phone contains any letters
+        const hasLetters = /[a-zA-Z]/.test(phone);
+        if (hasLetters) {
+            return "Phone number must contain only digits and formatting characters (no letters)";
+        }
+
+        // Remove all non-digit characters for validation
+        const digitsOnly = phone.replace(/\D/g, "");
+
+        // Check if there are any digits at all
+        if (digitsOnly.length === 0) {
+            return "Phone number must contain digits";
+        }
+
+        if (digitsOnly.length < 10) {
+            return `Phone number must be at least 10 digits (currently ${digitsOnly.length})`;
+        }
+        if (digitsOnly.length > 15) {
+            return `Phone number must not exceed 15 digits (currently ${digitsOnly.length})`;
+        }
+        return null;
+    };
 
     const handleInputChange = (
         e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
     ) => {
         const { name, value } = e.target;
+
+        // Clear validation error for this field when user starts typing
+        if (validationErrors[name as keyof typeof validationErrors]) {
+            setValidationErrors((prev) => ({
+                ...prev,
+                [name]: undefined,
+            }));
+        }
 
         // If devpostUsername changes, clear the verified profile and errors
         if (name === "devpostUsername") {
@@ -178,6 +238,44 @@ export default function ApplicationForm({
         }
 
         setFormData((prevData) => ({ ...prevData, [name]: value }));
+    };
+
+    // Validate field on blur to show errors immediately
+    const handleBlur = (
+        e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>
+    ) => {
+        const { name, value } = e.target;
+
+        // Only validate personal info fields on blur
+        if (currentStep === 0) {
+            let error: string | null = null;
+
+            if (name === "firstName") {
+                error = validateName(value, "First name");
+                if (error) {
+                    setValidationErrors((prev) => ({
+                        ...prev,
+                        firstName: error || undefined,
+                    }));
+                }
+            } else if (name === "lastName") {
+                error = validateName(value, "Last name");
+                if (error) {
+                    setValidationErrors((prev) => ({
+                        ...prev,
+                        lastName: error || undefined,
+                    }));
+                }
+            } else if (name === "phone") {
+                error = validatePhone(value);
+                if (error) {
+                    setValidationErrors((prev) => ({
+                        ...prev,
+                        phone: error || undefined,
+                    }));
+                }
+            }
+        }
     };
 
     const handleResumeChange = (
@@ -385,7 +483,20 @@ export default function ApplicationForm({
         );
     };
 
-    const validateCurrentStep = (): boolean => {
+    // Pure validation function - no side effects
+    const checkCurrentStepValid = (): boolean => {
+        // Step 0: Personal Information validation
+        if (currentStep === 0) {
+            const firstNameError = validateName(
+                formData.firstName,
+                "First name"
+            );
+            const lastNameError = validateName(formData.lastName, "Last name");
+            const phoneError = validatePhone(formData.phone);
+
+            return !firstNameError && !lastNameError && !phoneError;
+        }
+
         // Step 2: Devpost validation (after step 2, always validate Devpost)
         if (currentStep >= 2 && !isDevpostValid()) {
             return false;
@@ -412,7 +523,32 @@ export default function ApplicationForm({
     };
 
     const handleStepNext = () => {
-        // Validate and show appropriate error messages
+        // Validate and show appropriate error messages for Step 0
+        if (currentStep === 0) {
+            const errors: {
+                firstName?: string;
+                lastName?: string;
+                phone?: string;
+            } = {};
+
+            const firstNameError = validateName(
+                formData.firstName,
+                "First name"
+            );
+            const lastNameError = validateName(formData.lastName, "Last name");
+            const phoneError = validatePhone(formData.phone);
+
+            if (firstNameError) errors.firstName = firstNameError;
+            if (lastNameError) errors.lastName = lastNameError;
+            if (phoneError) errors.phone = phoneError;
+
+            if (Object.keys(errors).length > 0) {
+                setValidationErrors(errors);
+                return; // Don't proceed if validation fails
+            }
+        }
+
+        // Validate and show appropriate error messages for Devpost
         if (currentStep >= 2 && !isDevpostValid()) {
             setDevpostError(
                 "Please verify your Devpost username before continuing"
@@ -420,9 +556,10 @@ export default function ApplicationForm({
             return;
         }
 
-        if (!validateCurrentStep()) {
+        if (!checkCurrentStepValid()) {
             return; // Don't proceed if validation fails
         }
+
         setCurrentStep((prev) => prev + 1);
     };
 
@@ -562,6 +699,8 @@ export default function ApplicationForm({
                             <PersonalInfoSection
                                 formData={formData}
                                 handleInputChange={handleInputChange}
+                                handleBlur={handleBlur}
+                                validationErrors={validationErrors}
                             />
                         )}
 
@@ -627,7 +766,7 @@ export default function ApplicationForm({
                     {currentStep < 4 ? (
                         <div
                             className={
-                                !validateCurrentStep()
+                                !checkCurrentStepValid()
                                     ? "cursor-not-allowed"
                                     : ""
                             }
@@ -635,7 +774,7 @@ export default function ApplicationForm({
                             <Button
                                 type="button"
                                 onClick={handleStepNext}
-                                disabled={!validateCurrentStep()}
+                                disabled={!checkCurrentStepValid()}
                             >
                                 Next
                                 <ArrowRight className="ml-2 h-4 w-4" />
