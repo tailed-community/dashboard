@@ -95,6 +95,9 @@ export default function ApplicationForm({
                             prev as ApplicationFormData,
                             profile
                         ),
+                        // Prefill devpost if it exists
+                        devpost: profile.devpost || undefined,
+                        github: profile.github || undefined,
                     }));
 
                     // Set profile resume if it exists
@@ -105,6 +108,16 @@ export default function ApplicationForm({
                             url: profile.resume.url,
                             uploadedAt: profile.resume.uploadedAt,
                         });
+                    }
+
+                    // Prefill GitHub profile if it exists
+                    if (profile.github) {
+                        setGithubProfile(profile.github);
+                    }
+
+                    // Prefill Devpost profile if it exists
+                    if (profile.devpost) {
+                        setDevpostProfile(profile.devpost);
                     }
                 }
             } catch (err) {
@@ -140,6 +153,7 @@ export default function ApplicationForm({
             },
         },
         devpost: undefined,
+        github: undefined,
     });
 
     const [githubProfile, setGithubProfile] = useState<GithubProfile | null>(
