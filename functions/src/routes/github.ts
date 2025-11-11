@@ -66,7 +66,10 @@ router.post("/profile", async (req, res) => {
 
         const uid = req.user?.uid || null;
 
+        logger.info(`GitHub profile request for user: ${uid}`);
+
         if (!uid) {
+            logger.error("Missing user ID in GitHub profile request");
             return res.status(401).json({
                 success: false,
                 error: "Unauthorized - Missing user ID",
@@ -74,10 +77,13 @@ router.post("/profile", async (req, res) => {
         }
 
         if (!githubToken) {
+            logger.error(`Missing GitHub token for user: ${uid}`);
             return res.status(401).json({
                 error: "GitHub token is required in the request body",
             });
         }
+
+        logger.info(`Processing GitHub profile for user: ${uid}`);
 
         // Use GitHub token for authorization
         const authHeader = `Bearer ${githubToken}`;
@@ -92,6 +98,11 @@ router.post("/profile", async (req, res) => {
         });
 
         if (!authUserResponse.ok) {
+            logger.error(
+                `GitHub auth failed: ${authUserResponse.status} ${authUserResponse.statusText}`
+            );
+            const errorText = await authUserResponse.text();
+            logger.error(`Auth error response: ${errorText}`);
             return res
                 .status(authUserResponse.status)
                 .json({ error: "Failed to authenticate with GitHub token" });
@@ -99,6 +110,8 @@ router.post("/profile", async (req, res) => {
 
         const authUser = await authUserResponse.json();
         const username = authUser.login;
+
+        logger.info(`Authenticated GitHub user: ${username}`);
 
         // Fetch user data
         const userResponse = await fetch(
@@ -157,10 +170,11 @@ router.post("/profile", async (req, res) => {
             .map(([language]) => language);
 
         // GraphQL query for contribution count and more detailed info
+        // Note: GitHub API returns last year of contributions by default
         const query = `
-      query($username: String!) {
+      query($username: String!, $from: DateTime!, $to: DateTime!) {
         user(login: $username) {
-          contributionsCollection {
+          contributionsCollection(from: $from, to: $to) {
             contributionCalendar {
               totalContributions
               weeks {
@@ -235,72 +249,268 @@ router.post("/profile", async (req, res) => {
       }
     `;
 
-        const graphqlResponse = await fetch("https://api.github.com/graphql", {
+        // GitHub API limits contributionsCollection to 1 year max
+        // So we need to fetch 2 separate years and combine them
+
+        // First year: Today back to 1 year ago
+        const year1To = new Date();
+        const year1From = new Date();
+        year1From.setFullYear(year1From.getFullYear() - 1);
+
+        // Second year: 1 year ago back to 2 years ago
+        const year2To = new Date(year1From);
+        const year2From = new Date(year1From);
+        year2From.setFullYear(year2From.getFullYear() - 1);
+
+        logger.info(
+            `Fetching GitHub contributions in 2 queries:\n` +
+                `  Year 1: ${year1From.toISOString()} to ${year1To.toISOString()}\n` +
+                `  Year 2: ${year2From.toISOString()} to ${year2To.toISOString()}`
+        );
+
+        // Fetch first year
+        const graphqlResponse1 = await fetch("https://api.github.com/graphql", {
             method: "POST",
             headers: {
                 Authorization: authHeader,
                 "Content-Type": "application/json",
             },
-            body: JSON.stringify({ query, variables: { username } }),
+            body: JSON.stringify({
+                query,
+                variables: {
+                    username,
+                    from: year1From.toISOString(),
+                    to: year1To.toISOString(),
+                },
+            }),
         });
 
-        const graphqlData = await graphqlResponse.json();
-        const userData = graphqlData.data?.user;
+        if (!graphqlResponse1.ok) {
+            logger.error(
+                `GitHub GraphQL API error (year 1): ${graphqlResponse1.status} ${graphqlResponse1.statusText}`
+            );
+            const errorText = await graphqlResponse1.text();
+            logger.error(`GraphQL error response: ${errorText}`);
+        }
 
-        // Extract contribution data
-        const contributionCount =
-            userData?.contributionsCollection?.contributionCalendar
+        const graphqlData1 = await graphqlResponse1.json();
+
+        // Check for GraphQL errors
+        if (graphqlData1.errors) {
+            logger.error(
+                "GraphQL errors (year 1):",
+                JSON.stringify(graphqlData1.errors)
+            );
+        }
+
+        // Fetch second year
+        const graphqlResponse2 = await fetch("https://api.github.com/graphql", {
+            method: "POST",
+            headers: {
+                Authorization: authHeader,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                query,
+                variables: {
+                    username,
+                    from: year2From.toISOString(),
+                    to: year2To.toISOString(),
+                },
+            }),
+        });
+
+        if (!graphqlResponse2.ok) {
+            logger.error(
+                `GitHub GraphQL API error (year 2): ${graphqlResponse2.status} ${graphqlResponse2.statusText}`
+            );
+            const errorText = await graphqlResponse2.text();
+            logger.error(`GraphQL error response: ${errorText}`);
+        }
+
+        const graphqlData2 = await graphqlResponse2.json();
+
+        // Check for GraphQL errors
+        if (graphqlData2.errors) {
+            logger.error(
+                "GraphQL errors (year 2):",
+                JSON.stringify(graphqlData2.errors)
+            );
+        }
+
+        // Combine the data from both years
+        const userData1 = graphqlData1.data?.user;
+        const userData2 = graphqlData2.data?.user;
+
+        // Use year 1 data as base (most recent), we'll merge contribution data from year 2
+        const userData = userData1;
+
+        // Log if userData is missing
+        if (!userData) {
+            logger.warn(
+                `No user data returned from GraphQL for username: ${username}`
+            );
+            logger.warn(
+                `GraphQL response year 1: ${JSON.stringify(
+                    graphqlData1
+                ).substring(0, 500)}`
+            );
+            logger.warn(
+                `GraphQL response year 2: ${JSON.stringify(
+                    graphqlData2
+                ).substring(0, 500)}`
+            );
+        }
+
+        // Extract contribution data from both years
+        const contributionCount1 =
+            userData1?.contributionsCollection?.contributionCalendar
                 ?.totalContributions || 0;
+        const contributionCount2 =
+            userData2?.contributionsCollection?.contributionCalendar
+                ?.totalContributions || 0;
+        const contributionCount = contributionCount1 + contributionCount2;
+
+        // Log contribution data extraction
+        logger.info(
+            `Extracting contributions for ${username}: ${contributionCount} total (${contributionCount1} from year 1, ${contributionCount2} from year 2)`
+        );
+
         const contributionDays: ContributionDay[] = [];
 
         // Process weekly contribution data
         const weeklyContributions: WeeklyContributions[] = [];
 
-        // Extract all contribution days and organize by week
-        if (userData?.contributionsCollection?.contributionCalendar?.weeks) {
-            userData.contributionsCollection.contributionCalendar.weeks.forEach(
-                (week: any) => {
-                    const weekData: WeeklyContributions = {
-                        week: week.firstDay,
-                        count: 0,
-                        days: [],
-                    };
+        // Extract all contribution days and organize by week from both years
+        const weeks1 =
+            userData1?.contributionsCollection?.contributionCalendar?.weeks ||
+            [];
+        const weeks2 =
+            userData2?.contributionsCollection?.contributionCalendar?.weeks ||
+            [];
 
-                    week.contributionDays.forEach((day: any) => {
-                        const contributionDay = {
-                            contributionCount: day.contributionCount,
-                            date: day.date,
-                        };
-
-                        contributionDays.push(contributionDay);
-                        weekData.days.push(contributionDay);
-                        weekData.count += day.contributionCount;
-                    });
-
-                    weeklyContributions.push(weekData);
-                }
+        if (!weeks1 && !weeks2) {
+            logger.warn(
+                `No contribution weeks data found for ${username}. ContributionsCollection structure:`,
+                JSON.stringify(
+                    userData?.contributionsCollection || {}
+                ).substring(0, 300)
             );
         }
+
+        // Combine weeks from both years (year 2 first, then year 1 for chronological order)
+        const allWeeks = [...weeks2, ...weeks1];
+
+        if (allWeeks.length > 0) {
+            logger.info(
+                `Processing ${allWeeks.length} weeks of contributions (${weeks2.length} from year 2, ${weeks1.length} from year 1)`
+            );
+            allWeeks.forEach((week: any) => {
+                const weekData: WeeklyContributions = {
+                    week: week.firstDay,
+                    count: 0,
+                    days: [],
+                };
+
+                week.contributionDays.forEach((day: any) => {
+                    const contributionDay = {
+                        contributionCount: day.contributionCount,
+                        date: day.date,
+                    };
+
+                    contributionDays.push(contributionDay);
+                    weekData.days.push(contributionDay);
+                    weekData.count += day.contributionCount;
+                });
+
+                weeklyContributions.push(weekData);
+            });
+        }
+
+        logger.info(
+            `Processed ${contributionDays.length} contribution days, ${weeklyContributions.length} weeks`
+        );
 
         // Calculate contribution streak and active days
         let currentStreak = 0;
         let maxStreak = 0;
         let activeDays = 0;
+        let tempStreak = 0;
 
-        // Sort by date descending
+        // Sort by date descending (most recent first)
         contributionDays.sort(
             (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
         );
 
-        for (let i = 0; i < contributionDays.length; i++) {
-            if (contributionDays[i].contributionCount > 0) {
-                activeDays++;
-                currentStreak++;
-                maxStreak = Math.max(maxStreak, currentStreak);
-            } else {
-                currentStreak = 0;
+        logger.info(
+            `Calculating streaks from ${contributionDays.length} contribution days`
+        );
+
+        // Calculate current streak (consecutive days from today backwards)
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // Start from the most recent day and count backwards
+        // Find the starting point for the streak (either today or yesterday)
+        let streakDate = new Date(today);
+
+        // If today has 0 contributions, start from yesterday
+        if (contributionDays.length > 0) {
+            const mostRecentDay = new Date(contributionDays[0].date);
+            mostRecentDay.setHours(0, 0, 0, 0);
+
+            // If the most recent day is today but has 0 contributions, start from yesterday
+            if (
+                mostRecentDay.getTime() === today.getTime() &&
+                contributionDays[0].contributionCount === 0
+            ) {
+                streakDate.setDate(streakDate.getDate() - 1);
             }
         }
+
+        // Count consecutive days with contributions going backwards from streakDate
+        for (let i = 0; i < contributionDays.length; i++) {
+            // Calculate expected date for current position
+            const expectedDate = new Date(streakDate);
+            expectedDate.setDate(streakDate.getDate() - i);
+
+            // Compare date strings (YYYY-MM-DD) instead of timestamps to avoid timezone issues
+            const expectedDateStr = expectedDate.toISOString().split("T")[0];
+            const actualDateStr = contributionDays[i].date;
+
+            // Count all days with contributions for activeDays
+            if (contributionDays[i].contributionCount > 0) {
+                activeDays++;
+            }
+
+            // For current streak: must be on expected consecutive day AND have contributions
+            if (expectedDateStr === actualDateStr) {
+                if (contributionDays[i].contributionCount > 0) {
+                    currentStreak++;
+                } else {
+                    // Hit a day with no contributions - streak is broken
+                    break;
+                }
+            } else {
+                // Date doesn't match expected sequence - streak is broken
+                break;
+            }
+        }
+
+        // Calculate max streak by going through all days
+        tempStreak = 0;
+        for (let i = contributionDays.length - 1; i >= 0; i--) {
+            if (contributionDays[i].contributionCount > 0) {
+                tempStreak++;
+                maxStreak = Math.max(maxStreak, tempStreak);
+            } else {
+                tempStreak = 0;
+            }
+        }
+
+        logger.info(
+            `Streaks calculated - Current: ${currentStreak}, Max: ${maxStreak}, Active days: ${activeDays}`
+        );
 
         // Calculate language distribution percentage
         const languageDistribution: LanguageStats[] = Object.entries(
@@ -374,26 +584,35 @@ router.post("/profile", async (req, res) => {
         // Calculate activity patterns (most active days, hours)
         const dayOfWeekActivity = Array(7).fill(0);
         contributionDays.forEach((day) => {
-            const dayOfWeek = new Date(day.date).getDay();
-            dayOfWeekActivity[dayOfWeek] += day.contributionCount;
+            if (day && day.date) {
+                const dayOfWeek = new Date(day.date).getDay();
+                dayOfWeekActivity[dayOfWeek] += day.contributionCount;
+            }
         });
 
         // Calculate active months
         const monthlyActivity: Record<string, number> = {};
         contributionDays.forEach((day) => {
-            const month = day.date.substring(0, 7); // YYYY-MM
-            monthlyActivity[month] =
-                (monthlyActivity[month] || 0) + day.contributionCount;
+            if (day && day.date && typeof day.date === "string") {
+                const month = day.date.substring(0, 7); // YYYY-MM
+                monthlyActivity[month] =
+                    (monthlyActivity[month] || 0) + day.contributionCount;
+            }
         });
 
         // Calculate average contributions per day
         const averageContributionsPerDay =
-            contributionCount / Math.min(contributionDays.length, 365);
+            contributionDays.length > 0
+                ? contributionCount / Math.min(contributionDays.length, 365)
+                : 0;
 
         // Find most productive day
-        const mostProductiveDay = [...contributionDays].sort(
-            (a, b) => b.contributionCount - a.contributionCount
-        )[0];
+        const mostProductiveDay =
+            contributionDays.length > 0
+                ? [...contributionDays].sort(
+                      (a, b) => b.contributionCount - a.contributionCount
+                  )[0]
+                : null;
 
         // Construct the response data
         const profileData = {
@@ -427,7 +646,7 @@ router.post("/profile", async (req, res) => {
                       contributions: mostProductiveDay.contributionCount,
                   }
                 : null,
-            weeklyContributions: weeklyContributions.slice(0, 10), // Last 10 weeks
+            weeklyContributions: weeklyContributions, // All weeks from the past year
             dayOfWeekActivity,
             monthlyActivity: Object.entries(monthlyActivity)
                 .map(([month, count]) => ({ month, count }))
@@ -469,6 +688,11 @@ router.post("/profile", async (req, res) => {
                 const cleanProfileData = JSON.parse(
                     JSON.stringify(profileData)
                 );
+
+                logger.info(
+                    `Saving GitHub profile for ${username}: ${cleanProfileData.contributionCount} contributions, ${cleanProfileData.repoCount} repos`
+                );
+
                 await db.collection("profiles").doc(uid).set(
                     {
                         github: cleanProfileData,
@@ -476,12 +700,18 @@ router.post("/profile", async (req, res) => {
                     },
                     { merge: true }
                 );
-                logger.info(`Saved GitHub profile for user: ${user.login}`);
+                logger.info(
+                    `Successfully saved GitHub profile for user: ${user.login}`
+                );
             } catch (dbError) {
                 logger.error("Error saving profile to database:", dbError);
                 // Continue execution to return profile even if save fails
             }
         }
+
+        logger.info(
+            `Returning GitHub profile for ${username} with ${profileData.contributionCount} contributions`
+        );
 
         return res.json(profileData);
     } catch (error) {

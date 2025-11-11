@@ -706,6 +706,7 @@ export default function AccountPage() {
             // Create GitHub provider
             const githubProvider = new GithubAuthProvider();
             githubProvider.addScope("read:user");
+            githubProvider.addScope("read:org");
 
             // Check if the user already has GitHub provider linked
             const providerData = studentAuth.currentUser?.providerData || [];
@@ -1909,7 +1910,7 @@ export default function AccountPage() {
                                                                     }
                                                                 </p>
                                                                 <p className="text-xs text-gray-600">
-                                                                    Contributions
+                                                                    Contributions (Past 2 years)
                                                                 </p>
                                                             </div>
                                                         </div>
