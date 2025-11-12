@@ -163,14 +163,14 @@ export default function PublicJobPage() {
                                     <img
                                         src={organization.logo}
                                         alt={`${organization.name} logo`}
-                                        className="h-10 w-10 object-contain"
+                                        className="h-20 w-20 object-contain"
                                     />
                                 ) : (
                                     <div className="h-10 w-10 bg-muted flex items-center justify-center rounded-md">
                                         <Building2 className="h-6 w-6 text-muted-foreground" />
                                     </div>
                                 )}
-                                <div className="text-sm text-muted-foreground">
+                                <div className="text-lg text-muted-foreground">
                                     {organization.name}
                                 </div>
                             </div>

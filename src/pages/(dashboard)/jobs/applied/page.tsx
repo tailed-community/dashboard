@@ -196,8 +196,18 @@ export default function AppliedJobsPage() {
                                         <CardContent className="flex gap-6 items-center p-6">
                                             {/* Logo with luxury border and shadow */}
                                             <div className="flex-shrink-0">
-                                                <div className="h-10 w-10 bg-muted flex items-center justify-center rounded-md">
-                                                    <Building2 className="h-6 w-6 text-muted-foreground" />
+                                                <div className="h-20 w-30 bg-muted flex items-center justify-center rounded-md">
+                                                    {job.organization?.logo ? (
+                                                        <img
+                                                            src={
+                                                                job.organization
+                                                                    .logo
+                                                            }
+                                                            alt={`${job.organization.name} logo`}
+                                                        />
+                                                    ) : (
+                                                        <Building2 className="h-6 w-6 text-muted-foreground" />
+                                                    )}
                                                 </div>
                                             </div>
                                             {/* Main info */}
