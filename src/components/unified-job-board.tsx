@@ -460,7 +460,15 @@ export default function UnifiedJobBoard({ limit }: UnifiedJobBoardProps) {
             <CardHeader>
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-2">
-                  <Building2 className="h-5 w-5 text-muted-foreground" />
+                  {job.organization?.logo ? (
+                    <img
+                      src={job.organization.logo}
+                      alt={`${job.organization.name} logo`}
+                      className="h-16 w-16 object-contain"
+                    />
+                  ) : (
+                    <Building2 className="h-5 w-5 text-muted-foreground" />
+                  )}
                   <CardTitle className="text-lg">
                     {job.featured ? job.organization.name : job.company_name}
                   </CardTitle>
