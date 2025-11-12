@@ -36,6 +36,7 @@ const AppliedJobsPage = lazy(
     () => import("./pages/(dashboard)/jobs/applied/page")
 );
 const JobsPage = lazy(() => import("./pages/(dashboard)/jobs/page"));
+const BookingPage = lazy(() => import("./pages/(dashboard)/book/[code]/page"));
 
 function App() {
     return (
@@ -59,6 +60,9 @@ function App() {
                             path="/auth/callback"
                             element={<AuthCallback />}
                         />
+
+                        {/* PUBLIC BOOKING PAGE */}
+                        <Route path="/book/:code" element={<BookingPage />} />
 
                         {/* DASHBOARD ROUTES */}
                         <Route element={<DashboardLayout />}>
