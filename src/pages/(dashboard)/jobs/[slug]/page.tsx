@@ -20,6 +20,8 @@ import {
     CardTitle,
 } from "@/components/ui/card";
 import { type Job, type Organization } from "@/types/jobs";
+import { HTMLContent } from "@/components/ui/html-content";
+import { Separator } from "@/components/ui/separator";
 
 export default function PublicJobPage() {
     const { slug } = useParams<{ slug: string }>();
@@ -146,7 +148,7 @@ export default function PublicJobPage() {
 
     return (
         <div className="min-h-screen bg-background p-4 md:p-8">
-            <div className="mx-auto max-w-3xl">
+            <div className="mx-auto max-w-5xl">
                 <Link
                     to="/dashboard"
                     className="mb-6 flex items-center text-sm text-muted-foreground hover:text-foreground"
@@ -213,26 +215,35 @@ export default function PublicJobPage() {
                         {/* Job description section */}
                         {job.description && (
                             <div>
-                                <h2 className="mb-2 font-semibold">
-                                    Description
-                                </h2>
-                                <div className="whitespace-pre-line text-muted-foreground">
-                                    {job.description}
+                                <div>
+                                    <HTMLContent
+                                        content={
+                                            job.description ||
+                                            "<p>No description provided.</p>"
+                                        }
+                                        className="text-md"
+                                    />
                                 </div>
                             </div>
                         )}
 
                         {/* Job requirements section */}
-                        {job.requirements && (
-                            <div>
-                                <h2 className="mb-2 font-semibold">
-                                    Requirements
-                                </h2>
-                                <div className="whitespace-pre-line text-muted-foreground">
-                                    {job.requirements}
-                                </div>
-                            </div>
-                        )}
+                        {job.requirements &&
+                            job.requirements.replace(/<[^>]*>/g, "").trim()
+                                .length > 0 && (
+                                <>
+                                    <Separator />
+                                    <div>
+                                        <HTMLContent
+                                            content={
+                                                job.requirements ||
+                                                "<p>No requirements provided.</p>"
+                                            }
+                                            className="text-md"
+                                        />
+                                    </div>
+                                </>
+                            )}
 
                         {/* Additional information section */}
                         <div className="border-t pt-4 mt-4">
