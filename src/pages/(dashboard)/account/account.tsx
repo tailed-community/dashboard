@@ -171,6 +171,12 @@ export default function AccountPage() {
             setIsLoading(true);
             try {
                 const studentData = await apiService.getStudent();
+
+                // Ensure skills is always an array
+                if (studentData.skills && !Array.isArray(studentData.skills)) {
+                    studentData.skills = [];
+                }
+
                 setStudent(studentData as any);
                 setOriginalStudent(studentData as any); // Save original for cancel
             } catch (error) {
@@ -207,14 +213,14 @@ export default function AccountPage() {
     useEffect(() => {
         if (!originalStudent) return;
 
-        // Helper to compare arrays (handles null/undefined)
+        // Helper to compare arrays (handles null/undefined and non-arrays)
         const arraysEqual = (
-            a: string[] | null | undefined,
-            b: string[] | null | undefined
+            a: string[] | null | undefined | any,
+            b: string[] | null | undefined | any
         ) => {
-            // Treat null/undefined as empty arrays
-            const arrA = a || [];
-            const arrB = b || [];
+            // Ensure both are arrays, otherwise treat as empty arrays
+            const arrA = Array.isArray(a) ? a : [];
+            const arrB = Array.isArray(b) ? b : [];
             if (arrA.length !== arrB.length) return false;
             return arrA.every((val, idx) => val === arrB[idx]);
         };
@@ -1910,7 +1916,9 @@ export default function AccountPage() {
                                                                     }
                                                                 </p>
                                                                 <p className="text-xs text-gray-600">
-                                                                    Contributions (Past 2 years)
+                                                                    Contributions
+                                                                    (Past 2
+                                                                    years)
                                                                 </p>
                                                             </div>
                                                         </div>
