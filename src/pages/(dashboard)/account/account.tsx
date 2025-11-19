@@ -75,10 +75,16 @@ const apiService = {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(studentData),
             });
-            if (!response.ok) throw new Error("Failed to update member role");
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                console.error("Backend error:", errorData);
+                throw new Error(
+                    errorData.message || "Failed to update profile"
+                );
+            }
             return await response;
         } catch (error) {
-            console.error("Error updating member role:", error);
+            console.error("Error updating profile:", error);
             throw error;
         }
     },
@@ -123,6 +129,8 @@ export default function AccountPage() {
 
     // Track which fields are being edited
     const [isEditing, setIsEditing] = useState({
+        firstName: false,
+        lastName: false,
         phone: false,
         location: false,
         school: false,
@@ -163,6 +171,12 @@ export default function AccountPage() {
             setIsLoading(true);
             try {
                 const studentData = await apiService.getStudent();
+
+                // Ensure skills is always an array
+                if (studentData.skills && !Array.isArray(studentData.skills)) {
+                    studentData.skills = [];
+                }
+
                 setStudent(studentData as any);
                 setOriginalStudent(studentData as any); // Save original for cancel
             } catch (error) {
@@ -199,13 +213,21 @@ export default function AccountPage() {
     useEffect(() => {
         if (!originalStudent) return;
 
-        // Helper to compare arrays
-        const arraysEqual = (a: string[], b: string[]) => {
-            if (a.length !== b.length) return false;
-            return a.every((val, idx) => val === b[idx]);
+        // Helper to compare arrays (handles null/undefined and non-arrays)
+        const arraysEqual = (
+            a: string[] | null | undefined | any,
+            b: string[] | null | undefined | any
+        ) => {
+            // Ensure both are arrays, otherwise treat as empty arrays
+            const arrA = Array.isArray(a) ? a : [];
+            const arrB = Array.isArray(b) ? b : [];
+            if (arrA.length !== arrB.length) return false;
+            return arrA.every((val, idx) => val === arrB[idx]);
         };
 
         const changed =
+            student.firstName !== originalStudent.firstName ||
+            student.lastName !== originalStudent.lastName ||
             student.phone !== originalStudent.phone ||
             student.location !== originalStudent.location ||
             student.school !== originalStudent.school ||
@@ -228,7 +250,7 @@ export default function AccountPage() {
             setStudent((prev) => ({
                 ...prev,
                 [name]: value,
-                devpost: null, // Clear verified profile when username changes
+                devpost: undefined, // Clear verified profile when username changes
             }));
         } else if (name === "githubUsername") {
             // If githubUsername changes, clear the verified profile and errors
@@ -252,8 +274,20 @@ export default function AccountPage() {
 
     const handleDiscardField = (field: keyof typeof isEditing) => {
         if (originalStudent) {
-            // If discarding devpostUsername, also restore the devpost profile and clear errors
-            if (field === "devpostUsername") {
+            // If discarding firstName, restore the original value
+            if (field === "firstName") {
+                setStudent((prev) => ({
+                    ...prev,
+                    firstName: originalStudent.firstName,
+                }));
+            } else if (field === "lastName") {
+                // If discarding lastName, restore the original value
+                setStudent((prev) => ({
+                    ...prev,
+                    lastName: originalStudent.lastName,
+                }));
+            } else if (field === "devpostUsername") {
+                // If discarding devpostUsername, also restore the devpost profile and clear errors
                 setStudent((prev) => ({
                     ...prev,
                     devpostUsername: originalStudent.devpostUsername,
@@ -281,6 +315,35 @@ export default function AccountPage() {
     const handleSaveChanges = async () => {
         setIsSaving(true);
         // Validate all fields before saving
+
+        // First name validation (required and must contain only letters)
+        if (!student.firstName || student.firstName.trim() === "") {
+            toast.error("First name is required", {
+                description: "Please enter your first name",
+            });
+            return setIsSaving(false);
+        }
+        const nameRegex = /^[a-zA-Z\s]+$/;
+        if (!nameRegex.test(student.firstName.trim())) {
+            toast.error("Invalid first name", {
+                description: "First name can only contain letters and spaces",
+            });
+            return setIsSaving(false);
+        }
+
+        // Last name validation (required and must contain only letters)
+        if (!student.lastName || student.lastName.trim() === "") {
+            toast.error("Last name is required", {
+                description: "Please enter your last name",
+            });
+            return setIsSaving(false);
+        }
+        if (!nameRegex.test(student.lastName.trim())) {
+            toast.error("Invalid last name", {
+                description: "Last name can only contain letters and spaces",
+            });
+            return setIsSaving(false);
+        }
 
         // Devpost validation: if username is provided, must be verified (case-insensitive)
         if (student.devpostUsername && student.devpostUsername.trim() !== "") {
@@ -442,10 +505,11 @@ export default function AccountPage() {
                 });
             }
 
-            // Create a trimmed copy of the student data with skills as array
+            // Create a trimmed copy with only the fields that can be updated
             const trimmedLocation = student.location?.trim() || "";
-            const trimmedStudentData: StudentProps = {
-                ...student,
+            const trimmedStudentData = {
+                firstName: student.firstName.trim(),
+                lastName: student.lastName.trim(),
                 phone: student.phone?.trim() || "",
                 location: trimmedLocation === "" ? null : trimmedLocation,
                 school: student.school?.trim() || "",
@@ -455,55 +519,36 @@ export default function AccountPage() {
                 portfolioUrl: student.portfolioUrl?.trim() || "",
                 devpostUsername: student.devpostUsername?.trim() || "",
                 githubUsername: student.githubUsername?.trim() || "",
-                skills: student.skills
+                skills: (student.skills || [])
                     .map((skill) => skill.trim())
                     .filter((skill) => skill.length > 0),
+                devpost: student.devpost,
                 github: finalGithubProfile,
-            } as any;
+            };
 
             // Send trimmed data to backend
-            const response = await apiService.updateStudent(trimmedStudentData);
+            const response = await apiService.updateStudent(
+                trimmedStudentData as any
+            );
 
             if (!response.ok) throw new Error("Failed to update student");
 
-            // Save Devpost profile if it exists and was verified
-            if (student.devpost && student.devpost.username) {
-                try {
-                    const saveResponse = await apiFetch(`/devpost/save`, {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                        },
-                        body: JSON.stringify({
-                            devpostProfile: student.devpost,
-                        }),
-                    });
+            // Note: Devpost and GitHub profiles are already saved in the database during verification/OAuth
+            // so no separate save call is needed here
 
-                    if (!saveResponse.ok) {
-                        toast.warning("Devpost profile not saved", {
-                            description:
-                                "Profile updated but Devpost could not be saved. Please try again.",
-                        });
-                    }
-                } catch (saveError) {
-                    // Don't block the user if save fails, just show warning
-                    toast.warning("Error saving Devpost profile", {
-                        description:
-                            "Your profile was saved but Devpost could not be updated.",
-                    });
-                }
-            }
-
-            // Note: GitHub profile is already saved in the database during the OAuth flow
-            // in the /github/profile endpoint, so no separate save call is needed here
-
-            // Update local state with trimmed data
-            setStudent(trimmedStudentData);
-            setOriginalStudent(trimmedStudentData);
+            // Update local state with trimmed data while preserving other fields
+            const updatedStudent = {
+                ...student,
+                ...trimmedStudentData,
+            };
+            setStudent(updatedStudent as StudentProps);
+            setOriginalStudent(updatedStudent as StudentProps);
             setHasChanges(false);
 
             // Reset all editing states
             setIsEditing({
+                firstName: false,
+                lastName: false,
                 phone: false,
                 location: false,
                 school: false,
@@ -533,6 +578,8 @@ export default function AccountPage() {
             setHasChanges(false);
             // Reset all editing states
             setIsEditing({
+                firstName: false,
+                lastName: false,
                 phone: false,
                 location: false,
                 school: false,
@@ -617,14 +664,17 @@ export default function AccountPage() {
             setStudent((prev) => ({
                 ...prev,
                 devpost: responseData.data,
+                devpostUsername: responseData.data.username,
             }));
 
             // Also update original student to reflect saved state
+            // This prevents "Save Changes" from showing since the profile is already saved to backend
             setOriginalStudent((prev) =>
                 prev
                     ? {
                           ...prev,
                           devpost: responseData.data,
+                          devpostUsername: responseData.data.username,
                       }
                     : null
             );
@@ -632,7 +682,7 @@ export default function AccountPage() {
             // Remove edit state after successful verification
             setIsEditing((prev) => ({ ...prev, devpostUsername: false }));
 
-            toast.success("Devpost profile verified!", {
+            toast.success("Devpost profile verified and saved!", {
                 description: `Found ${responseData.data.stats.projectCount} projects and ${responseData.data.stats.hackathonCount} hackathons`,
             });
         } catch (error) {
@@ -662,6 +712,7 @@ export default function AccountPage() {
             // Create GitHub provider
             const githubProvider = new GithubAuthProvider();
             githubProvider.addScope("read:user");
+            githubProvider.addScope("read:org");
 
             // Check if the user already has GitHub provider linked
             const providerData = studentAuth.currentUser?.providerData || [];
@@ -756,6 +807,7 @@ export default function AccountPage() {
                 });
 
                 // Also update original student to reflect saved state
+                // This prevents "Save Changes" from showing since the profile is already saved to backend
                 setOriginalStudent((prev) =>
                     prev
                         ? {
@@ -766,7 +818,7 @@ export default function AccountPage() {
                         : null
                 );
 
-                toast.success("GitHub profile connected!", {
+                toast.success("GitHub profile connected and saved!", {
                     description: `Connected ${profileData.username} with ${profileData.repoCount} repositories`,
                 });
             } else {
@@ -946,7 +998,10 @@ export default function AccountPage() {
                     {/* TODO: Add profile picture functionality */}
                     <div className="relative my-3 pb-4">
                         <img
-                            src="https://www.placeholderimage.online/images/generic/users-profile.jpg"
+                            src={
+                                student?.github?.avatarUrl ||
+                                "https://www.placeholderimage.online/images/generic/users-profile.jpg"
+                            }
                             alt="Profile"
                             className="w-24 h-24 rounded-full object-cover"
                         />
@@ -979,34 +1034,114 @@ export default function AccountPage() {
                                             <div>
                                                 <Label
                                                     htmlFor="firstName"
-                                                    className="block mb-1"
+                                                    className="block text-sm font-medium text-gray-700 mb-1"
                                                 >
                                                     First Name
                                                 </Label>
-                                                <Input
-                                                    id="firstName"
-                                                    name="firstName"
-                                                    value={student.firstName}
-                                                    placeholder="First Name"
-                                                    className="w-full"
-                                                    disabled
-                                                />
+                                                <div className="flex items-center gap-2">
+                                                    <Input
+                                                        id="firstName"
+                                                        name="firstName"
+                                                        value={
+                                                            student.firstName ||
+                                                            ""
+                                                        }
+                                                        onChange={
+                                                            handleStudentChange
+                                                        }
+                                                        placeholder="First Name"
+                                                        className="w-full border-gray-300 focus:ring-black focus:border-black"
+                                                        disabled={
+                                                            !isEditing.firstName ||
+                                                            isSaving
+                                                        }
+                                                    />
+                                                    {isEditing.firstName ? (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            onClick={() =>
+                                                                handleDiscardField(
+                                                                    "firstName"
+                                                                )
+                                                            }
+                                                            disabled={isSaving}
+                                                            className="flex-shrink-0"
+                                                        >
+                                                            <X className="h-4 w-4" />
+                                                        </Button>
+                                                    ) : (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            onClick={() =>
+                                                                handleToggleEdit(
+                                                                    "firstName"
+                                                                )
+                                                            }
+                                                            disabled={isSaving}
+                                                            className="flex-shrink-0"
+                                                        >
+                                                            <PencilLine className="h-4 w-4" />
+                                                        </Button>
+                                                    )}
+                                                </div>
                                             </div>
                                             <div>
                                                 <Label
                                                     htmlFor="lastName"
-                                                    className="block mb-1"
+                                                    className="block text-sm font-medium text-gray-700 mb-1"
                                                 >
                                                     Last Name
                                                 </Label>
-                                                <Input
-                                                    id="lastName"
-                                                    name="lastName"
-                                                    value={student.lastName}
-                                                    placeholder="Last Name"
-                                                    className="w-full"
-                                                    disabled
-                                                />
+                                                <div className="flex items-center gap-2">
+                                                    <Input
+                                                        id="lastName"
+                                                        name="lastName"
+                                                        value={
+                                                            student.lastName ||
+                                                            ""
+                                                        }
+                                                        onChange={
+                                                            handleStudentChange
+                                                        }
+                                                        placeholder="Last Name"
+                                                        className="w-full border-gray-300 focus:ring-black focus:border-black"
+                                                        disabled={
+                                                            !isEditing.lastName ||
+                                                            isSaving
+                                                        }
+                                                    />
+                                                    {isEditing.lastName ? (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            onClick={() =>
+                                                                handleDiscardField(
+                                                                    "lastName"
+                                                                )
+                                                            }
+                                                            disabled={isSaving}
+                                                            className="flex-shrink-0"
+                                                        >
+                                                            <X className="h-4 w-4" />
+                                                        </Button>
+                                                    ) : (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            onClick={() =>
+                                                                handleToggleEdit(
+                                                                    "lastName"
+                                                                )
+                                                            }
+                                                            disabled={isSaving}
+                                                            className="flex-shrink-0"
+                                                        >
+                                                            <PencilLine className="h-4 w-4" />
+                                                        </Button>
+                                                    )}
+                                                </div>
                                             </div>
                                             <div>
                                                 <Label
@@ -1782,6 +1917,8 @@ export default function AccountPage() {
                                                                 </p>
                                                                 <p className="text-xs text-gray-600">
                                                                     Contributions
+                                                                    (Past 2
+                                                                    years)
                                                                 </p>
                                                             </div>
                                                         </div>

@@ -25,7 +25,7 @@ function Logo() {
       <div className="flex items-center h-16 w-40">
         <AspectRatio ratio={3042 / 968}>
           <img
-            src="/tailed-logo-fixed-shadow.svg"
+            src="/Tailed_Community_logo.png"
             alt="Logo"
             className="object-contain h-full w-full"
           />

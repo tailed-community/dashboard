@@ -83,7 +83,7 @@ export function LoginForm({
           <div className="flex flex-col gap-4">
             <div className="flex flex-col items-center text-center">
               <img
-                src="/tailed-logo-fixed-shadow.svg"
+                src="/Tailed_Community_logo.png"
                 alt="Logo"
                 width={155}
                 height={65}

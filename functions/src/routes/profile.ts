@@ -335,6 +335,76 @@ router.patch("/update", async (req, res) => {
     try {
         const updates = req.body;
 
+        // Check if the profile document exists and if email is set
+        const profileDoc = await db.collection("profiles").doc(userId).get();
+
+        // If email is not set in the profile, get it from auth
+        if (!profileDoc.exists || !profileDoc.data()?.email) {
+            try {
+                const tenantAuth = await studentAuth();
+                const userRecord = await tenantAuth.getUser(userId);
+
+                if (userRecord.email) {
+                    // Add email to the updates
+                    updates.email = userRecord.email;
+                    logger.info(
+                        `Setting email for user ${userId}: ${userRecord.email}`
+                    );
+                }
+            } catch (authError) {
+                logger.error("Error fetching user email from auth:", authError);
+                // Continue with the update even if we can't get the email
+            }
+        }
+
+        // Validation: First name (required, must contain only letters and spaces)
+        if (updates.firstName !== undefined) {
+            if (typeof updates.firstName !== "string") {
+                return res.status(400).json({
+                    error: "Validation error",
+                    message: "First name must be a string",
+                });
+            }
+            const trimmedFirstName = updates.firstName.trim();
+            if (trimmedFirstName === "") {
+                return res.status(400).json({
+                    error: "Validation error",
+                    message: "First name is required",
+                });
+            }
+            const nameRegex = /^[a-zA-Z\s]+$/;
+            if (!nameRegex.test(trimmedFirstName)) {
+                return res.status(400).json({
+                    error: "Validation error",
+                    message: "First name can only contain letters and spaces",
+                });
+            }
+        }
+
+        // Validation: Last name (required, must contain only letters and spaces)
+        if (updates.lastName !== undefined) {
+            if (typeof updates.lastName !== "string") {
+                return res.status(400).json({
+                    error: "Validation error",
+                    message: "Last name must be a string",
+                });
+            }
+            const trimmedLastName = updates.lastName.trim();
+            if (trimmedLastName === "") {
+                return res.status(400).json({
+                    error: "Validation error",
+                    message: "Last name is required",
+                });
+            }
+            const nameRegex = /^[a-zA-Z\s]+$/;
+            if (!nameRegex.test(trimmedLastName)) {
+                return res.status(400).json({
+                    error: "Validation error",
+                    message: "Last name can only contain letters and spaces",
+                });
+            }
+        }
+
         // Validation: Phone (optional, but if provided must be valid)
         if (updates.phone && typeof updates.phone === "string") {
             const trimmedPhone = updates.phone.trim();
@@ -477,7 +547,11 @@ router.patch("/update", async (req, res) => {
         trimmedUpdates.updatedAt = new Date();
 
         // Update the profile with validated and trimmed data
-        await db.collection("profiles").doc(userId).update(trimmedUpdates);
+        // Use set with merge: true to create the document if it doesn't exist
+        await db
+            .collection("profiles")
+            .doc(userId)
+            .set(trimmedUpdates, { merge: true });
 
         logger.info(`Profile updated for user ${userId}`);
 

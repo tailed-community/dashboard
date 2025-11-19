@@ -1,3 +1,5 @@
+import type { GithubProfile } from "@/lib/github";
+
 export interface TokenInfo {
     token: {
         id: string;
@@ -71,6 +73,7 @@ export interface ApplicationFormData {
         | File
         | null;
     devpost?: DevpostProfile;
+    github?: GithubProfile;
 }
 
 export interface DevpostProfile {
