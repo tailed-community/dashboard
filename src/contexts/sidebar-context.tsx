@@ -34,7 +34,7 @@ const fetchData = async () => {
     const res = await apiFetch("/profile");
     const userData = await res.json();
     // If no name, treat as onboarding required
-    const onboardingRequired = !userData?.name || userData.name === "User";
+    const onboardingRequired = false;
     return { userData, onboardingRequired };
   } catch (error) {
     // Network or other error, treat as onboarding required but log error
