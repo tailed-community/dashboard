@@ -9,6 +9,7 @@ import {
     type DevpostProfile,
     type ApplicationFormData,
 } from "../types";
+import { HTMLContent } from "@/components/ui/html-content";
 
 interface JobDetailsSectionProps {
     formData: ApplicationFormData;
@@ -47,7 +48,13 @@ export default function JobDetailsSection({
                 <div className="mt-4 p-4 bg-muted rounded-lg">
                     <h3 className="font-medium mb-2">Job Description</h3>
                     <p className="text-sm whitespace-pre-line">
-                        {tokenInfo.job.description}
+                        <HTMLContent
+                            content={
+                                tokenInfo.job.description ||
+                                "<p>No description provided.</p>"
+                            }
+                            className="text-md"
+                        />
                     </p>
                 </div>
             )}

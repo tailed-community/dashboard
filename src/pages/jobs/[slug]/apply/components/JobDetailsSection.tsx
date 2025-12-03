@@ -5,6 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { type GithubProfile } from "@/lib/github";
 import { type TokenInfo, type DevpostProfile } from "../types";
+import { HTMLContent } from "@/components/ui/html-content";
 
 interface JobDetailsSectionProps {
   formData: FormData;
@@ -43,7 +44,13 @@ export default function JobDetailsSection({
         <div className="mt-4 p-4 bg-muted rounded-lg">
           <h3 className="font-medium mb-2">Job Description</h3>
           <p className="text-sm whitespace-pre-line">
-            {tokenInfo.job.description}
+            <HTMLContent
+                content={
+                    tokenInfo.job.description ||
+                    "<p>No description provided.</p>"
+                }
+                className="text-md"
+            />
           </p>
         </div>
       )}
