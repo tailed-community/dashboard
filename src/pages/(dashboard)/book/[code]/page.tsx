@@ -35,7 +35,7 @@ interface TimeSlot {
 
 export default function BookingPage() {
   const { code } = useParams<{ code: string }>();
-  
+
   const [loading, setLoading] = useState(true);
   const [bookingData, setBookingData] = useState<BookingData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -57,21 +57,21 @@ export default function BookingPage() {
     try {
       setLoading(true);
       setError(null);
-      
+
       // Use plain fetch for public booking link (no auth required)
       // Use companies API for booking endpoints
       const apiUrl = import.meta.env.VITE_COMPANIES_API_URL || "";
       const response = await fetch(`${apiUrl}/bookings/link/${code}`);
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || "Failed to load booking information");
       }
-      
+
       const data = await response.json();
       setBookingData(data);
       setDataLoaded(true);
-      
+
       // Check if there's already a booking for this application
       if (data.existingBooking) {
         setSuccess(true);
@@ -97,16 +97,16 @@ export default function BookingPage() {
 
   const generateTimeSlots = (): TimeSlot[] => {
     if (!bookingData || !selectedDate || !bookingData.availabilityBlocks) return [];
-    
+
     const slots: TimeSlot[] = [];
     const dayOfWeek = selectedDate.getDay();
-    
+
     // Calculate which week the selected date belongs to (Sunday = start of week)
     const selectedWeekStart = new Date(selectedDate);
     selectedWeekStart.setDate(selectedDate.getDate() - selectedDate.getDay());
     selectedWeekStart.setHours(0, 0, 0, 0);
     const selectedWeekId = selectedWeekStart.toISOString().split('T')[0]; // YYYY-MM-DD
-    
+
     // Find availability blocks for selected day AND week
     const dayBlocks = (bookingData.availabilityBlocks || []).filter(
       block => {
@@ -115,29 +115,29 @@ export default function BookingPage() {
         return block.day === dayOfWeek && block.weekStart === selectedWeekId;
       }
     );
-    
+
     if (dayBlocks.length === 0) return [];
-    
+
     // Generate 30-minute slots for each availability block
     dayBlocks.forEach(block => {
       // Safeguard: ensure startTime and endTime exist and are strings
       if (!block || typeof block.startTime !== 'string' || typeof block.endTime !== 'string') {
         return;
       }
-      
+
       // Additional check for valid time format
       if (!block.startTime.includes(':') || !block.endTime.includes(':')) {
         return;
       }
-      
+
       const [startHour, startMinute] = block.startTime.split(":").map(Number);
       const [endHour, endMinute] = block.endTime.split(":").map(Number);
-      
+
       // Validate parsed numbers
       if (isNaN(startHour) || isNaN(startMinute) || isNaN(endHour) || isNaN(endMinute)) {
         return;
       }
-      
+
       // Round start time UP to next :00 or :30
       let slotStartHour = startHour;
       let slotStartMinute = 0;
@@ -147,7 +147,7 @@ export default function BookingPage() {
         slotStartHour += 1;
         slotStartMinute = 0;
       }
-      
+
       // Round end time DOWN to previous :00 or :30
       let slotEndHour = endHour;
       let slotEndMinute = 0;
@@ -157,40 +157,42 @@ export default function BookingPage() {
         slotEndHour -= 1;
         slotEndMinute = 30;
       }
-      
+
       let currentTime = new Date(selectedDate);
       currentTime.setHours(slotStartHour, slotStartMinute, 0, 0);
-      
+
       const blockEnd = new Date(selectedDate);
       blockEnd.setHours(slotEndHour, slotEndMinute, 0, 0);
-      
+
       // Skip if the block doesn't allow at least one 30-min slot
       if (currentTime >= blockEnd) return;
-      
+
       while (currentTime < blockEnd) {
         const slotStart = new Date(currentTime);
         const slotEnd = new Date(currentTime);
         slotEnd.setMinutes(slotEnd.getMinutes() + 30);
-        
+
         // Stop if this slot would exceed the block's end time
         if (slotEnd > blockEnd) break;
-        
+
         // Check if slot is in the past
         const isPast = slotEnd <= new Date();
-        
+
         // Check if slot conflicts with existing bookings
+        // Note: Calendar event conflicts are already handled by the backend
+        // which splits availability blocks around calendar events before sending them
         const hasConflict = (bookingData.existingBookings || []).some(booking => {
           if (!booking || !booking.scheduledStart || !booking.scheduledEnd) return false;
           const existingStart = new Date(booking.scheduledStart._seconds * 1000);
           const existingEnd = new Date(booking.scheduledEnd._seconds * 1000);
-          
+
           return (
             (slotStart >= existingStart && slotStart < existingEnd) ||
             (slotEnd > existingStart && slotEnd <= existingEnd) ||
             (slotStart <= existingStart && slotEnd >= existingEnd)
           );
         });
-        
+
         if (slotEnd <= blockEnd) {
           slots.push({
             start: slotStart,
@@ -198,20 +200,20 @@ export default function BookingPage() {
             available: !isPast && !hasConflict,
           });
         }
-        
+
         currentTime.setMinutes(currentTime.getMinutes() + 30);
       }
     });
-    
+
     return slots;
   };
 
   const handleBookSlot = async () => {
     if (!selectedSlot || !bookingData) return;
-    
+
     try {
       setBooking(true);
-      
+
       // Use plain fetch for public booking link (no auth required)
       // Use companies API for booking endpoints
       const apiUrl = import.meta.env.VITE_COMPANIES_API_URL || "";
@@ -223,12 +225,12 @@ export default function BookingPage() {
           scheduledEnd: selectedSlot.end.toISOString(),
         }),
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || "Failed to book interview");
       }
-      
+
       const result = await response.json();
       setBookingId(result.bookingId);
       setSuccess(true);
@@ -258,7 +260,7 @@ export default function BookingPage() {
 
   const handleCancelBooking = async () => {
     if (!bookingId) return;
-    
+
     try {
       setCancelling(true);
       const apiUrl = import.meta.env.VITE_COMPANIES_API_URL || "";
@@ -266,12 +268,12 @@ export default function BookingPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || "Failed to cancel booking");
       }
-      
+
       // Reset to initial state to allow rebooking
       setSuccess(false);
       setSelectedSlot(null);
@@ -290,15 +292,26 @@ export default function BookingPage() {
     setSuccess(false);
     setSelectedSlot(null);
     setBookingId(null);
+
+    // Clear existing booking from state so we don't get redirected back if logic re-runs
+    if (bookingData) {
+      setBookingData({
+        ...bookingData,
+        existingBooking: undefined
+      } as any);
+    }
   };
 
   if (loading) {
     return (
-      <div className="container mx-auto py-12 flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4 text-primary" />
-          <p className="text-muted-foreground">Loading booking information...</p>
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 text-gray-700">
+        <div className="relative">
+          <div className="h-12 w-12 border-4 border-gray-300 rounded-full"></div>
+          <div className="absolute top-0 left-0 h-12 w-12 border-4 border-t-primary border-transparent rounded-full animate-spin"></div>
         </div>
+        <p className="mt-4 text-sm font-medium text-gray-600 animate-pulse">
+          Loading booking information...
+        </p>
       </div>
     );
   }
@@ -423,26 +436,26 @@ export default function BookingPage() {
               disabled={(date) => {
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
-                
+
                 // Disable past dates
                 if (date < today) return true;
-                
+
                 // Disable dates more than 2 weeks out
                 const twoWeeksOut = new Date();
                 twoWeeksOut.setDate(twoWeeksOut.getDate() + 14);
                 if (date > twoWeeksOut) return true;
-                
+
                 // Disable days with no availability for THIS specific week
                 const dayOfWeek = date.getDay();
                 const weekStart = new Date(date);
                 weekStart.setDate(date.getDate() - date.getDay());
                 weekStart.setHours(0, 0, 0, 0);
                 const weekId = weekStart.toISOString().split('T')[0];
-                
+
                 const hasAvailability = (bookingData.availabilityBlocks || []).some(
                   block => block && block.day === dayOfWeek && block.weekStart === weekId
                 );
-                
+
                 return !hasAvailability;
               }}
               className="rounded-md border"
@@ -478,13 +491,12 @@ export default function BookingPage() {
                     key={index}
                     onClick={() => slot.available && setSelectedSlot(slot)}
                     disabled={!slot.available}
-                    className={`w-full p-3 rounded-lg border text-left transition-colors ${
-                      selectedSlot === slot
-                        ? "bg-primary text-primary-foreground border-primary cursor-pointer"
-                        : slot.available
+                    className={`w-full p-3 rounded-lg border text-left transition-colors ${selectedSlot === slot
+                      ? "bg-primary text-primary-foreground border-primary cursor-pointer"
+                      : slot.available
                         ? "hover:bg-muted border-border cursor-pointer"
                         : "opacity-50 cursor-not-allowed bg-muted"
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
