@@ -6,7 +6,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import UnifiedJobBoard from "@/components/unified-job-board";
+import { UnifiedJobBoard } from "@/components/unified-job-board";
 import { useState, useEffect } from "react";
 
 export default function Page() {
