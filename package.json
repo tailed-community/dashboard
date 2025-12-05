@@ -11,8 +11,7 @@
     "preview": "vite preview",
     "machine-translate": "inlang machine translate --project project.inlang",
     "inlang-compile": "npx @inlang/paraglide-js compile --project ./project.inlang --outdir ./src/paraglide",
-    "prepare": "husky",
-    "cz": "git-cz"
+    "prepare": "husky"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.1.1",
@@ -34,8 +33,6 @@
     "zod": "^3.25.67"
   },
   "devDependencies": {
-    "@commitlint/cli": "^19.8.1",
-    "@commitlint/config-conventional": "^19.8.1",
     "@eslint/js": "^9.29.0",
     "@inlang/cli": "^3.0.0",
     "@inlang/paraglide-js": "2.1.0",
