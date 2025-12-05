@@ -59,7 +59,7 @@ function parseLocation(location: string): ParsedLocation {
   }
 }
 
-export default function UnifiedJobBoard({ limit }: UnifiedJobBoardProps) {
+export function UnifiedJobBoard({ limit }: UnifiedJobBoardProps) {
   const [featuredJobs, setFeaturedJobs] = useState<FeaturedJob[]>([]);
   const [externalJobs, setExternalJobs] = useState<ExternalJob[]>([]);
   const [loading, setLoading] = useState(true);
