@@ -15,22 +15,23 @@ import {
     SheetTrigger,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { ChevronDownIcon, Menu as MenuIcon } from "lucide-react";
+import { 
+    ChevronDownIcon, 
+    Menu as MenuIcon,
+    Briefcase,
+    Code2,
+    Rocket,
+    BookOpen,
+    Users,
+    Heart,
+    Sparkles
+} from "lucide-react";
 import * as React from "react";
 import { useEffect, type JSX } from "react";
-import {
-    FaCalendarAlt,
-    FaChartPie,
-    FaCrown,
-    FaEnvelope,
-    FaGithub,
-    FaLinkedin,
-    FaTrophy,
-} from "react-icons/fa";
-import { FaLaptopCode } from "react-icons/fa6";
-import { SiDevpost } from "react-icons/si";
+import { FaCalendarAlt, FaChartPie, FaCrown, FaEnvelope, FaGithub, FaLaptopCode, FaLinkedin, FaTrophy } from "react-icons/fa";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/hooks/use-auth";
+import { SiDevpost } from "react-icons/si";
 
 type NavItem =
     | { type: "link"; labelKey: string; href: string }
@@ -40,12 +41,39 @@ type NavItem =
           items: JSX.Element;
       };
 
-const Product = ({
+const Community = ({
     variant = "desktop",
 }: {
     variant?: "desktop" | "mobile";
 }) => {
-    const features: Array<{
+    const items = [
+        {
+            icon: <Briefcase className="h-6 w-6" />,
+            labelKey: "Browse Opportunities",
+            descKey: "Discover internships and new grad positions from top companies",
+            href: "/jobs",
+        },
+        {
+            icon: <Code2 className="h-6 w-6" />,
+            labelKey: "Your Dashboard",
+            descKey: "Track your applications and manage your profile",
+            href: "/dashboard",
+        },
+        {
+            icon: <Users className="h-6 w-6" />,
+            labelKey: "Student Projects",
+            descKey: "Showcase your work and discover what others are building",
+            href: "https://github.com/tailed-community",
+        },
+        {
+            icon: <Sparkles className="h-6 w-6" />,
+            labelKey: "Get Recognized",
+            descKey: "Highlight your hackathon wins and open source contributions",
+            href: "/dashboard",
+        },
+    ];
+
+    const _features: Array<{
         color: string;
         items: Array<{
             icon: JSX.Element;
@@ -126,148 +154,58 @@ const Product = ({
         },
     ];
 
-    const hexToRgba = (hex: string, alpha: number) => {
-        const clean = hex.replace("#", "");
-        const bigint = parseInt(clean, 16);
-        const r = (bigint >> 16) & 255;
-        const g = (bigint >> 8) & 255;
-        const b = bigint & 255;
-        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-    };
-
-    const flatFeatures = features.flatMap((group) =>
-        group.items.map((item) => ({ ...item, color: group.color }))
-    );
-
     if (variant === "mobile") {
         return (
-            <div className="w-full">
-                <div>
-                    <div className="flex flex-col space-2">
-                        {flatFeatures.map((f, idx) => {
-                            const chipStyle = {
-                                color: hexToRgba(f.color, 0.75),
-                            };
-                            return (
-                                <a
-                                    key={idx}
-                                    href={f.href}
-                                    className="block rounded-xl px-3 py-2 hover:bg-muted/60 focus:outline-none focus:ring-2 focus:ring-ring ring-offset-background"
-                                >
-                                    <div className="flex items-start gap-2">
-                                        <div
-                                            className="h-7 w-7 shrink-0 grid place-items-center text-base"
-                                            style={chipStyle}
-                                            aria-hidden
-                                        >
-                                            {f.icon}
-                                        </div>
-                                        <div className="min-w-0">
-                                            <div className="text-sm font-medium text-foreground truncate">
-                                                {f.labelKey}
-                                            </div>
-                                            <p className="text-xs text-muted-foreground">
-                                                {f.descKey}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </a>
-                            );
-                        })}
-                    </div>
-                </div>
-                <a
-                    href="/catalog"
-                    className="mt-3 inline-flex items-center gap-2 text-sm font-medium underline underline-offset-4 hover:no-underline"
-                >
-                    Explore all features <span aria-hidden>→</span>
-                </a>
+            <div className="w-full space-y-2">
+                {items.map((item, idx) => (
+                    <a
+                        key={idx}
+                        href={item.href}
+                        className="block rounded-xl px-3 py-2 hover:bg-muted/60 focus:outline-none focus:ring-2 focus:ring-ring ring-offset-background"
+                    >
+                        <div className="flex items-start gap-2">
+                            <div className="h-7 w-7 shrink-0 grid place-items-center text-primary">
+                                {item.icon}
+                            </div>
+                            <div className="min-w-0">
+                                <div className="text-sm font-medium text-foreground">
+                                    {item.labelKey}
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    {item.descKey}
+                                </p>
+                            </div>
+                        </div>
+                    </a>
+                ))}
             </div>
         );
     }
 
     return (
-        <div className="w-full grid grid-cols-3 gap-4">
-            <div className="rounded-2xl p-6 col-span-1">
-                <div className="text-lg font-bold uppercase tracking-[0.12em] px-3">
-                    Tour the Product
-                </div>
-                <div className="mt-4 relative rounded-xl border overflow-hidden bg-muted/30">
-                    <div
-                        className="relative w-full h-0"
-                        style={{ paddingBottom: "56.25%" }}
-                    >
-                        <iframe
-                            loading="lazy"
-                            className="absolute inset-0 w-full h-full border-0 pointer-events-none"
-                            src="https://app.storylane.io/demo/u6bctms0ljyy?autoplay=1&muted=1"
-                            name="sl-embed-mini"
-                            title="interactive_product_demo"
-                            referrerPolicy="no-referrer"
-                        />
-                    </div>
+        <div className="w-full p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {items.map((item, idx) => (
                     <a
-                        href="/#product-tour"
-                        aria-label="cta_open_interactive_tour"
-                        className="absolute inset-0 focus:outline-none focus:ring-2 focus:ring-ring ring-offset-background"
-                    />
-                </div>
-
-                <a
-                    href="/#product-tour"
-                    className="mt-6 inline-flex items-center gap-2 text-sm font-medium underline underline-offset-4 hover:no-underline"
-                >
-                    View product tour <span aria-hidden>→</span>
-                </a>
-            </div>
-
-            <div className="rounded-2xl p-6 col-span-2">
-                <div className="text-lg font-bold uppercase tracking-[0.12em] px-3">
-                    Features
-                </div>
-
-                <div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                        {flatFeatures.map((f, idx) => {
-                            const chipStyle = {
-                                color: hexToRgba(f.color, 0.75),
-                            };
-
-                            return (
-                                <a
-                                    key={idx}
-                                    href={f.href}
-                                    className="block rounded-xl px-4 py-3 hover:bg-muted/60 focus:outline-none focus:ring-2 focus:ring-ring ring-offset-background"
-                                >
-                                    <div className="flex items-start gap-3">
-                                        <div
-                                            className="h-8 w-8 shrink-0 grid place-items-center text-base"
-                                            style={chipStyle}
-                                            aria-hidden
-                                        >
-                                            {f.icon}
-                                        </div>
-                                        <div className="min-w-0">
-                                            <div className="text-sm font-medium text-foreground truncate">
-                                                {f.labelKey}
-                                            </div>
-                                            <p className="text-sm text-muted-foreground">
-                                                {f.descKey}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </a>
-                            );
-                        })}
-                    </div>
-                </div>
-
-                <a
-                    href="/catalog"
-                    className="mt-4 inline-flex items-center gap-2 text-sm font-medium underline underline-offset-4 hover:no-underline"
-                >
-                    Explore all features <span aria-hidden>→</span>
-                </a>
+                        key={idx}
+                        href={item.href}
+                        className="block rounded-xl px-4 py-3 hover:bg-muted/60 focus:outline-none focus:ring-2 focus:ring-ring ring-offset-background"
+                    >
+                        <div className="flex items-start gap-3">
+                            <div className="h-8 w-8 shrink-0 grid place-items-center text-primary">
+                                {item.icon}
+                            </div>
+                            <div className="min-w-0">
+                                <div className="text-sm font-medium text-foreground">
+                                    {item.labelKey}
+                                </div>
+                                <p className="text-sm text-muted-foreground">
+                                    {item.descKey}
+                                </p>
+                            </div>
+                        </div>
+                    </a>
+                ))}
             </div>
         </div>
     );
@@ -551,9 +489,9 @@ const Resources = () => {
 };
 
 const navItems: NavItem[] = [
-    { type: "menu", labelKey: "Product", items: <Product /> },
-    { type: "menu", labelKey: "Solutions", items: <Solutions /> },
-    { type: "menu", labelKey: "Resources", items: <Resources /> },
+    // { type: "link", labelKey: "Jobs", href: "/jobs" },
+    { type: "menu", labelKey: "Community", items: <Community /> },
+    // { type: "menu", labelKey: "Resources", items: <Resources /> },
 ];
 
 function Logo() {
@@ -640,7 +578,7 @@ export function Header() {
                                                     "focus-visible:border-ring focus-visible:ring-ring/50 flex flex-1 items-start justify-between gap-4 rounded-md py-4 text-left text-sm font-medium transition-all outline-none focus-visible:ring-[3px] disabled:pointer-events-none disabled:opacity-50 hover:[&>svg]:rotate-180",
                                                     "px-3 py-2 text-sm outline-none",
                                                     openMenu === item.labelKey
-                                                        ? " bg-[#FFD37D] rounded-lg"
+                                                        ? " bg-primary/10 rounded-lg"
                                                         : ""
                                                 )}
                                             >
@@ -672,16 +610,16 @@ export function Header() {
                             {user ? (
                                 <a
                                     href="/dashboard"
-                                    className="hidden nav:inline-block text-sm rounded-lg px-4 py-3 hover:bg-[#f8d1b1]"
+                                    className="hidden nav:inline-block text-sm rounded-lg px-4 py-3 bg-primary text-primary-foreground hover:bg-primary/90 font-medium"
                                 >
                                     Go To Dashboard
                                 </a>
                             ) : (
                                 <a
                                     href="/sign-in"
-                                    className="hidden nav:inline-block text-sm rounded-lg px-4 py-3 hover:bg-[#f8d1b1]"
+                                    className="hidden nav:inline-block text-sm rounded-lg px-4 py-3 bg-primary text-primary-foreground hover:bg-primary/90 font-medium"
                                 >
-                                    Log in
+                                    Get Started
                                 </a>
                             )}
 
@@ -735,8 +673,8 @@ export function Header() {
                                                         </AccordionTrigger>
                                                         <AccordionContent className="pb-4">
                                                             {item.labelKey ===
-                                                            "Product" ? (
-                                                                <Product variant="mobile" />
+                                                            "Community" ? (
+                                                                <Community variant="mobile" />
                                                             ) : (
                                                                 item.items
                                                             )}
@@ -760,16 +698,16 @@ export function Header() {
                                             {user ? (
                                                 <a
                                                     href="/dashboard"
-                                                    className="block text-sm rounded-lg px-4 py-3 hover:bg-muted/60"
+                                                    className="block text-sm rounded-lg px-4 py-3 bg-primary text-primary-foreground font-medium text-center"
                                                 >
                                                     Go To Dashboard
                                                 </a>
                                             ) : (
                                                 <a
                                                     href="/sign-in"
-                                                    className="block text-sm rounded-lg px-4 py-3 hover:bg-muted/60"
+                                                    className="block text-sm rounded-lg px-4 py-3 bg-primary text-primary-foreground font-medium text-center"
                                                 >
-                                                    Log in
+                                                    Get Started
                                                 </a>
                                             )}
                                         </div>

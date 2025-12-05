@@ -6,90 +6,135 @@ import {
   Github,
   Star,
   Users,
-  BookOpen,
   Rocket,
+  Sparkles,
+  Briefcase,
+  Code2,
+  TrendingUp,
+  ArrowRight,
   HeartHandshake,
+  BookOpen,
   Globe,
   Puzzle,
-  Sparkles,
 } from "lucide-react";
 import { Header } from "@/components/landing/header";
+import { UnifiedJobBoard } from "@/components/unified-job-board";
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen relative overflow-hidden bg-gradient-to-b from-primary/10 via-background to-background text-foreground">
+    <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-background via-primary/5 to-secondary/20 text-foreground">
       <Header />
-      {/* Background accents */}
+      
+      {/* Dynamic background elements with brand colors */}
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute left-1/2 top-[-8rem] h-[30rem] w-[30rem] -translate-x-1/2 rounded-full bg-primary/20 blur-3xl" />
-        <div className="absolute right-[-10rem] bottom-[-10rem] h-[28rem] w-[28rem] rounded-full bg-pink-500/20 blur-3xl" />
-        <div className="absolute left-[-10rem] bottom-[10%] h-[22rem] w-[22rem] rounded-full bg-amber-400/20 blur-3xl" />
+        <div className="absolute left-[10%] top-[-5rem] h-[35rem] w-[35rem] rounded-full bg-gradient-to-br from-[#EB7A24]/30 to-[#FFD37D]/20 blur-3xl animate-pulse" />
+        <div className="absolute right-[-8rem] top-[15%] h-[32rem] w-[32rem] rounded-full bg-gradient-to-tr from-[#8ec4f3]/30 to-[#c0bbff]/20 blur-3xl animate-pulse [animation-delay:2s]" />
+        <div className="absolute left-[-5rem] bottom-[20%] h-[28rem] w-[28rem] rounded-full bg-gradient-to-tl from-[#ef4441]/20 to-[#FFD37D]/25 blur-3xl animate-pulse [animation-delay:4s]" />
+        <div className="absolute right-[15%] bottom-[-8rem] h-[30rem] w-[30rem] rounded-full bg-gradient-to-bl from-[#c0bbff]/25 to-[#8ec4f3]/20 blur-3xl animate-pulse [animation-delay:1s]" />
       </div>
 
-      {/* Hero */}
-      <header className="mx-auto max-w-5xl px-6 py-16 sm:py-24 text-center">
-        <div className="mb-4 flex justify-center">
-          <Badge variant="secondary" className="gap-2 px-3 py-1 text-xs">
-            <Sparkles className="h-3.5 w-3.5" /> Open Source • Student-first
-          </Badge>
-        </div>
-        <h1 className="text-3xl font-extrabold tracking-tight sm:text-6xl bg-gradient-to-r from-primary via-amber-500 to-pink-500 bg-clip-text text-transparent">
-          Tail’ed Community
-        </h1>
-        <p className="mt-6 mx-auto max-w-2xl text-muted-foreground">
-          Build together. Learn together. Get recognized. A modern, open-source
-          community for students and early-career technologists.
-        </p>
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-          <a
-            href="https://github.com/tailed-community"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Button size="lg" className="gap-2">
-              <Github className="h-4 w-4" /> Star on GitHub
-            </Button>
-          </a>
-          <Link to="/sign-in">
-            <Button size="lg" variant="outline" className="gap-2">
-              <Users className="h-4 w-4" /> Join the community
-            </Button>
-          </Link>
-          <a
-            href="https://github.com/tailed-community/dashboard#roadmap"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Button size="lg" variant="ghost" className="gap-2">
-              <Rocket className="h-4 w-4" /> View roadmap
-            </Button>
-          </a>
-        </div>
+      {/* Hero Section - Asymmetrical Layout */}
+      <header className="mx-auto max-w-7xl px-6 pt-12 pb-8 sm:pt-20 sm:pb-12">
+        <div className="grid lg:grid-cols-2 gap-12 items-center">
+          {/* Left side - Main Content */}
+          <div className="space-y-6">
+            <Badge 
+              variant="secondary" 
+              className="gap-2 px-4 py-2 text-sm bg-gradient-to-r from-primary/20 to-secondary/20 border-primary/30 inline-flex"
+            >
+              <Sparkles className="h-4 w-4 text-primary" /> 
+              <span className="bg-gradient-to-r from-primary to-[#ef4441] bg-clip-text text-transparent font-semibold">
+                Built by Students, For Students
+              </span>
+            </Badge>
+            
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-tight">
+              <span className="block">Empower Your</span>
+              <span className="block bg-gradient-to-r from-[#EB7A24] via-[#ef4441] to-[#c0bbff] bg-clip-text text-transparent">
+                Growth Journey
+              </span>
+            </h1>
+            
+            <p className="text-lg sm:text-xl text-muted-foreground max-w-xl leading-relaxed">
+              A world where every student with talent and grit can access meaningful opportunities—and where creativity meets recognition.
+            </p>
+            
+            <div className="flex flex-wrap items-center gap-4 pt-4">
+              <Link to="/jobs">
+                <Button 
+                  size="lg" 
+                  className="gap-2 bg-gradient-to-r from-primary to-[#ef4441] hover:opacity-90 text-lg px-8 shadow-lg"
+                >
+                  <Briefcase className="h-5 w-5" /> Explore Opportunities
+                </Button>
+              </Link>
+              <Link to="/sign-in">
+                <Button 
+                  size="lg" 
+                  variant="outline" 
+                  className="gap-2 text-lg px-8 border-2 border-primary/50 hover:bg-primary/10"
+                >
+                  <Users className="h-5 w-5" /> Join Community
+                </Button>
+              </Link>
+            </div>
 
-        {/* Badges (shields) */}
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-3 opacity-80">
-          {/* redirect to https://github.com/tailed-community/dashboard/stargazers */}
-          <a
-            href="https://github.com/tailed-community/dashboard/stargazers"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <img
-              alt="GitHub stars"
-              className="h-6"
-              src="https://img.shields.io/github/stars/tailed-community/dashboard?style=social"
-            />
-          </a>
-          <img
-            alt="GitHub forks"
-            className="h-6"
-            src="https://img.shields.io/github/forks/tailed-community/dashboard?style=social"
-          />
-          <img
-            alt="License"
-            className="h-6"
-            src="https://img.shields.io/badge/license-MIT-green"
-          />
+            {/* Quick Stats */}
+            <div className="flex flex-wrap items-center gap-6 pt-6">
+              <a
+                href="https://github.com/tailed-community/dashboard/stargazers"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Star className="h-4 w-4 fill-[#FFD37D] text-[#FFD37D]" />
+                <span className="font-semibold">Open Source</span>
+              </a>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <TrendingUp className="h-4 w-4 text-[#8ec4f3]" />
+                <span className="font-semibold">1000+ Opportunities</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Users className="h-4 w-4 text-[#c0bbff]" />
+                <span className="font-semibold">Student-First</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Right side - Visual Element */}
+          <div className="relative lg:ml-auto">
+            <div className="relative rounded-2xl bg-gradient-to-br from-primary/10 via-secondary/10 to-background p-8 border-2 border-primary/20 shadow-2xl backdrop-blur-sm">
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 p-4 bg-background/80 rounded-xl border border-primary/20 transform hover:scale-105 transition-transform">
+                  <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#EB7A24] to-[#FFD37D] flex items-center justify-center">
+                    <Code2 className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <div className="font-semibold text-foreground">Student Creator</div>
+                    <div className="text-sm text-muted-foreground">Build & Share Projects</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-4 bg-background/80 rounded-xl border border-primary/20 transform hover:scale-105 transition-transform">
+                  <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#8ec4f3] to-[#c0bbff] flex items-center justify-center">
+                    <Rocket className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <div className="font-semibold text-foreground">Get Recognized</div>
+                    <div className="text-sm text-muted-foreground">Showcase Your Talent</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-4 bg-background/80 rounded-xl border border-primary/20 transform hover:scale-105 transition-transform">
+                  <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#ef4441] to-[#EB7A24] flex items-center justify-center">
+                    <Briefcase className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <div className="font-semibold text-foreground">Find Opportunities</div>
+                    <div className="text-sm text-muted-foreground">Your Dream Job Awaits</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -130,6 +175,105 @@ export default function LandingPage() {
               icon={<Star className="h-5 w-5" />}
               title="Open source"
               description="MIT licensed. Transparent, collaborative, and welcoming to newcomers."
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Job Board Showcase Section */}
+      <section className="relative py-12 sm:py-16">
+        <div className="mx-auto max-w-7xl px-6">
+          {/* Section Header */}
+          <div className="text-center mb-12">
+            <Badge 
+              variant="outline" 
+              className="mb-4 gap-2 px-4 py-2 border-primary/30 bg-primary/5"
+            >
+              <Briefcase className="h-4 w-4 text-primary" />
+              <span className="text-primary font-semibold">Live Opportunities</span>
+            </Badge>
+            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mb-4">
+              <span className="bg-gradient-to-r from-[#EB7A24] to-[#ef4441] bg-clip-text text-transparent">
+                Latest Opportunities
+              </span>
+              <span className="text-foreground"> for Student Creators</span>
+            </h2>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+              Discover internships and new grad positions from top companies. No gatekeeping, just opportunities.
+            </p>
+          </div>
+
+          {/* Job Board Component */}
+          <div className="relative">
+              <UnifiedJobBoard limit={8} />
+          </div>
+
+          {/* CTA to full job board */}
+          <div className="text-center mt-8">
+            <Link to="/jobs">
+              <Button 
+                size="lg" 
+                variant="outline"
+                className="gap-2 text-lg px-8 border-2 border-primary hover:bg-primary hover:text-primary-foreground"
+              >
+                View All Opportunities 
+                <ArrowRight className="h-5 w-5" />
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Student Impact Section */}
+      <section className="relative py-16 sm:py-24 overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-24 bg-gradient-to-b from-background to-transparent" />
+        
+        <div className="mx-auto max-w-6xl px-6">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mb-4">
+              Built for <span className="bg-gradient-to-r from-[#8ec4f3] to-[#c0bbff] bg-clip-text text-transparent">Student Creators</span>
+            </h2>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+              A platform where your talent, grit, and creativity are celebrated and rewarded.
+            </p>
+          </div>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <ImpactCard
+              icon={<Code2 className="h-6 w-6" />}
+              title="Showcase Your Work"
+              description="Build your portfolio and highlight your projects, hackathon wins, and open source contributions."
+              gradient="from-[#EB7A24] to-[#FFD37D]"
+            />
+            <ImpactCard
+              icon={<Rocket className="h-6 w-6" />}
+              title="Get Discovered"
+              description="Connect with companies looking for talented students like you. Your next opportunity is here."
+              gradient="from-[#8ec4f3] to-[#c0bbff]"
+            />
+            <ImpactCard
+              icon={<Users className="h-6 w-6" />}
+              title="Join the Community"
+              description="Network with fellow student creators, collaborate on projects, and grow together."
+              gradient="from-[#ef4441] to-[#EB7A24]"
+            />
+            <ImpactCard
+              icon={<Star className="h-6 w-6" />}
+              title="Open Source"
+              description="Contribute to our MIT-licensed platform and make it better for everyone."
+              gradient="from-[#FFD37D] to-[#8ec4f3]"
+            />
+            <ImpactCard
+              icon={<Sparkles className="h-6 w-6" />}
+              title="No Gatekeeping"
+              description="Access opportunities without barriers. If you have the talent and grit, you belong here."
+              gradient="from-[#c0bbff] to-[#ef4441]"
+            />
+            <ImpactCard
+              icon={<TrendingUp className="h-6 w-6" />}
+              title="Track Your Growth"
+              description="Monitor your applications, achievements, and progress all in one place."
+              gradient="from-[#EB7A24] to-[#c0bbff]"
             />
           </div>
         </div>
@@ -279,6 +423,80 @@ git push origin feat/amazing-contribution
           </div>
         </div>
       </section>
+
+      {/* Final CTA Section */}
+      <section className="relative py-16 sm:py-24">
+        <div className="mx-auto max-w-5xl px-6 text-center">
+          <div className="relative rounded-3xl bg-gradient-to-br from-primary/10 via-secondary/10 to-background p-12 sm:p-16 border-2 border-primary/30 shadow-2xl overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-r from-[#EB7A24]/10 via-[#8ec4f3]/10 to-[#c0bbff]/10 animate-pulse" />
+            
+            <div className="relative z-10">
+              <Badge 
+                variant="secondary" 
+                className="mb-6 gap-2 px-4 py-2 bg-primary/20 border-primary/40"
+              >
+                <Sparkles className="h-4 w-4 text-primary" />
+                <span className="text-primary font-semibold">Start Your Journey Today</span>
+              </Badge>
+              
+              <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mb-6">
+                Ready to Lead Your Own <span className="bg-gradient-to-r from-[#EB7A24] via-[#ef4441] to-[#c0bbff] bg-clip-text text-transparent">Growth</span>?
+              </h2>
+              
+              <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
+                Join thousands of student creators who are building their future, one opportunity at a time. No barriers, just possibilities.
+              </p>
+              
+              <div className="flex flex-wrap items-center justify-center gap-4">
+                <Link to="/sign-in">
+                  <Button 
+                    size="lg" 
+                    className="gap-2 bg-gradient-to-r from-primary to-[#ef4441] hover:opacity-90 text-lg px-10 shadow-xl"
+                  >
+                    <Rocket className="h-5 w-5" /> Get Started Free
+                  </Button>
+                </Link>
+                <a
+                  href="https://github.com/tailed-community/dashboard"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Button 
+                    size="lg" 
+                    variant="outline" 
+                    className="gap-2 text-lg px-10 border-2 border-primary/50 hover:bg-primary/10"
+                  >
+                    <Github className="h-5 w-5" /> Star on GitHub
+                  </Button>
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+// Impact Card Component
+interface ImpactCardProps {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  gradient: string;
+}
+
+function ImpactCard({ icon, title, description, gradient }: ImpactCardProps) {
+  return (
+    <div className="relative group">
+      <div className={`absolute -inset-px bg-gradient-to-r ${gradient} rounded-xl opacity-75 group-hover:opacity-100 blur transition duration-300`} />
+      <div className="relative h-full bg-background p-6 rounded-xl border border-border">
+        <div className={`inline-flex p-3 rounded-lg bg-gradient-to-br ${gradient} text-white mb-4`}>
+          {icon}
+        </div>
+        <h3 className="text-lg font-semibold mb-2 text-foreground">{title}</h3>
+        <p className="text-sm text-muted-foreground leading-relaxed">{description}</p>
+      </div>
     </div>
   );
 }
