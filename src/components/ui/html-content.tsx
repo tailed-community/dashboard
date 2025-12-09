@@ -16,10 +16,15 @@ export const HTMLContent: React.FC<HTMLContentProps> = ({
 }) => {
   // Basic sanitization - remove script tags and dangerous attributes
   const sanitizeHTML = (html: string): string => {
-    return html
+    let sanitized = html
       .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
       .replace(/on\w+="[^"]*"/g, "")
       .replace(/on\w+='[^']*'/g, "");
+
+    // Convert empty paragraphs to line breaks for proper spacing
+    sanitized = sanitized.replace(/<p>(\s|&nbsp;|<br\s*\/?>)*<\/p>/gi, "<br>");
+
+    return sanitized;
   };
 
   const sanitizedContent = sanitizeHTML(content);
