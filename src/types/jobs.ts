@@ -22,6 +22,7 @@ export interface Job {
   shareSettings?: ShareSettings;
   // Reference to the organization
   organization?: Organization;
+  skills?: string[];
 }
 
 export interface Organization {
