@@ -239,6 +239,7 @@ export default function PublicJobPage() {
                                                 job.requirements ||
                                                 "<p>No requirements provided.</p>"
                                             }
+                                            skills={job?.skills || []}
                                             className="text-md"
                                         />
                                     </div>
