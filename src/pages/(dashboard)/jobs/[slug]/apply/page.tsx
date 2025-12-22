@@ -180,6 +180,13 @@ export default function ApplyJobPage() {
 
             // If request succeeds and user has profile
             if (appliedJobsResponse.ok) {
+                const appliedJobsData = await appliedJobsResponse.json();
+                if (Array.isArray(appliedJobsData)) {
+                    const appliedIds = appliedJobsData.map(
+                        (item: any) => item.jobId
+                    );
+                    setHasAlreadyApplied(appliedIds.includes(slug || ""));
+                }
                 const appliedJobIds = await appliedJobsResponse.json();
 
                 // Check if this job is in the applied jobs array

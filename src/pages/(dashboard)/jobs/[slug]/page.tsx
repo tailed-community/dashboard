@@ -81,7 +81,10 @@ export default function PublicJobPage() {
                     // Only check if response is an array (successful profile fetch)
                     if (Array.isArray(appliedJobIds)) {
                         const jobId = data.job?.id || data.id;
-                        setHasApplied(appliedJobIds.includes(jobId));
+                        const appliedIds = appliedJobIds.map(
+                            (item: any) => item.jobId
+                        );
+                        setHasApplied(appliedIds.includes(jobId));
                     }
                     // If it's not an array (e.g., {error: "Profile not found"}), hasApplied remains false
                 }
