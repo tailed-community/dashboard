@@ -25,10 +25,10 @@ router.get("/applied-jobs", async (req, res) => {
             ? profileData.appliedJobs
             : [];
 
-        const appliedJobIds = appliedJobs
-            .filter((job: any) => job && job.jobId)
-            .map((job: any) => job.jobId);
-        return res.status(200).json(appliedJobIds);
+        // const appliedJobIds = appliedJobs
+        //     .filter((job: any) => job && job.jobId)
+        //     .map((job: any) => job.jobId);
+        return res.status(200).json(appliedJobs);
     } catch (error) {
         logger.error("Error fetching applied jobs:", error);
         return res.status(500).json({

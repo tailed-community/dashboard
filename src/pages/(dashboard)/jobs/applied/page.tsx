@@ -41,19 +41,19 @@ export default function AppliedJobsPage() {
                 setError(null);
 
                 // First, get the applied job IDs
-                const appliedIdsRes = await apiFetch("/job/applied-jobs");
+                const appliedRes = await apiFetch("/job/applied-jobs");
 
                 // Handle case where profile doesn't exist yet
-                if (!appliedIdsRes.ok) {
+                if (!appliedRes.ok) {
                     // If profile not found (404), treat as empty applied jobs list
-                    if (appliedIdsRes.status === 404) {
+                    if (appliedRes.status === 404) {
                         setAppliedJobs([]);
                         return;
                     }
 
                     // Try to parse error message
                     try {
-                        const errorData = await appliedIdsRes.json();
+                        const errorData = await appliedRes.json();
                         // If profile not found error, treat as empty
                         if (errorData.error === "Profile not found") {
                             setAppliedJobs([]);
@@ -68,17 +68,18 @@ export default function AppliedJobsPage() {
                     }
                 }
 
-                const appliedIds = await appliedIdsRes.json();
+                const appliedJobs = await appliedRes.json();
 
-                if (!Array.isArray(appliedIds) || appliedIds.length === 0) {
+                if (!Array.isArray(appliedJobs) || appliedJobs.length === 0) {
                     setAppliedJobs([]);
                     return;
                 }
 
                 // Then, fetch each job details
-                const jobPromises = appliedIds.map(async (id: string) => {
+                const jobPromises = appliedJobs.map(async (item: any) => {
+                    const id = item.jobId;
                     const jobRes = await apiFetch(
-                        `/public/jobs/${id}`,
+                        `/public/jobs/${id}?includeExpired=true`,
                         {},
                         true
                     );
@@ -89,6 +90,7 @@ export default function AppliedJobsPage() {
                         if (data.organization) {
                             jobData.organization = data.organization;
                         }
+                        jobData.status = item.status;
                         return jobData;
                     }
                     return null;
@@ -133,6 +135,28 @@ export default function AppliedJobsPage() {
             </div>
         );
     }
+
+    // Helper function to get status badge styling
+    const getStatusStyle = (status: string) => {
+        const normalizedStatus = status.toLowerCase();
+        
+        switch (normalizedStatus) {
+            case 'screening':
+                return 'text-blue-700 bg-blue-50 border-blue-300';
+            case 'interview':
+                return 'text-purple-700 bg-purple-50 border-purple-300';
+            case 'offer':
+                return 'text-emerald-700 bg-emerald-50 border-emerald-300';
+            case 'hired':
+                return 'text-yellow-700 bg-yellow-50 border-yellow-300';
+            case 'rejected':
+                return 'text-red-700 bg-red-50 border-red-300';
+            case 'applied':
+                return 'text-green-700 bg-green-50 border-green-300';
+            default:
+                return 'text-gray-700 bg-gray-50 border-gray-300';
+        }
+    };
 
     return (
         <>
@@ -218,9 +242,9 @@ export default function AppliedJobsPage() {
                                                     </span>
                                                     <Badge
                                                         variant="outline"
-                                                        className="text-green-600 border-green-600"
+                                                        className={getStatusStyle(job.status || "Applied")}
                                                     >
-                                                        Applied
+                                                        {job.status || "Applied"}
                                                     </Badge>
                                                 </div>
 
