@@ -4,8 +4,7 @@ import {
     BreadcrumbLink,
     BreadcrumbList,
 } from "@/components/ui/breadcrumb";
-import { Separator } from "@/components/ui/separator";
-import { SidebarTrigger, BreadcrumbSeparator } from "@/components/ui/sidebar";
+import { BreadcrumbSeparator } from "@/components/ui/sidebar";
 import { UnifiedJobBoard } from "@/components/unified-job-board";
 import { useState, useEffect } from "react";
 
@@ -21,18 +20,16 @@ export default function JobsPage() {
     return (
         <>
             <header
-                className={`sticky top-0 z-[50] bg-white flex h-16 shrink-0 items-center gap-2 ${
-                    scrolled ? "shadow-sm" : ""
+                className={`sticky top-0 z-[50] bg-card border-b border-border flex h-16 shrink-0 items-center gap-2 ${
+                    scrolled ? "shadow-soft" : ""
                 }`}
             >
-                <div className="flex items-center gap-2 px-4">
-                    <SidebarTrigger className="-ml-1" />
-                    <Separator orientation="vertical" className="mr-2 h-4" />
+                <div className="flex items-center gap-2 px-6">
                     <Breadcrumb>
                         <BreadcrumbList>
                             <BreadcrumbItem className="hidden md:block">
-                                <BreadcrumbLink href="/dashboard">
-                                    Dashboard
+                                <BreadcrumbLink href="/">
+                                    Home
                                 </BreadcrumbLink>
                             </BreadcrumbItem>
                             <BreadcrumbSeparator className="hidden md:block" />
@@ -45,8 +42,10 @@ export default function JobsPage() {
                     </Breadcrumb>
                 </div>
             </header>
-            <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-                <div className="min-h-[100vh] flex-1 rounded-xl md:min-h-min">
+            <div className="flex flex-1 flex-col gap-6 p-6">
+                <div className="max-w-6xl mx-auto w-full">
+                    <h1 className="text-3xl font-bold mb-2">All Opportunities</h1>
+                    <p className="text-muted-foreground mb-6">Browse all available positions</p>
                     <UnifiedJobBoard />
                 </div>
             </div>

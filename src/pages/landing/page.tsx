@@ -19,8 +19,11 @@ import {
 } from "lucide-react";
 import { Header } from "@/components/landing/header";
 import { UnifiedJobBoard } from "@/components/unified-job-board";
+import { useAuth } from "@/hooks/use-auth";
 
 export default function LandingPage() {
+  const { user } = useAuth();
+  
   return (
     <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-background via-primary/5 to-secondary/20 text-foreground">
       <Header />
@@ -33,8 +36,73 @@ export default function LandingPage() {
         <div className="absolute right-[15%] bottom-[-8rem] h-[30rem] w-[30rem] rounded-full bg-gradient-to-bl from-[#c0bbff]/25 to-[#8ec4f3]/20 blur-3xl animate-pulse [animation-delay:1s]" />
       </div>
 
-      {/* Hero Section - Asymmetrical Layout */}
-      <header className="mx-auto max-w-7xl px-6 pt-12 pb-8 sm:pt-20 sm:pb-12">
+      {/* Hero Section - Show Dashboard for logged-in users, marketing content for visitors */}
+      {user ? (
+        /* Dashboard View for Logged Users */
+        <section className="mx-auto max-w-7xl px-6 pt-8 pb-8 sm:pt-12 sm:pb-12">
+          <div className="mb-8">
+            <h1 className="text-3xl sm:text-4xl font-bold mb-2">
+              Welcome back, <span className="bg-gradient-to-r from-[#EB7A24] to-[#ef4441] bg-clip-text text-transparent">{user.displayName || user.email?.split('@')[0] || 'Student'}</span>
+            </h1>
+            <p className="text-muted-foreground text-lg">Track your applications and discover new opportunities</p>
+          </div>
+
+          {/* Quick Stats for User */}
+          <div className="grid sm:grid-cols-3 gap-4 mb-8">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Applications</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">Track your progress</div>
+                <Link to="/jobs/applied" className="text-sm text-primary hover:underline inline-flex items-center gap-1 mt-2">
+                  View all <ArrowRight className="h-3 w-3" />
+                </Link>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium text-muted-foreground">New Opportunities</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">Discover jobs</div>
+                <Link to="/jobs" className="text-sm text-primary hover:underline inline-flex items-center gap-1 mt-2">
+                  Browse all <ArrowRight className="h-3 w-3" />
+                </Link>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Your Profile</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">Stand out</div>
+                <Link to="/account" className="text-sm text-primary hover:underline inline-flex items-center gap-1 mt-2">
+                  Update profile <ArrowRight className="h-3 w-3" />
+                </Link>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Latest Opportunities for Logged Users */}
+          <div>
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-2xl font-bold">Latest Opportunities</h2>
+                <p className="text-muted-foreground">Discover new positions that match your profile</p>
+              </div>
+              <Link to="/jobs">
+                <Button variant="outline" className="gap-2">
+                  View All <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
+            <UnifiedJobBoard limit={10} />
+          </div>
+        </section>
+      ) : (
+        /* Marketing Hero for Non-logged Users */
+        <header className="mx-auto max-w-7xl px-6 pt-12 pb-8 sm:pt-20 sm:pb-12">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           {/* Left side - Main Content */}
           <div className="space-y-6">
@@ -137,8 +205,12 @@ export default function LandingPage() {
           </div>
         </div>
       </header>
-
-      {/* Features */}
+      )}
+      
+      {/* Marketing sections - Show only for non-logged users */}
+      {!user && (
+      <>
+      {/* Features - Show for non-logged users */}
       <section className="border-t">
         <div className="mx-auto max-w-6xl px-6 py-12 sm:py-16">
           <h2 className="text-center text-2xl font-semibold sm:text-3xl">
@@ -474,6 +546,8 @@ git push origin feat/amazing-contribution
           </div>
         </div>
       </section>
+      </>
+      )}
     </div>
   );
 }

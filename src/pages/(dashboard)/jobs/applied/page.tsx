@@ -11,8 +11,7 @@ import {
     BreadcrumbLink,
     BreadcrumbList,
 } from "@/components/ui/breadcrumb";
-import { Separator } from "@/components/ui/separator";
-import { SidebarTrigger, BreadcrumbSeparator } from "@/components/ui/sidebar";
+import { BreadcrumbSeparator } from "@/components/ui/sidebar";
 import { useNavigate } from "react-router-dom";
 
 type AppliedJob = Job & {
@@ -161,13 +160,11 @@ export default function AppliedJobsPage() {
     return (
         <>
             <header
-                className={`sticky top-0 z-[50] bg-white flex h-16 shrink-0 items-center gap-2 ${
-                    scrolled ? "shadow-sm" : ""
+                className={`sticky top-0 z-[50] bg-card border-b border-border flex h-16 shrink-0 items-center gap-2 ${
+                    scrolled ? "shadow-soft" : ""
                 }`}
             >
-                <div className="flex items-center gap-2 px-4">
-                    <SidebarTrigger className="-ml-1" />
-                    <Separator orientation="vertical" className="mr-2 h-4" />
+                <div className="flex items-center gap-2 px-6">
                     <Breadcrumb>
                         <BreadcrumbList>
                             <BreadcrumbItem className="hidden md:block">

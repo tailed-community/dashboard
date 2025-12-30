@@ -4,12 +4,12 @@ import {
     BreadcrumbLink,
     BreadcrumbList,
 } from "@/components/ui/breadcrumb";
-import { Separator } from "@/components/ui/separator";
-import { SidebarTrigger } from "@/components/ui/sidebar";
+import { useAuth } from "@/hooks/use-auth";
 import AccountPage from "@/pages/(dashboard)/account/account";
 import { useState, useEffect } from "react";
 
 export default function Page() {
+    const { user } = useAuth();
     const [scrolled, setScrolled] = useState(false);
     useEffect(() => {
         const onScroll = () => {
@@ -26,8 +26,7 @@ export default function Page() {
                 }`}
             >
                 <div className="flex items-center gap-2 px-4">
-                    <SidebarTrigger className="-ml-1" />
-                    <Separator orientation="vertical" className="mr-2 h-4" />
+
                     <Breadcrumb>
                         <BreadcrumbList>
                             <BreadcrumbItem className="hidden md:block">

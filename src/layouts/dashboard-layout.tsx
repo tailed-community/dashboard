@@ -1,14 +1,13 @@
-import { AppSidebar } from "@/components/layout/app-sidebar";
+import { Header } from "@/components/landing/header";
 import { Outlet } from "react-router-dom";
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 
 export default function DashboardLayout() {
   return (
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset>
+    <div className="relative flex min-h-screen flex-col">
+      <Header />
+      <main className="flex-1">
         <Outlet />
-      </SidebarInset>
-    </SidebarProvider>
+      </main>
+    </div>
   );
 }

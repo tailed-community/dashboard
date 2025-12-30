@@ -5,7 +5,17 @@ import {
     AccordionTrigger,
 } from "@/components/ui/accordion";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuGroup,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import {
     Sheet,
@@ -23,14 +33,19 @@ import {
     Rocket,
     BookOpen,
     Users,
-    Heart,
-    Sparkles
+    Sparkles,
+    LayoutDashboard,
+    LogOut,
+    Settings,
+    FileText
 } from "lucide-react";
 import * as React from "react";
 import { useEffect, type JSX } from "react";
 import { FaCalendarAlt, FaChartPie, FaCrown, FaEnvelope, FaGithub, FaLaptopCode, FaLinkedin, FaTrophy } from "react-icons/fa";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/use-auth";
+import { signOut } from "firebase/auth";
+import { studentAuth } from "@/lib/auth";
 import { SiDevpost } from "react-icons/si";
 
 type NavItem =
@@ -49,27 +64,27 @@ const Community = ({
     const items = [
         {
             icon: <Briefcase className="h-6 w-6" />,
-            labelKey: "Browse Opportunities",
+            labelKey: "Browse Jobs",
             descKey: "Discover internships and new grad positions from top companies",
             href: "/jobs",
         },
         {
             icon: <Code2 className="h-6 w-6" />,
-            labelKey: "Your Dashboard",
-            descKey: "Track your applications and manage your profile",
-            href: "/dashboard",
-        },
-        {
-            icon: <Users className="h-6 w-6" />,
-            labelKey: "Student Projects",
-            descKey: "Showcase your work and discover what others are building",
-            href: "https://github.com/tailed-community",
+            labelKey: "Student Association",
+            descKey: "Connect with fellow students and join the community",
+            href: "/association",
         },
         {
             icon: <Sparkles className="h-6 w-6" />,
-            labelKey: "Get Recognized",
-            descKey: "Highlight your hackathon wins and open source contributions",
-            href: "/dashboard",
+            labelKey: "Student Spotlight",
+            descKey: "Showcase your projects and get recognized for your work",
+            href: "/spotlight",
+        },
+        {
+            icon: <Users className="h-6 w-6" />,
+            labelKey: "GitHub Community",
+            descKey: "Explore open source projects and contribute",
+            href: "https://github.com/tailed-community",
         },
     ];
 
@@ -151,6 +166,95 @@ const Community = ({
                     href: "/catalog",
                 },
             ],
+        },
+    ];
+
+    if (variant === "mobile") {
+        return (
+            <div className="w-full space-y-2">
+                {items.map((item, idx) => (
+                    <a
+                        key={idx}
+                        href={item.href}
+                        className="block rounded-xl px-3 py-2 hover:bg-muted/60 focus:outline-none focus:ring-2 focus:ring-ring ring-offset-background"
+                    >
+                        <div className="flex items-start gap-2">
+                            <div className="h-7 w-7 shrink-0 grid place-items-center text-primary">
+                                {item.icon}
+                            </div>
+                            <div className="min-w-0">
+                                <div className="text-sm font-medium text-foreground">
+                                    {item.labelKey}
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    {item.descKey}
+                                </p>
+                            </div>
+                        </div>
+                    </a>
+                ))}
+            </div>
+        );
+    }
+
+    return (
+        <div className="w-full p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {items.map((item, idx) => (
+                    <a
+                        key={idx}
+                        href={item.href}
+                        className="block rounded-xl px-4 py-3 hover:bg-muted/60 focus:outline-none focus:ring-2 focus:ring-ring ring-offset-background"
+                    >
+                        <div className="flex items-start gap-3">
+                            <div className="h-8 w-8 shrink-0 grid place-items-center text-primary">
+                                {item.icon}
+                            </div>
+                            <div className="min-w-0">
+                                <div className="text-sm font-medium text-foreground">
+                                    {item.labelKey}
+                                </div>
+                                <p className="text-sm text-muted-foreground">
+                                    {item.descKey}
+                                </p>
+                            </div>
+                        </div>
+                    </a>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+const Opportunities = ({
+    variant = "desktop",
+}: {
+    variant?: "desktop" | "mobile";
+}) => {
+    const items = [
+        {
+            icon: <Briefcase className="h-6 w-6" />,
+            labelKey: "All Jobs",
+            descKey: "Browse all available internships and full-time positions",
+            href: "/jobs",
+        },
+        {
+            icon: <BookOpen className="h-6 w-6" />,
+            labelKey: "Companies",
+            descKey: "Discover companies and learn about their culture",
+            href: "/companies",
+        },
+        {
+            icon: <FaCalendarAlt className="h-6 w-6" />,
+            labelKey: "Events",
+            descKey: "Stay updated with hackathons, career fairs, and workshops",
+            href: "/events",
+        },
+        {
+            icon: <Rocket className="h-6 w-6" />,
+            labelKey: "Featured Opportunities",
+            descKey: "Curated positions from top employers",
+            href: "/",
         },
     ];
 
@@ -489,9 +593,11 @@ const Resources = () => {
 };
 
 const navItems: NavItem[] = [
-    // { type: "link", labelKey: "Jobs", href: "/jobs" },
-    { type: "menu", labelKey: "Community", items: <Community /> },
-    // { type: "menu", labelKey: "Resources", items: <Resources /> },
+    { type: "link", labelKey: "Discover Jobs", href: "/jobs" },
+    { type: "link", labelKey: "Discover Companies", href: "/companies" },
+    { type: "link", labelKey: "Events", href: "/events" },
+    { type: "link", labelKey: "Student Associations", href: "/association" },
+    { type: "link", labelKey: "Student Spotlights", href: "/spotlight" },
 ];
 
 function Logo() {
@@ -521,6 +627,78 @@ function NavLink({
         >
             {children}
         </a>
+    );
+}
+
+function UserAvatarMenu({ user }: { user: any }) {
+    const navigate = useNavigate();
+
+    const handleLogout = async () => {
+        try {
+            await signOut(studentAuth);
+            navigate("/");
+        } catch (error) {
+            console.error("Error logging out:", error);
+        }
+    };
+
+    // Extract user info with fallbacks
+    const displayName = user.displayName || user.email?.split('@')[0] || 'User';
+    const firstName = user.firstName || displayName.split(' ')[0] || '';
+    const lastName = user.lastName || displayName.split(' ')[1] || '';
+    const initials = user.initials || 
+        (firstName.charAt(0) + lastName.charAt(0)).toUpperCase() || 
+        displayName.charAt(0).toUpperCase();
+    const photoURL = user.photoURL || user.avatar || '';
+
+    return (
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <button className="hidden nav:inline-flex items-center gap-2 text-sm rounded-lg px-2 py-2 hover:bg-muted/60 focus:outline-none focus:ring-2 focus:ring-primary">
+                    <Avatar className="h-8 w-8">
+                        <AvatarImage src={photoURL} alt={displayName} />
+                        <AvatarFallback className="bg-gradient-to-br from-primary to-secondary text-primary-foreground">
+                            {initials}
+                        </AvatarFallback>
+                    </Avatar>
+                    <ChevronDownIcon className="h-4 w-4 text-muted-foreground" />
+                </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>
+                    <div className="flex flex-col space-y-1">
+                        <p className="text-sm font-medium">{displayName}</p>
+                        <p className="text-xs text-muted-foreground">{user.email}</p>
+                    </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                    <DropdownMenuItem asChild>
+                        <a href="/" className="cursor-pointer">
+                            <LayoutDashboard className="mr-2 h-4 w-4" />
+                            <span>Dashboard</span>
+                        </a>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                        <a href="/account" className="cursor-pointer">
+                            <Settings className="mr-2 h-4 w-4" />
+                            <span>Account Settings</span>
+                        </a>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                        <a href="/jobs/applied" className="cursor-pointer">
+                            <FileText className="mr-2 h-4 w-4" />
+                            <span>My Applications</span>
+                        </a>
+                    </DropdownMenuItem>
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive focus:text-destructive">
+                    <LogOut className="mr-2 h-4 w-4" />
+                    <span>Log out</span>
+                </DropdownMenuItem>
+            </DropdownMenuContent>
+        </DropdownMenu>
     );
 }
 
@@ -601,19 +779,36 @@ export function Header() {
                             >
                                 <FaGithub className="h-4 w-4" /> GitHub
                             </a>
-                            <div className="h-6 w-2 text-black hidden nav:block">
-                                <Separator
-                                    orientation="vertical"
-                                    className="bg-gray-700"
-                                />
-                            </div>
+                            {user && (
+                                <>
+                                    <div className="h-6 w-2 text-black hidden nav:block">
+                                        <Separator
+                                            orientation="vertical"
+                                            className="bg-gray-700"
+                                        />
+                                    </div>
+                                    <a
+                                        href="/"
+                                        className="hidden nav:inline-flex items-center gap-2 text-sm rounded-lg px-4 py-3 hover:bg-muted/60"
+                                    >
+                                        <LayoutDashboard className="h-4 w-4" /> Dashboard
+                                    </a>
+                                    <a
+                                        href="/jobs"
+                                        className="hidden nav:inline-flex items-center gap-2 text-sm rounded-lg px-4 py-3 hover:bg-muted/60"
+                                    >
+                                        <Briefcase className="h-4 w-4" /> Jobs
+                                    </a>
+                                    <a
+                                        href="/jobs/applied"
+                                        className="hidden nav:inline-flex items-center gap-2 text-sm rounded-lg px-4 py-3 hover:bg-muted/60"
+                                    >
+                                        <FileText className="h-4 w-4" /> My Applications
+                                    </a>
+                                </>
+                            )}
                             {user ? (
-                                <a
-                                    href="/dashboard"
-                                    className="hidden nav:inline-block text-sm rounded-lg px-4 py-3 bg-primary text-primary-foreground hover:bg-primary/90 font-medium"
-                                >
-                                    Go To Dashboard
-                                </a>
+                                <UserAvatarMenu user={user} />
                             ) : (
                                 <a
                                     href="/sign-in"
@@ -675,6 +870,9 @@ export function Header() {
                                                             {item.labelKey ===
                                                             "Community" ? (
                                                                 <Community variant="mobile" />
+                                                            ) : item.labelKey ===
+                                                              "Opportunities" ? (
+                                                                <Opportunities variant="mobile" />
                                                             ) : (
                                                                 item.items
                                                             )}
@@ -684,6 +882,46 @@ export function Header() {
                                             )}
                                         </Accordion>
                                         <div className="mt-6 space-y-2">
+                                            {user && (
+                                                <>
+                                                    <a
+                                                        href="/"
+                                                        className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60"
+                                                    >
+                                                        <span className="inline-flex items-center gap-2">
+                                                            <LayoutDashboard className="h-4 w-4" />
+                                                            Dashboard
+                                                        </span>
+                                                    </a>
+                                                    <a
+                                                        href="/jobs"
+                                                        className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60"
+                                                    >
+                                                        <span className="inline-flex items-center gap-2">
+                                                            <Briefcase className="h-4 w-4" />
+                                                            Jobs
+                                                        </span>
+                                                    </a>
+                                                    <a
+                                                        href="/jobs/applied"
+                                                        className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60"
+                                                    >
+                                                        <span className="inline-flex items-center gap-2">
+                                                            <FileText className="h-4 w-4" />
+                                                            My Applications
+                                                        </span>
+                                                    </a>
+                                                    <a
+                                                        href="/account"
+                                                        className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60"
+                                                    >
+                                                        <span className="inline-flex items-center gap-2">
+                                                            <Settings className="h-4 w-4" />
+                                                            Account Settings
+                                                        </span>
+                                                    </a>
+                                                </>
+                                            )}
                                             <a
                                                 href="https://github.com/tailed-community/dashboard"
                                                 target="_blank"
@@ -696,12 +934,22 @@ export function Header() {
                                                 </span>
                                             </a>
                                             {user ? (
-                                                <a
-                                                    href="/dashboard"
-                                                    className="block text-sm rounded-lg px-4 py-3 bg-primary text-primary-foreground font-medium text-center"
+                                                <button
+                                                    onClick={async () => {
+                                                        try {
+                                                            await signOut(studentAuth);
+                                                            window.location.href = "/";
+                                                        } catch (error) {
+                                                            console.error("Error logging out:", error);
+                                                        }
+                                                    }}
+                                                    className="block w-full text-sm rounded-lg px-4 py-3 bg-destructive text-destructive-foreground font-medium text-center hover:bg-destructive/90"
                                                 >
-                                                    Go To Dashboard
-                                                </a>
+                                                    <span className="inline-flex items-center gap-2 justify-center">
+                                                        <LogOut className="h-4 w-4" />
+                                                        Log Out
+                                                    </span>
+                                                </button>
                                             ) : (
                                                 <a
                                                     href="/sign-in"
