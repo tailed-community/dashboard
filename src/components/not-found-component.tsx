@@ -25,7 +25,7 @@ export function NotFoundComponent() {
             <p className="text-lg text-center mb-8">
                 {m.oops_this_page_was_not_found()}
             </p>
-            <Link to={user ? "/dashboard" : "/"}>
+            <Link to={user ? "/jobs" : "/"}>
                 <Button size={"lg"}>
                     {user ? m.go_to_dashboard() : m.return_home()}
                 </Button>

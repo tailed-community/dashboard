@@ -10,6 +10,7 @@ import {
     BreadcrumbItem,
     BreadcrumbLink,
     BreadcrumbList,
+    BreadcrumbPage,
 } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger, BreadcrumbSeparator } from "@/components/ui/sidebar";
@@ -139,22 +140,22 @@ export default function AppliedJobsPage() {
     // Helper function to get status badge styling
     const getStatusStyle = (status: string) => {
         const normalizedStatus = status.toLowerCase();
-        
+
         switch (normalizedStatus) {
-            case 'screening':
-                return 'text-blue-700 bg-blue-50 border-blue-300';
-            case 'interview':
-                return 'text-purple-700 bg-purple-50 border-purple-300';
-            case 'offer':
-                return 'text-emerald-700 bg-emerald-50 border-emerald-300';
-            case 'hired':
-                return 'text-yellow-700 bg-yellow-50 border-yellow-300';
-            case 'rejected':
-                return 'text-red-700 bg-red-50 border-red-300';
-            case 'applied':
-                return 'text-green-700 bg-green-50 border-green-300';
+            case "screening":
+                return "text-blue-700 bg-blue-50 border-blue-300";
+            case "interview":
+                return "text-purple-700 bg-purple-50 border-purple-300";
+            case "offer":
+                return "text-emerald-700 bg-emerald-50 border-emerald-300";
+            case "hired":
+                return "text-yellow-700 bg-yellow-50 border-yellow-300";
+            case "rejected":
+                return "text-red-700 bg-red-50 border-red-300";
+            case "applied":
+                return "text-green-700 bg-green-50 border-green-300";
             default:
-                return 'text-gray-700 bg-gray-50 border-gray-300';
+                return "text-gray-700 bg-gray-50 border-gray-300";
         }
     };
 
@@ -171,15 +172,13 @@ export default function AppliedJobsPage() {
                     <Breadcrumb>
                         <BreadcrumbList>
                             <BreadcrumbItem className="hidden md:block">
-                                <BreadcrumbLink href="/dashboard">
-                                    Dashboard
+                                <BreadcrumbLink href="/jobs">
+                                    Jobs
                                 </BreadcrumbLink>
                             </BreadcrumbItem>
                             <BreadcrumbSeparator className="hidden md:block" />
                             <BreadcrumbItem>
-                                <BreadcrumbLink href="/jobs/applied">
-                                    My Applications
-                                </BreadcrumbLink>
+                                <BreadcrumbPage>My Applications</BreadcrumbPage>
                             </BreadcrumbItem>
                         </BreadcrumbList>
                     </Breadcrumb>
@@ -242,9 +241,13 @@ export default function AppliedJobsPage() {
                                                     </span>
                                                     <Badge
                                                         variant="outline"
-                                                        className={getStatusStyle(job.status || "Applied")}
+                                                        className={getStatusStyle(
+                                                            job.status ||
+                                                                "Applied"
+                                                        )}
                                                     >
-                                                        {job.status || "Applied"}
+                                                        {job.status ||
+                                                            "Applied"}
                                                     </Badge>
                                                 </div>
 

@@ -47,7 +47,7 @@ export function NavUser({
   const handleLogout = async () => {
     try {
       await signOut(studentAuth);
-      navigate("/dashboard"); // Redirect to sign-in page after logout
+      navigate("/jobs"); // Redirect to sign-in page after logout
       await refresh(); // Refresh user data in context
     } catch (error) {
       console.error("Error logging out:", error);

@@ -21,6 +21,7 @@ const LoadingFallback = () => (
 
 // Lazy loaded components
 const SignIn = lazy(() => import("./pages/(auth)/sign-in/page"));
+const SignUp = lazy(() => import("./pages/(auth)/signup/page"));
 const AuthCallback = lazy(() => import("./pages/(auth)/auth/callback/page"));
 const Dashboard = lazy(() => import("./pages/(dashboard)/page"));
 const DashboardLayout = lazy(() => import("./layouts/dashboard-layout"));
@@ -56,13 +57,28 @@ function App() {
                             }
                         />
                         <Route
+                            path="/sign-up"
+                            element={
+                                <ProtectedRoute>
+                                    <SignUp />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
                             path="/auth/callback"
                             element={<AuthCallback />}
                         />
 
                         {/* DASHBOARD ROUTES */}
                         <Route element={<DashboardLayout />}>
-                            <Route path="/dashboard" element={<Dashboard />} />
+                            <Route
+                                path="/dashboard"
+                                element={
+                                    <PrivateRoute>
+                                        <Dashboard />
+                                    </PrivateRoute>
+                                }
+                            />
                             {/* PROTECTED ACCOUNT PAGE - Requires authentication */}
                             <Route
                                 path="/account"
@@ -75,7 +91,11 @@ function App() {
                             <Route path="/jobs" element={<JobsPage />} />
                             <Route
                                 path="/jobs/applied"
-                                element={<AppliedJobsPage />}
+                                element={
+                                    <PrivateRoute>
+                                        <AppliedJobsPage />
+                                    </PrivateRoute>
+                                }
                             />
                             <Route
                                 path="/jobs/:slug"

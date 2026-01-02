@@ -528,7 +528,7 @@ export default function ApplyJobPage() {
                     <p className="mt-2 text-muted-foreground">{error}</p>
                     <Button
                         className="mt-4"
-                        onClick={() => navigate("/dashboard")}
+                        onClick={() => navigate("/jobs")}
                     >
                         Return to Home
                     </Button>

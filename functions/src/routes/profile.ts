@@ -3,8 +3,50 @@ import Busboy from "busboy";
 import crypto from "crypto";
 import { db, studentAuth, storage } from "../lib/firebase";
 import { logger } from "firebase-functions";
+import { FieldValue } from "firebase-admin/firestore";
 
 const router = express.Router();
+
+// Function to calculate profile completeness
+const calculateProfileScore = (profileData: any) => {
+    const checks = {
+        githubUsername: !!(
+            profileData.githubUsername &&
+            profileData.githubUsername.trim() !== ""
+        ),
+        github: !!(
+            profileData.github && Object.keys(profileData.github).length > 0
+        ),
+        devpostUsername: !!(
+            profileData.devpostUsername &&
+            profileData.devpostUsername.trim() !== ""
+        ),
+        devpost: !!(
+            profileData.devpost && Object.keys(profileData.devpost).length > 0
+        ),
+        resume: !!(profileData.resume && profileData.resume.url),
+        skills: !!(
+            profileData.skills &&
+            Array.isArray(profileData.skills) &&
+            profileData.skills.length > 0
+        ),
+        linkedinUrl: !!(
+            profileData.linkedinUrl && profileData.linkedinUrl.trim() !== ""
+        ),
+        portfolioUrl: !!(
+            profileData.portfolioUrl && profileData.portfolioUrl.trim() !== ""
+        ),
+    };
+
+    // Calculate score: each field is worth 12.5 points (100/8)
+    const completedCount = Object.values(checks).filter(Boolean).length;
+    const score = Math.round((completedCount / 8) * 100);
+
+    return {
+        score,
+        completed: checks,
+    };
+};
 
 // GET /profile - Returns the profile of the currently authenticated user
 router.get("/", async (req, res) => {
@@ -67,7 +109,7 @@ router.get("/", async (req, res) => {
  * - Accepts a PDF resume upload using Busboy
  * - Validates the file type and name
  * - Generates a unique resume ID
- * - Uploads to Firebase Storage under /resumes/{userId}/main resume/{resumeId}.pdf
+ * - Uploads to Firebase Storage under /resumes/{userId}/main_resume/{resumeId}.pdf
  * - Makes file public and stores { id, name, url } under the user's profile
  */
 router.patch("/main-resume/", async (req, res): Promise<void> => {
@@ -219,7 +261,7 @@ router.patch("/main-resume/", async (req, res): Promise<void> => {
                 if (!originalName) originalName = "Resume";
 
                 // Delete any existing resumes in this folder
-                const folderPath = `resumes/${userId}/main resume/`;
+                const folderPath = `resumes/${userId}/main_resume/`;
                 const [existingFiles] = await storage.getFiles({
                     prefix: folderPath,
                 });
@@ -234,7 +276,7 @@ router.patch("/main-resume/", async (req, res): Promise<void> => {
                 const resumeId = crypto.randomBytes(16).toString("hex");
 
                 // Upload file to Firebase Storage
-                const filePath = `resumes/${userId}/main resume/${resumeId}.pdf`;
+                const filePath = `resumes/${userId}/main_resume/${resumeId}.pdf`;
                 const storageFile = storage.file(filePath);
 
                 await storageFile.save(fileBuffer, {
@@ -538,6 +580,9 @@ router.patch("/update", async (req, res) => {
         for (const [key, value] of Object.entries(updates)) {
             if (typeof value === "string") {
                 trimmedUpdates[key] = value.trim();
+            } else if (value === undefined || value === null) {
+                // Explicitly delete fields that are undefined or null
+                trimmedUpdates[key] = FieldValue.delete();
             } else {
                 trimmedUpdates[key] = value;
             }
@@ -546,6 +591,18 @@ router.patch("/update", async (req, res) => {
         // Add updatedAt timestamp
         trimmedUpdates.updatedAt = new Date();
 
+        // Calculate and add profile completeness
+        const currentProfile = await db
+            .collection("profiles")
+            .doc(userId)
+            .get();
+        const currentData = currentProfile.exists ? currentProfile.data() : {};
+
+        // Merge current data with updates to get the full profile state
+        const fullProfileData = { ...currentData, ...trimmedUpdates };
+        const profileScore = calculateProfileScore(fullProfileData);
+        trimmedUpdates.profileScore = profileScore;
+
         // Update the profile with validated and trimmed data
         // Use set with merge: true to create the document if it doesn't exist
         await db
@@ -553,7 +610,9 @@ router.patch("/update", async (req, res) => {
             .doc(userId)
             .set(trimmedUpdates, { merge: true });
 
-        logger.info(`Profile updated for user ${userId}`);
+        logger.info(
+            `Profile updated for user ${userId}, completeness score: ${profileScore.score}%`
+        );
 
         return res.status(200).json({
             success: true,
@@ -563,6 +622,71 @@ router.patch("/update", async (req, res) => {
         logger.error("Error updating student:", error);
         return res.status(500).json({
             error: "Failed to update student",
+        });
+    }
+});
+
+/**
+ * DELETE /main-resume
+ * - Deletes the main resume file from Firebase Storage
+ * - Removes the resume metadata from the user's profile
+ */
+router.delete("/main-resume", async (req, res) => {
+    const userId = req.user?.uid;
+    if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    try {
+        // Get the current profile to find the resume
+        const profileDoc = await db.collection("profiles").doc(userId).get();
+
+        if (!profileDoc.exists) {
+            return res.status(404).json({
+                error: "Profile not found",
+            });
+        }
+
+        const profileData = profileDoc.data();
+        const resume = profileData?.resume;
+
+        if (!resume || !resume.id) {
+            return res.status(404).json({
+                error: "No resume found to delete",
+            });
+        }
+
+        // Delete the file from Firebase Storage
+        const filePath = `resumes/${userId}/main_resume/${resume.id}.pdf`;
+        try {
+            const storageFile = storage.file(filePath);
+            await storageFile.delete();
+            logger.info(`Deleted resume file: ${filePath}`);
+        } catch (storageError) {
+            logger.warn(
+                `Could not delete storage file: ${filePath}`,
+                storageError
+            );
+            // Continue even if file deletion fails (file might already be deleted)
+        }
+
+        // Remove the resume metadata from the profile
+        await db.collection("profiles").doc(userId).update({
+            resume: FieldValue.delete(),
+            updatedAt: new Date(),
+        });
+
+        logger.info(`Resume metadata removed for user ${userId}`);
+
+        return res.status(200).json({
+            success: true,
+            message: "Resume deleted successfully",
+        });
+    } catch (error) {
+        logger.error("Error deleting resume:", error);
+        return res.status(500).json({
+            error: "Failed to delete resume",
+            details: error instanceof Error ? error.message : String(error),
         });
     }
 });

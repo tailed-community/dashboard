@@ -1,5 +1,10 @@
 import { useState, useEffect } from "react";
-import { useParams, Link, useSearchParams } from "react-router-dom";
+import {
+    useParams,
+    Link,
+    useSearchParams,
+    useNavigate,
+} from "react-router-dom";
 import { apiFetch } from "@/lib/fetch";
 import {
     Loader2,
@@ -33,6 +38,7 @@ export default function PublicJobPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [hasApplied, setHasApplied] = useState(false);
+    const navigate = useNavigate();
 
     useEffect(() => {
         async function fetchJob() {
@@ -142,7 +148,7 @@ export default function PublicJobPage() {
                             "This job posting is not available or has expired."}
                     </p>
                     <Button className="mt-4" asChild>
-                        <Link to="/dashboard">Return to Home</Link>
+                        <Link to="/jobs">Return to Home</Link>
                     </Button>
                 </div>
             </div>
@@ -153,11 +159,15 @@ export default function PublicJobPage() {
         <div className="min-h-screen bg-background p-4 md:p-8">
             <div className="mx-auto max-w-5xl">
                 <Link
-                    to="/dashboard"
+                    to=".."
+                    onClick={(e) => {
+                        e.preventDefault();
+                        navigate(-1);
+                    }}
                     className="mb-6 flex items-center text-sm text-muted-foreground hover:text-foreground"
                 >
                     <ArrowLeft className="mr-1 h-4 w-4" />
-                    Back to home
+                    Back
                 </Link>
 
                 <Card className="border shadow-md">
