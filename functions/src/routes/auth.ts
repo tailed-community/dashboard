@@ -7,90 +7,178 @@ import { z } from "zod";
 export const TENANT_IDS = { STUDENTS: process.env.FB_TENANT_ID! } as const;
 
 const createAccountSchema = z.object({
-  firstName: z.string().min(1, "First name is required"),
-  lastName: z.string().min(1, "Last name is required"),
-  email: z.string().email(),
+    firstName: z.string().min(1, "First name is required"),
+    lastName: z.string().min(1, "Last name is required"),
+    email: z.string().email("Invalid email address"),
+    location: z.string().min(1, "Location is required"),
+    phoneNumber: z.string().min(1, "Phone number is required"),
+    university: z.string().min(1, "University/College is required"),
+    major: z.string().min(1, "Major/Program is required"),
+    graduationYear: z
+        .number()
+        .int()
+        .min(1950)
+        .max(new Date().getFullYear() + 4, "Invalid graduation year"),
+});
+
+const checkUserExistsSchema = z.object({
+    email: z.string().email(),
+});
+
+router.post("/check-user-exists", async (req, res) => {
+    try {
+        // Validate request body using Zod
+        const result = checkUserExistsSchema.safeParse(req.body);
+
+        if (!result.success) {
+            return res.status(400).json({
+                error: "Invalid request data",
+                details: result.error.format(),
+            });
+        }
+
+        const { email } = result.data;
+        const tenantAuth = await studentAuth();
+
+        try {
+            const user = await tenantAuth.getUserByEmail(email);
+
+            if (user) {
+                // Check if user has a profile in Firestore
+                const profile = await db
+                    .collection("profiles")
+                    .doc(user.uid)
+                    .get();
+
+                return res.status(200).json({
+                    exists: profile.exists,
+                    message: profile.exists ? "User exists" : "User not found",
+                });
+            }
+        } catch (error: any) {
+            if (error.code === "auth/user-not-found") {
+                return res.status(200).json({
+                    exists: false,
+                    message: "User not found",
+                });
+            }
+            throw error;
+        }
+
+        return res.status(200).json({
+            exists: false,
+            message: "User not found",
+        });
+    } catch (error: any) {
+        console.error("Error checking user existence:", error);
+        return res.status(500).json({
+            error: "Server error",
+            message: "Failed to check user existence. Please try again later.",
+        });
+    }
 });
 
 router.post("/create-account", async (req, res) => {
-  try {
-    // Validate request body using Zod
-    const result = createAccountSchema.safeParse(req.body);
-
-    if (!result.success) {
-      return res.status(400).json({
-        error: "Invalid request data",
-        details: result.error.format(),
-      });
-    }
-    const { firstName, lastName, email } = result.data;
-    const tenantAuth = await studentAuth();
     try {
-      const user = await tenantAuth.getUserByEmail(email);
-      let existingUser = null;
-      if (user) {
-        existingUser = await db.collection("profiles").doc(user.uid).get();
-      }
-      if (existingUser?.exists) {
-        return res.status(400).json({
-          error: "Email already in use",
-          message: "This email address is already associated with an account.",
+        // Validate request body using Zod
+        const result = createAccountSchema.safeParse(req.body);
+
+        if (!result.success) {
+            return res.status(400).json({
+                error: "Invalid request data",
+                details: result.error.format(),
+            });
+        }
+        const {
+            firstName,
+            lastName,
+            email,
+            location,
+            phoneNumber,
+            university,
+            major,
+            graduationYear,
+        } = result.data;
+        const tenantAuth = await studentAuth();
+
+        // Check if user already exists
+        try {
+            const user = await tenantAuth.getUserByEmail(email);
+            let existingUser = null;
+            if (user) {
+                existingUser = await db
+                    .collection("profiles")
+                    .doc(user.uid)
+                    .get();
+            }
+            if (existingUser?.exists) {
+                return res.status(400).json({
+                    error: "Email already in use",
+                    message:
+                        "This email address is already associated with an account.",
+                });
+            }
+        } catch (error: any) {
+            if (error.code !== "auth/user-not-found") {
+                throw error;
+            }
+        }
+
+        // Create new user in Firebase Auth
+        const userRecord = await tenantAuth.createUser({
+            email,
+            emailVerified: false,
         });
-      }
+
+        // Create user profile in Firestore
+        await db
+            .collection("profiles")
+            .doc(userRecord.uid)
+            .set({
+                userId: userRecord.uid,
+                firstName,
+                lastName,
+                email,
+                location,
+                phone: phoneNumber,
+                school: university,
+                program: major,
+                graduationYear,
+                linkedinUrl: null,
+                devpost: null,
+                initials: `${firstName.charAt(0)}${lastName.charAt(0)}`,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+            });
+
+        return res.status(200).json({
+            success: true,
+            userId: userRecord.uid,
+            message: "Account created successfully",
+        });
     } catch (error: any) {
-      if (error.code !== "auth/user-not-found") {
-        throw error;
-      }
+        console.error("Error creating account:", error);
+
+        if (error.code === "auth/email-already-exists") {
+            return res.status(400).json({
+                error: "Email already in use",
+                message:
+                    "The email address is already in use by another account.",
+            });
+        }
+
+        if (error.code === "auth/invalid-phone-number") {
+            return res.status(400).json({
+                error: "Invalid phone number",
+                message: "The phone number provided is invalid.",
+            });
+        }
+
+        return res.status(500).json({
+            error: "Server error",
+            message: "Failed to create account. Please try again later.",
+        });
     }
-
-    const userRecord = await tenantAuth.getUserByEmail(email);
-
-    await db
-      .collection("profiles")
-      .doc(userRecord.uid)
-      .set({
-        userId: userRecord.uid,
-        firstName: firstName || null,
-        lastName: lastName || null,
-        email,
-        phone: null,
-        school: null,
-        program: null,
-        graduationYear: null,
-        linkedinUrl: null,
-        devpost: null,
-        initials: `${firstName.charAt(0)}${lastName.charAt(0)}`,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-
-    return res.status(200).json({
-      success: true,
-      userId: userRecord.uid,
-      message: "Account created successfully",
-    });
-  } catch (error: any) {
-    console.error("Error creating account:", error);
-
-    if (error.code === "auth/email-already-exists") {
-      return res.status(400).json({
-        error: "Email already in use",
-        message: "The email address is already in use by another account.",
-      });
-    }
-
-    if (error.code === "auth/invalid-phone-number") {
-      return res.status(400).json({
-        error: "Invalid phone number",
-        message: "The phone number provided is invalid.",
-      });
-    }
-
-    return res.status(500).json({
-      error: "Server error",
-      message: "Failed to create account. Please try again later.",
-    });
-  }
 });
 
 export default router;

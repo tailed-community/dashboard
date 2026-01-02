@@ -1,12 +1,12 @@
 import {
     Breadcrumb,
     BreadcrumbItem,
-    BreadcrumbLink,
+    BreadcrumbPage,
     BreadcrumbList,
 } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import AccountPage from "@/pages/(dashboard)/account/account";
+import AccountPage from "@/pages/(dashboard)/account/account-new";
 import { useState, useEffect } from "react";
 
 export default function Page() {
@@ -31,9 +31,9 @@ export default function Page() {
                     <Breadcrumb>
                         <BreadcrumbList>
                             <BreadcrumbItem className="hidden md:block">
-                                <BreadcrumbLink href="/jobs">
-                                    Account
-                                </BreadcrumbLink>
+                                <BreadcrumbItem>
+                                    <BreadcrumbPage>Account</BreadcrumbPage>
+                                </BreadcrumbItem>
                             </BreadcrumbItem>
                         </BreadcrumbList>
                     </Breadcrumb>

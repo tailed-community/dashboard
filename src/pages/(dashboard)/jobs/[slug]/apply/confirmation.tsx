@@ -56,7 +56,7 @@ export default function ApplicationConfirmation({
         </CardContent>
         <CardFooter className="flex justify-center">
           <Button asChild>
-            <Link to="/dashboard">
+            <Link to="/jobs">
               {/* Return to Dashboard */}
               Return to Home
               <ArrowRight className="ml-2 h-4 w-4" />
