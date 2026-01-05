@@ -70,9 +70,9 @@ const Community = ({
         },
         {
             icon: <Code2 className="h-6 w-6" />,
-            labelKey: "Student Association",
+            labelKey: "Student Community",
             descKey: "Connect with fellow students and join the community",
-            href: "/association",
+            href: "/community",
         },
         {
             icon: <Sparkles className="h-6 w-6" />,
@@ -596,7 +596,7 @@ const navItems: NavItem[] = [
     { type: "link", labelKey: "Discover Jobs", href: "/jobs" },
     { type: "link", labelKey: "Discover Companies", href: "/companies" },
     { type: "link", labelKey: "Events", href: "/events" },
-    { type: "link", labelKey: "Student Associations", href: "/association" },
+    { type: "link", labelKey: "Student communities", href: "/community" },
     { type: "link", labelKey: "Student Spotlights", href: "/spotlight" },
 ];
 
@@ -729,7 +729,7 @@ export function Header() {
                         <>
                             <Link to="/jobs" className="text-sm font-medium text-brand-cream-600 hover:text-brand-cream-900 dark:text-brand-cream-400 dark:hover:text-brand-cream-50 transition-colors">Jobs</Link>
                             <Link to="/events" className="text-sm font-medium text-brand-cream-600 hover:text-brand-cream-900 dark:text-brand-cream-400 dark:hover:text-brand-cream-50 transition-colors">Events</Link>
-                            <Link to="/association" className="text-sm font-medium text-brand-cream-600 hover:text-brand-cream-900 dark:text-brand-cream-400 dark:hover:text-brand-cream-50 transition-colors">Associations</Link>
+                            <Link to="/communities" className="text-sm font-medium text-brand-cream-600 hover:text-brand-cream-900 dark:text-brand-cream-400 dark:hover:text-brand-cream-50 transition-colors">Communities</Link>
                         </> : <></>
                     }
                 </nav>
@@ -776,10 +776,10 @@ export function Header() {
                                                 Events
                                             </span>
                                         </Link>
-                                        <Link to="/association" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
+                                        <Link to="/community" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
                                             <span className="inline-flex items-center gap-2">
                                                 <Users className="h-4 w-4" />
-                                                Student Associations
+                                                Student communities
                                             </span>
                                         </Link>
                                         <Link to="/spotlight" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
@@ -855,10 +855,10 @@ export function Header() {
                                                 Events
                                             </span>
                                         </Link>
-                                        <Link to="/association" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
+                                        <Link to="/community" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
                                             <span className="inline-flex items-center gap-2">
                                                 <Users className="h-4 w-4" />
-                                                Student Associations
+                                                Student communities
                                             </span>
                                         </Link>
                                         <Link to="/spotlight" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">

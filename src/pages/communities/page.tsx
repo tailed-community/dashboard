@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { getFirestore, collection, getDocs, query, orderBy, doc, updateDoc, arrayUnion, arrayRemove, increment, serverTimestamp } from "firebase/firestore";
 import { getApp } from "firebase/app";
 import { toast } from "sonner";
-import { AssociationCard, type Association } from "@/components/association/association-card";
+import { CommunityCard, type Community } from "@/components/community/community-card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, Plus, Loader2 } from "lucide-react";
@@ -22,33 +22,35 @@ const categories = [
   "Professional",
 ];
 
-export default function AssociationPage() {
+export default function CommunityPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
-  const [associations, setAssociations] = useState<Association[]>([]);
+  const [communities, setcommunities] = useState<Community[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [joiningId, setJoiningId] = useState<string | null>(null);
 
-  // Fetch associations from Firestore
+  // Fetch communities from Firestore
   useEffect(() => {
-    const fetchAssociations = async () => {
+    const fetchcommunities = async () => {
       try {
         setIsLoading(true);
         setError(null);
         const db = getFirestore(getApp());
-        const associationsRef = collection(db, "associations");
-        const q = query(associationsRef, orderBy("createdAt", "desc"));
+        const communitiesRef = collection(db, "communities");
+        const q = query(communitiesRef, orderBy("createdAt", "desc"));
         
         const querySnapshot = await getDocs(q);
-        const fetchedAssociations: Association[] = querySnapshot.docs.map((doc) => {
+        const fetchedcommunities: Community[] = querySnapshot.docs.map((doc) => {
           const data = doc.data();
           return {
             id: doc.id,
             name: data.name,
             description: data.description,
+            shortDescription: data.shortDescription,
+            slug: data.slug,
             category: data.category,
             memberCount: data.memberCount || 0,
             logoUrl: data.logoUrl,
@@ -57,58 +59,58 @@ export default function AssociationPage() {
           };
         });
         
-        setAssociations(fetchedAssociations);
+        setcommunities(fetchedcommunities);
       } catch (err) {
-        console.error("Error fetching associations:", err);
-        setError("Failed to load associations. Please try again.");
+        console.error("Error fetching communities:", err);
+        setError("Failed to load communities. Please try again.");
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchAssociations();
+    fetchcommunities();
   }, []);
 
-  // Filter associations based on search and category
-  const filteredAssociations = associations.filter((association) => {
+  // Filter communities based on search and category
+  const filteredcommunities = communities.filter((community) => {
     const matchesSearch =
       searchQuery === "" ||
-      association.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      association.description.toLowerCase().includes(searchQuery.toLowerCase());
+      community.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      community.description.toLowerCase().includes(searchQuery.toLowerCase());
 
     const matchesCategory =
-      selectedCategory === "All" || association.category === selectedCategory;
+      selectedCategory === "All" || community.category === selectedCategory;
 
     return matchesSearch && matchesCategory;
   });
 
-  const handleJoin = async (associationId: string) => {
+  const handleJoin = async (communityId: string) => {
     if (!user) {
-      toast.error("Please sign in to join associations");
+      toast.error("Please sign in to join communities");
       navigate("/sign-in");
       return;
     }
 
-    setJoiningId(associationId);
+    setJoiningId(communityId);
 
     try {
       const db = getFirestore(getApp());
-      const associationRef = doc(db, "associations", associationId);
+      const communityRef = doc(db, "communities", communityId);
       
-      const association = associations.find(a => a.id === associationId);
-      const isMember = association?.members?.includes(user.uid);
+      const community = communities.find(a => a.id === communityId);
+      const isMember = community?.members?.includes(user.uid);
 
       if (isMember) {
-        // Leave association
-        await updateDoc(associationRef, {
+        // Leave community
+        await updateDoc(communityRef, {
           members: arrayRemove(user.uid),
           memberCount: increment(-1),
           updatedAt: serverTimestamp(),
         });
 
         // Update local state
-        setAssociations(prev => prev.map(a => 
-          a.id === associationId 
+        setcommunities(prev => prev.map(a => 
+          a.id === communityId 
             ? { 
                 ...a, 
                 members: a.members?.filter(id => id !== user.uid) || [],
@@ -117,20 +119,20 @@ export default function AssociationPage() {
             : a
         ));
 
-        toast.success("Left association", {
-          description: `You've left ${association?.name}`,
+        toast.success("Left community", {
+          description: `You've left ${community?.name}`,
         });
       } else {
-        // Join association
-        await updateDoc(associationRef, {
+        // Join community
+        await updateDoc(communityRef, {
           members: arrayUnion(user.uid),
           memberCount: increment(1),
           updatedAt: serverTimestamp(),
         });
 
         // Update local state
-        setAssociations(prev => prev.map(a => 
-          a.id === associationId 
+        setcommunities(prev => prev.map(a => 
+          a.id === communityId 
             ? { 
                 ...a, 
                 members: [...(a.members || []), user.uid],
@@ -139,12 +141,12 @@ export default function AssociationPage() {
             : a
         ));
 
-        toast.success("Joined association!", {
-          description: `Welcome to ${association?.name}`,
+        toast.success("Joined community!", {
+          description: `Welcome to ${community?.name}`,
         });
       }
     } catch (error) {
-      console.error("Error joining/leaving association:", error);
+      console.error("Error joining/leaving community:", error);
       toast.error("Failed to update membership", {
         description: error instanceof Error ? error.message : "Please try again",
       });
@@ -200,11 +202,11 @@ export default function AssociationPage() {
           ))}
         </div>
 
-        {/* Associations Grid */}
+        {/* communities Grid */}
         {isLoading ? (
           <div className="flex flex-col items-center justify-center py-20">
             <Loader2 className="h-12 w-12 animate-spin text-slate-400 mb-4" />
-            <p className="text-slate-600">Loading associations...</p>
+            <p className="text-slate-600">Loading communities...</p>
           </div>
         ) : error ? (
           <div className="text-center py-12">
@@ -217,28 +219,29 @@ export default function AssociationPage() {
               Try Again
             </Button>
           </div>
-        ) : filteredAssociations.length > 0 ? (
+        ) : filteredcommunities.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            {filteredAssociations.map((association) => (
-              <AssociationCard
-                key={association.id}
-                association={association}
+            {filteredcommunities.map((community) => (
+              <CommunityCard
+                key={community.id}
+                community={community}
                 onJoin={handleJoin}
+                onClick={() => navigate(`/communities/${community.slug || community.id}`)}
                 currentUserId={user?.uid}
-                isJoining={joiningId === association.id}
+                isJoining={joiningId === community.id}
               />
             ))}
           </div>
         ) : (
           <div className="text-center py-12">
             <p className="text-gray-500 text-lg">
-              {associations.length === 0
-                ? "No associations yet. Be the first to create one!"
+              {communities.length === 0
+                ? "No communities yet."
                 : "No communities found matching your criteria."}
             </p>
             <p className="text-gray-400 text-sm mt-2">
-              {associations.length === 0
-                ? "Click 'Create Association' to get started."
+              {communities.length === 0
+                ? ""
                 : "Try adjusting your search or category filters."}
             </p>
           </div>

@@ -31,7 +31,7 @@ interface Event {
   maxAttendees?: number;
 }
 
-interface Association {
+interface Community {
   id: string;
   name: string;
   description: string;
@@ -53,7 +53,7 @@ const mockEvent: Event = {
   maxAttendees: 100,
 };
 
-const mockAssociation: Association = {
+const mockCommunity: Community = {
   id: "mock",
   name: "Design Guild",
   description: "A community for student designers to share work, get feedback, and find mentorship.",
@@ -65,7 +65,7 @@ const mockAssociation: Association = {
 
 export default function LandingPage() {
   const [featuredEvent, setFeaturedEvent] = useState<Event>(mockEvent);
-  const [featuredAssociation, setFeaturedAssociation] = useState<Association>(mockAssociation);
+  const [featuredCommunity, setFeaturedCommunity] = useState<Community>(mockCommunity);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -100,20 +100,20 @@ export default function LandingPage() {
           });
         }
 
-        // Fetch association
-        const associationsRef = collection(db, "associations");
-        const associationQuery = query(
-          associationsRef,
+        // Fetch community
+        const communitiesRef = collection(db, "communities");
+        const communityQuery = query(
+          communitiesRef,
           orderBy("memberCount", "desc"),
           limit(1)
         );
         
-        const associationSnapshot = await getDocs(associationQuery);
+        const communitiesnapshot = await getDocs(communityQuery);
         
-        if (!associationSnapshot.empty) {
-          const doc = associationSnapshot.docs[0];
+        if (!communitiesnapshot.empty) {
+          const doc = communitiesnapshot.docs[0];
           const data = doc.data();
-          setFeaturedAssociation({
+          setFeaturedCommunity({
             id: doc.id,
             name: data.name,
             description: data.description,
@@ -165,7 +165,7 @@ export default function LandingPage() {
             <Link to="/sign-in" className="w-full sm:w-auto px-8 py-4 rounded-full bg-brand-cream-950 text-brand-cream-50 dark:bg-brand-cream-50 dark:text-brand-cream-950 font-semibold text-lg hover:scale-105 transition-all shadow-lg hover:shadow-xl hover:shadow-blue-500/10 flex items-center justify-center">
               Join for free
             </Link>
-            <Link to="/association" className="w-full sm:w-auto px-8 py-4 rounded-full bg-brand-cream-50 dark:bg-brand-cream-950 border border-brand-cream-200 dark:border-brand-cream-800 text-brand-cream-900 dark:text-brand-cream-50 font-medium text-lg hover:border-blue-500/50 dark:hover:border-blue-500/50 hover:bg-brand-cream-50 dark:hover:bg-brand-cream-900 transition-all group flex items-center justify-center">
+            <Link to="/community" className="w-full sm:w-auto px-8 py-4 rounded-full bg-brand-cream-50 dark:bg-brand-cream-950 border border-brand-cream-200 dark:border-brand-cream-800 text-brand-cream-900 dark:text-brand-cream-50 font-medium text-lg hover:border-blue-500/50 dark:hover:border-blue-500/50 hover:bg-brand-cream-50 dark:hover:bg-brand-cream-900 transition-all group flex items-center justify-center">
               Explore communities <span className="inline-block transition-transform group-hover:translate-x-1 ml-1">→</span>
             </Link>
           </div>
@@ -245,10 +245,10 @@ export default function LandingPage() {
                 <div className="flex items-center gap-3 mb-2 px-1">
                   <h3 className="font-bold text-lg text-brand-cream-900 dark:text-brand-cream-50">Discover Communities</h3>
                 </div>
-                <Link to="/association" className="block space-y-3 cursor-pointer bg-brand-cream-50 dark:bg-brand-cream-950 p-4 rounded-3xl shadow-sm border border-brand-cream-100 dark:border-brand-cream-800 group-hover:border-purple-200 dark:group-hover:border-purple-900/50 group-hover:shadow-lg transition-all duration-300">
+                <Link to="/community" className="block space-y-3 cursor-pointer bg-brand-cream-50 dark:bg-brand-cream-950 p-4 rounded-3xl shadow-sm border border-brand-cream-100 dark:border-brand-cream-800 group-hover:border-purple-200 dark:group-hover:border-purple-900/50 group-hover:shadow-lg transition-all duration-300">
                   <div className="relative aspect-[3/2] overflow-hidden rounded-2xl bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20">
-                    {featuredAssociation.bannerUrl ? (
-                      <div className="w-full h-full bg-cover bg-center transition-transform duration-700 group-hover:scale-105" style={{ backgroundImage: `url("${featuredAssociation.bannerUrl}")` }}></div>
+                    {featuredCommunity.bannerUrl ? (
+                      <div className="w-full h-full bg-cover bg-center transition-transform duration-700 group-hover:scale-105" style={{ backgroundImage: `url("${featuredCommunity.bannerUrl}")` }}></div>
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <Users className="w-16 h-16 text-purple-200 dark:text-purple-700" />
@@ -257,26 +257,26 @@ export default function LandingPage() {
                     <div className="absolute top-3 right-3 bg-brand-cream-50/90 dark:bg-brand-cream-950/80 backdrop-blur-md px-3 py-1.5 rounded-full text-xs font-bold shadow-sm flex items-center gap-1.5">
                       <Users className="w-3 h-3 text-purple-600 dark:text-purple-400" />
                       <span className="text-purple-600 dark:text-purple-400">
-                        {featuredAssociation.memberCount >= 1000 
-                          ? `${(featuredAssociation.memberCount / 1000).toFixed(1).replace(/\.0$/, '')}k` 
-                          : featuredAssociation.memberCount}
+                        {featuredCommunity.memberCount >= 1000 
+                          ? `${(featuredCommunity.memberCount / 1000).toFixed(1).replace(/\.0$/, '')}k` 
+                          : featuredCommunity.memberCount}
                       </span>
                     </div>
-                    {featuredAssociation.logoUrl && (
+                    {featuredCommunity.logoUrl && (
                       <div className="absolute -bottom-6 left-3 size-12 rounded-xl shadow-lg border-2 border-brand-cream-50 dark:border-brand-cream-950 bg-brand-cream-50 dark:bg-brand-cream-950 overflow-hidden">
-                        <img src={featuredAssociation.logoUrl} alt={featuredAssociation.name} className="w-full h-full object-cover" />
+                        <img src={featuredCommunity.logoUrl} alt={featuredCommunity.name} className="w-full h-full object-cover" />
                       </div>
                     )}
                   </div>
                   <div className="space-y-1 px-1 pt-2">
                     <p className="text-xs font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wide">
-                      {featuredAssociation.category}
+                      {featuredCommunity.category}
                     </p>
                     <h3 className="text-lg font-bold text-brand-cream-950 dark:text-brand-cream-50 leading-tight">
-                      {featuredAssociation.name}
+                      {featuredCommunity.name}
                     </h3>
                     <p className="text-sm text-brand-cream-500 line-clamp-2">
-                      {featuredAssociation.description}
+                      {featuredCommunity.description}
                     </p>
                   </div>
                   <div className="flex items-center justify-between pt-2 px-1">

@@ -34,18 +34,24 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { useAuth } from "@/hooks/use-auth";
 
-// Zod schema for association validation
-const associationSchema = z.object({
+// Zod schema for community validation
+const communitieschema = z.object({
     name: z.string().min(3, "Name must be at least 3 characters").max(100, "Name must be less than 100 characters"),
-    description: z.string().min(10, "Description must be at least 10 characters").max(500, "Description must be less than 500 characters"),
+    slug: z.string()
+        .min(3, "Slug must be at least 3 characters")
+        .max(100, "Slug must be less than 100 characters")
+        .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Slug must be lowercase letters, numbers, and hyphens only"),
+    shortDescription: z.string().min(10, "Short description must be at least 10 characters").max(200, "Short description must be less than 200 characters"),
+    description: z.string().min(10, "Description must be at least 10 characters").max(5000, "Description must be less than 5000 characters"),
     category: z.string().min(1, "Category is required"),
     logo: z.instanceof(File).optional(),
     banner: z.instanceof(File).optional(),
 });
 
-type AssociationFormData = z.infer<typeof associationSchema>;
+type CommunityFormData = z.infer<typeof communitieschema>;
 
 const categories = [
     "Academic",
@@ -58,25 +64,37 @@ const categories = [
     "Professional",
 ];
 
-export default function CreateAssociationPage() {
+export default function CreateCommunityPage() {
     const navigate = useNavigate();
     const { user } = useAuth();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [logoPreview, setLogoPreview] = useState<string | null>(null);
     const [bannerPreview, setBannerPreview] = useState<string | null>(null);
 
-    const form = useForm<AssociationFormData>({
-        resolver: zodResolver(associationSchema),
+    const form = useForm<CommunityFormData>({
+        resolver: zodResolver(communitieschema),
         defaultValues: {
             name: "",
+            slug: "",
+            shortDescription: "",
             description: "",
             category: "",
         },
     });
 
-    const onSubmit = async (data: AssociationFormData) => {
+    // Auto-generate slug from name
+    const generateSlug = (name: string) => {
+        return name
+            .toLowerCase()
+            .replace(/[^a-z0-9\s-]/g, '') // Remove special characters
+            .replace(/\s+/g, '-') // Replace spaces with hyphens
+            .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
+            .replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
+    };
+
+    const onSubmit = async (data: CommunityFormData) => {
         if (!user) {
-            toast.error("You must be signed in to create an association");
+            toast.error("You must be signed in to create an community");
             return;
         }
 
@@ -86,10 +104,12 @@ export default function CreateAssociationPage() {
             const db = getFirestore(getApp());
             const storage = getStorage(getApp());
             
-            // First, create the association document to get an ID
-            const associationsRef = collection(db, "associations");
-            const docRef = await addDoc(associationsRef, {
+            // First, create the community document to get an ID
+            const communitiesRef = collection(db, "communities");
+            const docRef = await addDoc(communitiesRef, {
                 name: data.name,
+                slug: data.slug,
+                shortDescription: data.shortDescription,
                 description: data.description,
                 category: data.category,
                 memberCount: 1,
@@ -101,20 +121,20 @@ export default function CreateAssociationPage() {
                 status: "active",
             });
 
-            const associationId = docRef.id;
+            const communityId = docRef.id;
             let logoUrl = null;
             let bannerUrl = null;
 
             // Upload logo if provided
             if (data.logo) {
-                const logoRef = ref(storage, `associations/${associationId}/logo`);
+                const logoRef = ref(storage, `communities/${communityId}/logo`);
                 await uploadBytes(logoRef, data.logo);
                 logoUrl = await getDownloadURL(logoRef);
             }
 
             // Upload banner if provided
             if (data.banner) {
-                const bannerRef = ref(storage, `associations/${associationId}/banner`);
+                const bannerRef = ref(storage, `communities/${communityId}/banner`);
                 await uploadBytes(bannerRef, data.banner);
                 bannerUrl = await getDownloadURL(bannerRef);
             }
@@ -122,21 +142,21 @@ export default function CreateAssociationPage() {
             // Update the document with image URLs
             if (logoUrl || bannerUrl) {
                 const { updateDoc, doc } = await import("firebase/firestore");
-                await updateDoc(doc(db, "associations", associationId), {
+                await updateDoc(doc(db, "communities", communityId), {
                     ...(logoUrl && { logoUrl }),
                     ...(bannerUrl && { bannerUrl }),
                     updatedAt: serverTimestamp(),
                 });
             }
 
-            toast.success("Association created successfully!", {
-                description: "Your association has been published.",
+            toast.success("Community created successfully!", {
+                description: "Your community has been published.",
             });
 
-            navigate("/association");
+            navigate("/communities");
         } catch (error) {
-            console.error("Error creating association:", error);
-            toast.error("Failed to create association", {
+            console.error("Error creating community:", error);
+            toast.error("Failed to create community", {
                 description: error instanceof Error ? error.message : "Please try again",
             });
         } finally {
@@ -152,7 +172,7 @@ export default function CreateAssociationPage() {
                     <CardHeader>
                         <CardTitle>Authentication Required</CardTitle>
                         <CardDescription>
-                            Please sign in to create an association
+                            Please sign in to create an community
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -170,7 +190,7 @@ export default function CreateAssociationPage() {
             <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8">
                 {/* Header */}
                 <div className="mb-8">
-                    <h1 className="text-4xl font-bold text-slate-900">Create New Association</h1>
+                    <h1 className="text-4xl font-bold text-slate-900">Create New Community</h1>
                     <p className="mt-2 text-slate-600">
                         Start a new community or club to connect with like-minded people
                     </p>
@@ -179,7 +199,7 @@ export default function CreateAssociationPage() {
                 {/* Form */}
                 <Card className="border-slate-200/80 bg-white shadow-soft-xl">
                     <CardHeader>
-                        <CardTitle>Association Details</CardTitle>
+                        <CardTitle>Community Details</CardTitle>
                         <CardDescription>
                             All fields marked with * are required
                         </CardDescription>
@@ -187,19 +207,72 @@ export default function CreateAssociationPage() {
                     <CardContent>
                         <Form {...form}>
                             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                                {/* Association Name */}
+                                {/* Community Name */}
                                 <FormField
                                     control={form.control}
                                     name="name"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel>Association Name *</FormLabel>
+                                            <FormLabel>Community Name *</FormLabel>
                                             <FormControl>
                                                 <Input
                                                     placeholder="AI Enthusiasts Club"
                                                     {...field}
+                                                    onChange={(e) => {
+                                                        field.onChange(e);
+                                                        // Auto-generate slug if slug is empty
+                                                        if (!form.getValues("slug")) {
+                                                            form.setValue("slug", generateSlug(e.target.value));
+                                                        }
+                                                    }}
                                                 />
                                             </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+
+                                {/* Slug */}
+                                <FormField
+                                    control={form.control}
+                                    name="slug"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>URL Slug *</FormLabel>
+                                            <FormControl>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-sm text-slate-500">tailed.ca/communities/</span>
+                                                    <Input
+                                                        placeholder="ai-enthusiasts-club"
+                                                        {...field}
+                                                    />
+                                                </div>
+                                            </FormControl>
+                                            <FormDescription>
+                                                A unique URL-friendly identifier (lowercase letters, numbers, and hyphens only)
+                                            </FormDescription>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+
+                                {/* Short Description */}
+                                <FormField
+                                    control={form.control}
+                                    name="shortDescription"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Short Description *</FormLabel>
+                                            <FormControl>
+                                                <Textarea
+                                                    placeholder="A brief tagline or summary of your community..."
+                                                    rows={2}
+                                                    {...field}
+                                                />
+                                            </FormControl>
+                                            <FormDescription>
+                                                A concise summary shown in community listings (10-200 characters)
+                                            </FormDescription>
                                             <FormMessage />
                                         </FormItem>
                                     )}
@@ -213,13 +286,14 @@ export default function CreateAssociationPage() {
                                         <FormItem>
                                             <FormLabel>Description *</FormLabel>
                                             <FormControl>
-                                                <Textarea
-                                                    placeholder="Tell people what your association is about..."
-                                                    {...field}
+                                                <RichTextEditor
+                                                    value={field.value}
+                                                    onChange={field.onChange}
+                                                    placeholder="Tell people what your community is about..."
                                                 />
                                             </FormControl>
                                             <FormDescription>
-                                                Briefly describe your association (10-500 characters)
+                                                Describe your community's purpose and activities
                                             </FormDescription>
                                             <FormMessage />
                                         </FormItem>
@@ -261,7 +335,7 @@ export default function CreateAssociationPage() {
                                     name="logo"
                                     render={({ field: { value, onChange, ...field } }) => (
                                         <FormItem>
-                                            <FormLabel>Association Logo</FormLabel>
+                                            <FormLabel>Community Logo</FormLabel>
                                             <FormControl>
                                                 <div className="space-y-4">
                                                     <div className="flex items-center gap-4">
@@ -294,7 +368,7 @@ export default function CreateAssociationPage() {
                                                 </div>
                                             </FormControl>
                                             <FormDescription>
-                                                Upload a logo for your association (square images work best)
+                                                Upload a logo for your community (square images work best)
                                             </FormDescription>
                                             <FormMessage />
                                         </FormItem>
@@ -340,7 +414,7 @@ export default function CreateAssociationPage() {
                                                 </div>
                                             </FormControl>
                                             <FormDescription>
-                                                Upload a banner image for your association card
+                                                Upload a banner image for your community card
                                             </FormDescription>
                                             <FormMessage />
                                         </FormItem>
@@ -369,7 +443,7 @@ export default function CreateAssociationPage() {
                                             </div>
                                             <div>
                                                 <p className="font-bold text-slate-900">
-                                                    {form.watch("name") || "Association Name"}
+                                                    {form.watch("name") || "Community Name"}
                                                 </p>
                                                 <div className="flex items-center gap-1.5 text-sm text-slate-500">
                                                     <Users className="h-4 w-4" />
@@ -385,7 +459,7 @@ export default function CreateAssociationPage() {
                                     <Button
                                         type="button"
                                         variant="outline"
-                                        onClick={() => navigate("/association")}
+                                        onClick={() => navigate("/community")}
                                         disabled={isSubmitting}
                                         className="flex-1"
                                     >
@@ -402,7 +476,7 @@ export default function CreateAssociationPage() {
                                                 Creating...
                                             </>
                                         ) : (
-                                            "Create Association"
+                                            "Create Community"
                                         )}
                                     </Button>
                                 </div>

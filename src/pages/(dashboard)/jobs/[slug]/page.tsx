@@ -185,9 +185,12 @@ export default function PublicJobPage() {
                                         <Building2 className="h-6 w-6 text-muted-foreground" />
                                     </div>
                                 )}
-                                <div className="text-lg text-muted-foreground">
+                                <Link 
+                                    to={`/companies/${organization.slug || organization.id}`}
+                                    className="text-lg text-muted-foreground hover:text-foreground transition-colors hover:underline"
+                                >
                                     {organization.name}
-                                </div>
+                                </Link>
                             </div>
                         )}
 

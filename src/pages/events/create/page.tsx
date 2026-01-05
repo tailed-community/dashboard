@@ -163,12 +163,12 @@ export default function CreateEventPage() {
     const watchMode = form.watch("mode");
     const watchHostType = form.watch("hostType");
 
-    // Fetch communities/associations from Firestore
+    // Fetch communities/communities from Firestore
     useEffect(() => {
         const fetchCommunities = async () => {
             try {
                 const db = getFirestore(getApp());
-                const communitiesRef = collection(db, "associations");
+                const communitiesRef = collection(db, "communities");
                 const snapshot = await getDocs(communitiesRef);
                 
                 const fetchedCommunities: Community[] = snapshot.docs.map((doc) => ({

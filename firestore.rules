@@ -34,12 +34,12 @@ service cloud.firestore {
       allow delete: if isOwner(resource.data.createdBy);
     }
     
-    // Associations collection rules
-    match /associations/{associationId} {
-      // Anyone can read associations (authenticated or not)
+    // communities collection rules
+    match /communities/{communityId} {
+      // Anyone can read communities (authenticated or not)
       allow read: if true;
       
-      // Only authenticated users can create associations
+      // Only authenticated users can create communities
       allow create: if isAuthenticated()
                     && request.resource.data.createdBy == request.auth.uid
                     && request.resource.data.createdAt == request.time
@@ -48,7 +48,7 @@ service cloud.firestore {
                     && request.auth.uid in request.resource.data.members;
       
       // Allow updates for:
-      // 1. Association creator can update anything
+      // 1. Community creator can update anything
       // 2. Authenticated users can join (add themselves to members)
       // 3. Authenticated users can leave (remove themselves from members)
       allow update: if isAuthenticated()
@@ -73,8 +73,18 @@ service cloud.firestore {
                       )
                     );
       
-      // Only the association creator can delete
+      // Only the community creator can delete
       allow delete: if isOwner(resource.data.createdBy);
+    }
+    
+    // Profiles collection rules
+    match /profiles/{userId} {
+      // Users can only read their own profile
+      allow read: if isOwner(userId);
+      
+      // Users can update their own profile
+      allow update: if isOwner(userId)
+                    && request.resource.data.userId == resource.data.userId; // Prevent changing userId
     }
     
     // Default: deny all other access

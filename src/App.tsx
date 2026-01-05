@@ -37,11 +37,13 @@ const AppliedJobsPage = lazy(
 );
 const JobsPage = lazy(() => import("./pages/(dashboard)/jobs/page"));
 const CompaniesPage = lazy(() => import("./pages/companies/page"));
+const CompanyDetailPage = lazy(() => import("./pages/companies/[id]/page"));
 const EventsPage = lazy(() => import("./pages/events/page"));
 const EventDetailPage = lazy(() => import("./pages/events/[id]/page"));
 const CreateEventPage = lazy(() => import("./pages/events/create/page"));
-const AssociationPage = lazy(() => import("./pages/association/page"));
-const CreateAssociationPage = lazy(() => import("./pages/association/create/page"));
+const CommunitiesPage = lazy(() => import("./pages/communities/page"));
+const CommunityDetailPage = lazy(() => import("./pages/communities/[id]/page"));
+const CreateCommunityPage = lazy(() => import("./pages/communities/create/page"));
 const SpotlightPage = lazy(() => import("./pages/spotlight/page"));
 const ExplorePage = lazy(() => import("./pages/explore/page"));
 const AboutPage = lazy(() => import("./pages/about/page"));
@@ -85,6 +87,7 @@ function App() {
                                 element={<PublicJobPage />}
                             />
                             <Route path="/companies" element={<CompaniesPage />} />
+                            <Route path="/companies/:id" element={<CompanyDetailPage />} />
                             <Route path="/events" element={<EventsPage />} />
                             <Route path="/events/:id" element={<EventDetailPage />} />
                             <Route
@@ -95,12 +98,13 @@ function App() {
                                     </PrivateRoute>
                                 }
                             />
-                            <Route path="/association" element={<AssociationPage />} />
+                            <Route path="/communities" element={<CommunitiesPage />} />
+                            <Route path="/communities/:id" element={<CommunityDetailPage />} />
                             <Route
-                                path="/association/create"
+                                path="/communities/create"
                                 element={
                                     <PrivateRoute>
-                                        <CreateAssociationPage />
+                                        <CreateCommunityPage />
                                     </PrivateRoute>
                                 }
                             />

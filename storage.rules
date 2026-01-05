@@ -8,16 +8,16 @@ service firebase.storage {
       return request.auth != null;
     }
     
-    // Helper function to check if user owns the association
-    function isAssociationOwner(associationId) {
+    // Helper function to check if user owns the community
+    function isCommunityOwner(communityId) {
       return isAuthenticated() 
-        && firestore.get(/databases/(default)/documents/associations/$(associationId)).data.createdBy == request.auth.uid;
+        && firestore.get(/databases/(default)/documents/communities/$(communityId)).data.createdBy == request.auth.uid;
     }
     
-    // Helper function to check if user is a member of the association
-    function isAssociationMember(associationId) {
+    // Helper function to check if user is a member of the community
+    function isCommunityMember(communityId) {
       return isAuthenticated() 
-        && request.auth.uid in firestore.get(/databases/(default)/documents/associations/$(associationId)).data.members;
+        && request.auth.uid in firestore.get(/databases/(default)/documents/communities/$(communityId)).data.members;
     }
     
     // Helper function to check if user owns the event
@@ -26,26 +26,26 @@ service firebase.storage {
         && firestore.get(/databases/(default)/documents/events/$(eventId)).data.createdBy == request.auth.uid;
     }
     
-    // Association images rules
-    match /associations/{associationId}/{imageType} {
-      // Anyone can read association images
+    // Community images rules
+    match /communities/{communityId}/{imageType} {
+      // Anyone can read community images
       allow read: if true;
       
-      // Only authenticated users can create association images during creation
-      // The association document must exist and user must be the creator
+      // Only authenticated users can create community images during creation
+      // The community document must exist and user must be the creator
       allow create: if isAuthenticated()
                     && (imageType == 'logo' || imageType == 'banner')
                     && request.resource.size < 5 * 1024 * 1024 // Max 5MB
                     && request.resource.contentType.matches('image/.*');
       
-      // Only association creator or members can update images
-      allow update: if (isAssociationOwner(associationId) || isAssociationMember(associationId))
+      // Only community creator or members can update images
+      allow update: if (isCommunityOwner(communityId) || isCommunityMember(communityId))
                     && (imageType == 'logo' || imageType == 'banner')
                     && request.resource.size < 5 * 1024 * 1024 // Max 5MB
                     && request.resource.contentType.matches('image/.*');
       
-      // Only association creator can delete images
-      allow delete: if isAssociationOwner(associationId);
+      // Only community creator can delete images
+      allow delete: if isCommunityOwner(communityId);
     }
     
     // Event hero images rules

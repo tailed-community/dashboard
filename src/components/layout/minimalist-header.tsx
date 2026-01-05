@@ -70,8 +70,8 @@ const navigationItems = [
         title: "Community",
         items: [
             {
-                title: "Student Association",
-                href: "/association",
+                title: "Student Community",
+                href: "/community",
                 description: "Connect with fellow students",
                 icon: Users,
                 authRequired: false,

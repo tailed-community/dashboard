@@ -16,16 +16,41 @@ const NEW_GRADS_URL =
 
 export default function ExplorePage() {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
+  const [allFetchedData, setAllFetchedData] = useState<Opportunity[]>([]);
   const [loading, setLoading] = useState(true);
-  const [hasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [visibleCount, setVisibleCount] = useState(12);
+  const [totalCounts, setTotalCounts] = useState({
+    featuredJobs: 0,
+    internships: 0,
+    newGrads: 0,
+    events: 0,
+    communities: 0,
+  });
   const { user } = useAuth();
+  
+  const ITEMS_PER_PAGE = 12;
 
   useEffect(() => {
     const fetchOpportunities = async () => {
       try {
         setLoading(true);
         const db = getFirestore(getApp());
-        const allOpportunities: Opportunity[] = [];
+        
+        // Separate arrays for each type
+        const featuredJobsArray: Opportunity[] = [];
+        const internshipsArray: Opportunity[] = [];
+        const newGradsArray: Opportunity[] = [];
+        const eventsArray: Opportunity[] = [];
+        const communitiesArray: Opportunity[] = [];
+
+        // Fetch all data at once (no limits initially)
+        const featuredJobsLimit = 50; // Reasonable max
+        const internshipsLimit = 100;
+        const newGradsLimit = 100;
+        const eventsLimit = 20;
+        const communitiesLimit = 20;
 
         // Fetch featured jobs and external jobs in parallel
         const results = await Promise.allSettled([
@@ -36,20 +61,25 @@ export default function ExplorePage() {
 
         const [featuredJobsResult, internshipsResult, newGradsResult] = results;
 
+        let totalFeaturedJobs = 0;
+        let totalInternships = 0;
+        let totalNewGrads = 0;
+
         // Process featured jobs
         if (featuredJobsResult.status === "fulfilled") {
           try {
             const jobsData = await featuredJobsResult.value.json();
             const jobs = jobsData.jobs || [];
+            totalFeaturedJobs = jobs.length;
             
-            // Take first 3 featured jobs
-            jobs.slice(0, 3).forEach((job: any) => {
+            // Take limited featured jobs
+            jobs.slice(0, featuredJobsLimit).forEach((job: any) => {
               const timeAgo = job.postingDate 
                 ? calculateTimeAgo(new Date(job.postingDate))
                 : "Recently posted";
               
-              allOpportunities.push({
-                id: `featured-${job.id}`,
+              featuredJobsArray.push({
+                id: `${job.id}`,
                 type: "job",
                 title: job.title,
                 company: job.organization?.name || "Company",
@@ -59,6 +89,8 @@ export default function ExplorePage() {
                 timeAgo,
                 logo: job.organization?.logo,
                 color: getRandomColor(),
+                companySlug: job.organization?.slug,
+                companyId: job.organizationId,
               });
             });
           } catch (error) {
@@ -70,12 +102,13 @@ export default function ExplorePage() {
         if (internshipsResult.status === "fulfilled") {
           try {
             const internships: ExternalJob[] = await internshipsResult.value.json();
+            totalInternships = internships.length;
             
-            // Take first 2 internships
-            internships.slice(0, 2).forEach((job) => {
+            // Take limited internships
+            internships.slice(0, internshipsLimit).forEach((job) => {
               const timeAgo = calculateTimeAgo(new Date(job.date_posted * 1000));
               
-              allOpportunities.push({
+              internshipsArray.push({
                 id: `external-${job.id}`,
                 type: "job",
                 title: job.title,
@@ -84,6 +117,7 @@ export default function ExplorePage() {
                 jobType: "Internship",
                 timeAgo,
                 color: getRandomColor(),
+                url: job.url,
               });
             });
           } catch (error) {
@@ -95,12 +129,13 @@ export default function ExplorePage() {
         if (newGradsResult.status === "fulfilled") {
           try {
             const newGrads: ExternalJob[] = await newGradsResult.value.json();
+            totalNewGrads = newGrads.length;
             
-            // Take first 2 new grad positions
-            newGrads.slice(0, 2).forEach((job) => {
+            // Take limited new grad positions
+            newGrads.slice(0, newGradsLimit).forEach((job) => {
               const timeAgo = calculateTimeAgo(new Date(job.date_posted * 1000));
               
-              allOpportunities.push({
+              newGradsArray.push({
                 id: `external-${job.id}`,
                 type: "job",
                 title: job.title,
@@ -109,6 +144,7 @@ export default function ExplorePage() {
                 jobType: "New Grad",
                 timeAgo,
                 color: getRandomColor(),
+                url: job.url,
               });
             });
           } catch (error) {
@@ -123,15 +159,16 @@ export default function ExplorePage() {
           where("status", "==", "published"),
           where("datetime", ">=", Timestamp.now()),
           orderBy("datetime", "asc"),
-          limit(3)
+          limit(eventsLimit)
         );
         const eventsSnapshot = await getDocs(eventsQuery);
+        const totalEvents = eventsSnapshot.size;
         
         eventsSnapshot.forEach((doc) => {
           const data = doc.data();
           const eventDate = data.datetime.toDate();
           
-          allOpportunities.push({
+          eventsArray.push({
             id: doc.id,
             type: "event",
             title: data.title,
@@ -144,35 +181,69 @@ export default function ExplorePage() {
           });
         });
 
-        // Fetch associations/communities as company cards
-        const associationsRef = collection(db, "associations");
-        const associationsQuery = query(
-          associationsRef,
+        // Fetch communities/communities as company cards
+        const communitiesRef = collection(db, "communities");
+        const communitiesQuery = query(
+          communitiesRef,
           orderBy("memberCount", "desc"),
-          limit(2)
+          limit(communitiesLimit)
         );
-        const associationsSnapshot = await getDocs(associationsQuery);
+        const communitiesSnapshot = await getDocs(communitiesQuery);
+        const totalcommunities = communitiesSnapshot.size;
         
-        associationsSnapshot.forEach((doc) => {
+        communitiesSnapshot.forEach((doc) => {
           const data = doc.data();
           
-          allOpportunities.push({
-            id: doc.id,
-            type: "company",
+          communitiesArray.push({
+            id: data.slug || doc.id,
+            type: "community",
             name: data.name,
             description: data.description || "Join our community",
-            industry: data.category || "Community",
+            category: data.category || "Community",
             tags: [data.category || "Community", `${data.memberCount || 0} members`],
-            openRoles: 0,
             logo: data.logoUrl,
             gradient: "bg-gradient-to-br from-purple-400 via-pink-400 to-rose-400",
           });
         });
         
-        // Shuffle opportunities to mix different types together
-        const shuffledOpportunities = allOpportunities.sort(() => Math.random() - 0.5);
+        // Interleave opportunities to ensure each "page" has a mix of types
+        const allOpportunities: Opportunity[] = [];
+        const maxLength = Math.max(
+          featuredJobsArray.length,
+          internshipsArray.length,
+          newGradsArray.length,
+          eventsArray.length,
+          communitiesArray.length
+        );
         
-        setOpportunities(shuffledOpportunities);
+        // Round-robin distribution to ensure even mixing
+        for (let i = 0; i < maxLength; i++) {
+          if (i < featuredJobsArray.length) allOpportunities.push(featuredJobsArray[i]);
+          if (i < internshipsArray.length) allOpportunities.push(internshipsArray[i]);
+          if (i < eventsArray.length) allOpportunities.push(eventsArray[i]);
+          if (i < newGradsArray.length) allOpportunities.push(newGradsArray[i]);
+          if (i < communitiesArray.length) allOpportunities.push(communitiesArray[i]);
+        }
+        
+        setAllFetchedData(allOpportunities);
+        setOpportunities(allOpportunities.slice(0, visibleCount));
+        
+        // Store total counts
+        const counts = {
+          featuredJobs: totalFeaturedJobs,
+          internships: totalInternships,
+          newGrads: totalNewGrads,
+          events: totalEvents,
+          communities: totalcommunities,
+        };
+        setTotalCounts(counts);
+        
+        // Log the totals for debugging
+        console.log("Total counts by type:", counts);
+        console.log("Interleaved opportunities:", allOpportunities.length);
+        
+        // Determine if there are more opportunities to load
+        setHasMore(allOpportunities.length > visibleCount);
       } catch (error) {
         console.error("Error fetching opportunities:", error);
       } finally {
@@ -244,6 +315,21 @@ export default function ExplorePage() {
     return user.displayName || "there";
   };
 
+  // Handle load more
+  const handleLoadMore = () => {
+    setLoadingMore(true);
+    setVisibleCount(prev => prev + ITEMS_PER_PAGE);
+    setLoadingMore(false);
+  };
+
+  // Update visible opportunities when visibleCount changes
+  useEffect(() => {
+    if (allFetchedData.length > 0) {
+      setOpportunities(allFetchedData.slice(0, visibleCount));
+      setHasMore(allFetchedData.length > visibleCount);
+    }
+  }, [visibleCount, allFetchedData]);
+
   return (
     <div className="min-h-screen bg-brand-cream">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -283,8 +369,8 @@ export default function ExplorePage() {
             {/* Opportunities Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
               {opportunities.map((opportunity) => {
-                // Featured and Company cards span 2 columns on larger screens
-                const isLargeCard = opportunity.type === "company";
+                // Company and Community cards span 2 columns on larger screens
+                const isLargeCard = opportunity.type === "company" || opportunity.type === "community";
 
                 return (
                   <OpportunityCard
@@ -303,8 +389,17 @@ export default function ExplorePage() {
                   variant="outline"
                   size="lg"
                   className="px-8"
+                  onClick={handleLoadMore}
+                  disabled={loadingMore}
                 >
-                  Load more opportunities
+                  {loadingMore ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Loading...
+                    </>
+                  ) : (
+                    "Load more opportunities"
+                  )}
                 </Button>
               </div>
             )}

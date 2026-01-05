@@ -1,7 +1,8 @@
+import { useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MapPin, Clock } from "lucide-react";
+import { MapPin, Clock, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type OpportunityType = "job" | "company" | "featured" | "event";
@@ -21,6 +22,9 @@ export interface JobOpportunity extends BaseOpportunity {
   timeAgo: string;
   logo?: string;
   color?: string;
+  url?: string; // For external job links
+  companySlug?: string; // Company slug for navigation
+  companyId?: string; // Company ID as fallback
 }
 
 export interface CompanyOpportunity extends BaseOpportunity {
@@ -30,6 +34,16 @@ export interface CompanyOpportunity extends BaseOpportunity {
   industry: string;
   tags: string[];
   openRoles: number;
+  logo?: string;
+  gradient?: string;
+}
+
+export interface CommunityOpportunity extends BaseOpportunity {
+  type: "community";
+  name: string;
+  description: string;
+  category: string;
+  tags: string[];
   logo?: string;
   gradient?: string;
 }
@@ -57,6 +71,7 @@ export interface EventOpportunity extends BaseOpportunity {
 export type Opportunity =
   | JobOpportunity
   | CompanyOpportunity
+  | CommunityOpportunity
   | FeaturedOpportunity
   | EventOpportunity;
 
@@ -77,6 +92,10 @@ export function OpportunityCard({
     return <CompanyCard opportunity={opportunity} className={className} />;
   }
 
+  if (opportunity.type === "community") {
+    return <CommunityCard opportunity={opportunity} className={className} />;
+  }
+
   if (opportunity.type === "featured") {
     return <FeaturedCard opportunity={opportunity} className={className} />;
   }
@@ -95,6 +114,8 @@ function JobCard({
   opportunity: JobOpportunity;
   className?: string;
 }) {
+  const navigate = useNavigate();
+  
   const getJobTypeBadgeColor = (jobType: string) => {
     switch (jobType) {
       case "Internship":
@@ -121,39 +142,83 @@ function JobCard({
     }
   };
 
+  const isExternal = !!opportunity.url;
+
+  const handleClick = () => {
+    if (isExternal && opportunity.url) {
+      window.open(opportunity.url, "_blank", "noopener,noreferrer");
+    } else {
+      navigate(`/jobs/${opportunity.id}`);
+    }
+  };
+
+  const handleCompanyClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (opportunity.companySlug) {
+      navigate(`/companies/${opportunity.companySlug}`);
+    } else if (opportunity.companyId) {
+      navigate(`/companies/${opportunity.companyId}`);
+    }
+  };
+
   return (
     <Card
       className={cn(
         "p-6 hover:shadow-md transition-shadow cursor-pointer border border-brand-cream-200",
         className
       )}
+      onClick={handleClick}
     >
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
           <div
             className={cn(
-              "w-10 h-10 rounded-lg flex items-center justify-center text-brand-cream font-semibold",
-              opportunity.color || "bg-brand-cream-800"
+              "w-10 h-10 rounded-lg flex items-center justify-center text-brand-cream font-semibold overflow-hidden",
+              !opportunity.logo && (opportunity.color || "bg-brand-cream-800"),
+              (opportunity.companySlug || opportunity.companyId) && "cursor-pointer hover:opacity-80 transition-opacity"
             )}
+            onClick={(opportunity.companySlug || opportunity.companyId) ? handleCompanyClick : undefined}
           >
-            {opportunity.logo || opportunity.company.charAt(0)}
+            {opportunity.logo ? (
+              <img
+                src={opportunity.logo}
+                alt={opportunity.company}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              opportunity.company.charAt(0)
+            )}
           </div>
           <Badge className={getJobTypeBadgeColor(opportunity.jobType)}>
             {opportunity.jobType}
           </Badge>
         </div>
-        {opportunity.status && (
-          <Badge className={getStatusBadgeColor(opportunity.status)}>
-            {opportunity.status}
-          </Badge>
-        )}
+        <div className="flex items-center gap-2">
+          {isExternal && (
+            <ExternalLink className="w-4 h-4 text-brand-cream-500" />
+          )}
+          {opportunity.status && (
+            <Badge className={getStatusBadgeColor(opportunity.status)}>
+              {opportunity.status}
+            </Badge>
+          )}
+        </div>
       </div>
 
       <div className="space-y-1 mb-4">
         <h3 className="font-semibold text-lg text-brand-cream-900">
           {opportunity.title}
         </h3>
-        <p className="text-sm text-brand-cream-600">{opportunity.company}</p>
+        {(opportunity.companySlug || opportunity.companyId) ? (
+          <p 
+            className="text-sm text-brand-cream-600 hover:text-brand-cream-800 cursor-pointer transition-colors"
+            onClick={handleCompanyClick}
+          >
+            {opportunity.company}
+          </p>
+        ) : (
+          <p className="text-sm text-brand-cream-600">{opportunity.company}</p>
+        )}
       </div>
 
       <div className="flex items-center gap-4 text-sm text-brand-cream-500">
@@ -177,12 +242,15 @@ function CompanyCard({
   opportunity: CompanyOpportunity;
   className?: string;
 }) {
+  const navigate = useNavigate();
+  
   return (
     <Card
       className={cn(
         "relative overflow-hidden border-0 hover:shadow-lg transition-shadow cursor-pointer",
         className
       )}
+      onClick={() => navigate(`/companies/${opportunity.id}`)}
     >
       {/* Gradient Background */}
       <div
@@ -236,6 +304,75 @@ function CompanyCard({
             <span className="text-brand-cream/90 text-sm font-medium">
               {opportunity.openRoles} Open Roles
             </span>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function CommunityCard({
+  opportunity,
+  className,
+}: {
+  opportunity: CommunityOpportunity;
+  className?: string;
+}) {
+  const navigate = useNavigate();
+  
+  return (
+    <Card
+      className={cn(
+        "relative overflow-hidden border-0 hover:shadow-lg transition-shadow cursor-pointer",
+        className
+      )}
+      onClick={() => navigate(`/communities/${opportunity.id}`)}
+    >
+      {/* Gradient Background */}
+      <div
+        className={cn(
+          "absolute inset-0",
+          opportunity.gradient ||
+            "bg-gradient-to-br from-purple-400 via-pink-400 to-rose-400"
+        )}
+      />
+
+      {/* Content */}
+      <div className="relative p-6 h-full flex flex-col">
+        {/* Logo */}
+        <div className="w-12 h-12 bg-brand-cream rounded-xl flex items-center justify-center mb-auto">
+          {opportunity.logo ? (
+            <img
+              src={opportunity.logo}
+              alt={opportunity.name}
+              className="w-8 h-8"
+            />
+          ) : (
+            <span className="text-xl font-bold text-brand-cream-800">
+              {opportunity.name.charAt(0)}
+            </span>
+          )}
+        </div>
+
+        {/* Community Info */}
+        <div className="mt-16 space-y-2">
+          <h3 className="font-semibold text-xl text-brand-cream">
+            {opportunity.name}
+          </h3>
+          <p className="text-brand-cream/90 text-sm line-clamp-2">
+            {opportunity.description}
+          </p>
+
+          <div className="flex flex-wrap gap-2 pt-2">
+            {opportunity.tags.map((tag) => (
+              <Badge
+                key={tag}
+                variant="secondary"
+                className="bg-brand-cream/20 text-brand-cream hover:bg-brand-cream/30 backdrop-blur-sm border-0"
+              >
+                {tag}
+              </Badge>
+            ))}
           </div>
         </div>
       </div>
@@ -310,12 +447,15 @@ function EventCard({
   opportunity: EventOpportunity;
   className?: string;
 }) {
+  const navigate = useNavigate();
+  
   return (
     <Card
       className={cn(
         "p-6 hover:shadow-md transition-shadow cursor-pointer border border-brand-cream-200",
         className
       )}
+      onClick={() => navigate(`/events/${opportunity.id}`)}
     >
       {/* Header with Calendar Icon and Event Badge */}
       <div className="flex items-start justify-between mb-6">

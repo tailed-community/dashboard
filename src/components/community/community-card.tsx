@@ -5,10 +5,12 @@ import { Separator } from "@/components/ui/separator";
 import { Users, Loader2, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export interface Association {
+export interface Community {
   id: string;
   name: string;
   description: string;
+  shortDescription?: string;
+  slug?: string;
   category: string;
   memberCount: number;
   bannerUrl?: string;
@@ -16,45 +18,51 @@ export interface Association {
   members?: string[]; // Avatar URLs or initials
 }
 
-interface AssociationCardProps {
-  association: Association;
+interface CommunityCardProps {
+  community: Community;
   className?: string;
-  onJoin?: (associationId: string) => void;
+  onJoin?: (communityId: string) => void;
+  onClick?: () => void;
   currentUserId?: string;
   isJoining?: boolean;
 }
 
-export function AssociationCard({
-  association,
+export function CommunityCard({
+  community,
   className,
   onJoin,
+  onClick,
   currentUserId,
   isJoining = false,
-}: AssociationCardProps) {
-  const handleJoin = () => {
+}: CommunityCardProps) {
+  const handleJoin = (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (onJoin) {
-      onJoin(association.id);
+      onJoin(community.id);
     }
   };
 
-  const isMember = currentUserId && association.members?.includes(currentUserId);
+  const isMember = currentUserId && community.members?.includes(currentUserId);
 
   const formatMemberCount = () => {
-    if (association.memberCount >= 1000) {
-      const value = (association.memberCount / 1000).toFixed(1).replace(/\.0$/, "");
+    if (community.memberCount >= 1000) {
+      const value = (community.memberCount / 1000).toFixed(1).replace(/\.0$/, "");
       return `${value}k`;
     }
-    return association.memberCount.toString();
+    return community.memberCount.toString();
   };
 
   return (
-    <Card className={cn("p-0 gap-0 hover:shadow-lg transition-shadow", className)}>
+    <Card 
+      className={cn("p-0 gap-0 hover:shadow-lg transition-shadow", onClick && "cursor-pointer", className)}
+      onClick={onClick}
+    >
       {/* Banner */}
       <div className="relative h-44 rounded-t-xl">
-        {association.bannerUrl ? (
+        {community.bannerUrl ? (
           <img
-            src={association.bannerUrl}
-            alt={association.name}
+            src={community.bannerUrl}
+            alt={community.name}
             className="w-full h-full object-cover rounded-t-xl"
           />
         ) : (
@@ -69,16 +77,16 @@ export function AssociationCard({
 
         {/* Logo - overlaying banner at bottom left */}
         <div className="absolute -bottom-8 left-5 h-16 w-16 rounded-2xl shadow-lg border-4 border-white bg-white overflow-hidden">
-          {association.logoUrl ? (
+          {community.logoUrl ? (
             <img
-              src={association.logoUrl}
-              alt={`${association.name} logo`}
+              src={community.logoUrl}
+              alt={`${community.name} logo`}
               className="w-full h-full object-cover"
             />
           ) : (
             <div className="w-full h-full bg-gradient-to-br from-slate-200 to-slate-300 flex items-center justify-center">
               <span className="text-slate-600 font-bold text-xl">
-                {association.name.charAt(0).toUpperCase()}
+                {community.name.charAt(0).toUpperCase()}
               </span>
             </div>
           )}
@@ -89,12 +97,12 @@ export function AssociationCard({
       <div className="px-5 pt-10 pb-5">
         {/* Name */}
         <h3 className="font-bold text-xl mb-2 line-clamp-1 text-gray-900">
-          {association.name}
+          {community.name}
         </h3>
         
         {/* Excerpt */}
         <p className="text-sm text-gray-500 mb-4 line-clamp-2 min-h-[2.5rem]">
-          {association.description}
+          {community.shortDescription || community.description}
         </p>
 
         {/* Separator */}
@@ -104,7 +112,7 @@ export function AssociationCard({
         <div className="flex items-center justify-between">
           {/* Member avatars */}
           <div className="flex -space-x-2">
-            {association.members?.slice(0, 3).map((_, index) => {
+            {community.members?.slice(0, 3).map((_, index) => {
               const grayShades = [
                 "from-slate-200 to-slate-300",
                 "from-slate-300 to-slate-400", 
@@ -117,9 +125,9 @@ export function AssociationCard({
                 </Avatar>
               );
             })}
-            {association.members && association.members.length > 3 && (
+            {community.members && community.members.length > 3 && (
               <div className="h-8 w-8 rounded-full border-2 border-white bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center text-xs font-semibold text-gray-700 shadow-sm">
-                +{association.members.length - 3}
+                +{community.members.length - 3}
               </div>
             )}
           </div>

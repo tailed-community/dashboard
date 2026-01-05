@@ -371,10 +371,10 @@ export default function EventsPage() {
                 if (communityIds.length > 0) {
                     for (const communityId of communityIds) {
                         try {
-                            const associationDocRef = doc(db, "associations", communityId);
-                            const associationDoc = await getDoc(associationDocRef);
-                            if (associationDoc.exists()) {
-                                const data = associationDoc.data();
+                            const communityDocRef = doc(db, "communities", communityId);
+                            const communityDoc = await getDoc(communityDocRef);
+                            if (communityDoc.exists()) {
+                                const data = communityDoc.data();
                                 if (data.logoUrl) {
                                     communityLogos[communityId] = data.logoUrl;
                                 }

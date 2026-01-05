@@ -26,6 +26,7 @@ export interface Job {
 }
 
 export interface Organization {
+  slug: string;
   id: string;
   name: string;
   logo: string | null;

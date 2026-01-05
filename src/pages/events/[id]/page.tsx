@@ -19,6 +19,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { HTMLContent } from "@/components/ui/html-content";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 type EventData = {
     id: string;
@@ -48,6 +49,8 @@ type CommunityData = {
     name: string;
     logoUrl?: string;
     description?: string;
+    shortDescription?: string;
+    slug?: string;
 };
 
 export default function EventDetailPage() {
@@ -85,7 +88,7 @@ export default function EventDetailPage() {
 
                 // Fetch community data if event is hosted by a community
                 if (eventData.hostType === "community" && eventData.communityId) {
-                    const communityRef = doc(db, "associations", eventData.communityId);
+                    const communityRef = doc(db, "communities", eventData.communityId);
                     const communityDoc = await getDoc(communityRef);
 
                     if (communityDoc.exists()) {
@@ -93,6 +96,8 @@ export default function EventDetailPage() {
                             name: communityDoc.data().name,
                             logoUrl: communityDoc.data().logoUrl,
                             description: communityDoc.data().description,
+                            shortDescription: communityDoc.data().shortDescription,
+                            slug: communityDoc.data().slug,
                         });
                     }
                 }
@@ -289,7 +294,17 @@ export default function EventDetailPage() {
                             <h2 className="text-xl font-semibold text-slate-900">
                                 Hosted by
                             </h2>
-                            <div className="flex items-center gap-4">
+                            <div 
+                                className={cn(
+                                    "flex items-center gap-4",
+                                    event.hostType === "community" && event.communityId && "cursor-pointer hover:bg-slate-50 -mx-2 px-2 py-2 rounded-lg transition-colors"
+                                )}
+                                onClick={() => {
+                                    if (event.hostType === "community" && event.communityId) {
+                                        navigate(`/communities/${community?.slug || event.communityId}`);
+                                    }
+                                }}
+                            >
                                 <Avatar className="h-14 w-14">
                                     <AvatarImage src={community?.logoUrl || ""} alt={hostName} />
                                     <AvatarFallback className="bg-slate-100 text-slate-700 text-base font-semibold">
@@ -298,9 +313,9 @@ export default function EventDetailPage() {
                                 </Avatar>
                                 <div>
                                     <p className="font-semibold text-slate-900">{hostName}</p>
-                                    {community?.description && (
-                                        <p className="text-sm text-slate-600 mt-0.5">
-                                            {community.description}
+                                    {community && (
+                                        <p className="text-sm text-slate-600 mt-0.5 line-clamp-2">
+                                            {community.shortDescription || community.description}
                                         </p>
                                     )}
                                 </div>
