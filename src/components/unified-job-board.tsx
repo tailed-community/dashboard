@@ -39,6 +39,7 @@ type UnifiedJob = FeaturedJob | (ExternalJob & { featured: false });
 
 interface UnifiedJobBoardProps {
     limit?: number;
+    variant?: "full" | "preview";
 }
 
 type ParsedLocation = {
@@ -59,7 +60,8 @@ function parseLocation(location: string): ParsedLocation {
     }
 }
 
-export function UnifiedJobBoard({ limit }: UnifiedJobBoardProps) {
+export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProps) {
+    const isPreview = variant === "preview";
     const [featuredJobs, setFeaturedJobs] = useState<FeaturedJob[]>([]);
     const [externalJobs, setExternalJobs] = useState<ExternalJob[]>([]);
     const [loading, setLoading] = useState(true);
@@ -366,8 +368,8 @@ export function UnifiedJobBoard({ limit }: UnifiedJobBoardProps) {
 
     if (loading) {
         return (
-            <div className="container mx-auto py-8">
-                <div className="flex flex-col gap-6">
+            <div className={isPreview ? "w-full" : "container mx-auto py-8"}>
+                <div className={isPreview ? "flex flex-col gap-4" : "flex flex-col gap-6"}>
                     {Array.from({ length: limit || 6 }).map((_, i) => (
                         <Card key={i} className="animate-pulse">
                             <CardContent className="p-6">
@@ -384,80 +386,81 @@ export function UnifiedJobBoard({ limit }: UnifiedJobBoardProps) {
     }
 
     return (
-        <div className="container mx-auto py-8">
-            <div className="mb-8">
-                <h1 className="text-3xl font-bold mb-4">Job Opportunities</h1>
-                <div className="flex flex-col sm:flex-row gap-4">
-                    <Input
-                        placeholder="Search all fields..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-64"
-                    />
-                    <Select
-                        value={selectedType}
-                        onValueChange={setSelectedType}
-                    >
-                        <SelectTrigger className="w-full sm:w-32">
-                            <SelectValue placeholder="Type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Types</SelectItem>
-                            {types.map((type) => (
-                                <SelectItem key={type} value={type}>
-                                    {type === "new-grad"
-                                        ? "New Grad"
-                                        : type.charAt(0).toUpperCase() +
-                                          type.slice(1)}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                    <Select
-                        value={selectedCategory}
-                        onValueChange={setSelectedCategory}
-                    >
-                        <SelectTrigger className="w-full sm:w-48">
-                            <SelectValue placeholder="Category" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Categories</SelectItem>
-                            {categories.map((cat) => (
-                                <SelectItem key={cat} value={cat}>
-                                    {cat}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                    <Select
-                        value={selectedCountry}
-                        onValueChange={(value) => {
-                            setSelectedCountry(value);
-                            setSelectedState("all");
-                            setSelectedCity("all");
-                        }}
-                    >
-                        <SelectTrigger className="w-full sm:w-32">
-                            <SelectValue placeholder="Country" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Countries</SelectItem>
-                            {availableCountries.map((country) => (
-                                <SelectItem key={country} value={country}>
-                                    {country}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                    {selectedCountry !== "all" &&
-                        availableStates.length > 0 && (
-                            <Select
-                                value={selectedState}
-                                onValueChange={(value) => {
-                                    setSelectedState(value);
-                                    setSelectedCity("all");
-                                }}
-                            >
+        <div className={isPreview ? "w-full" : "container mx-auto py-8"}>
+            {!isPreview && (
+                <div className="mb-8">
+                    <h1 className="text-3xl font-bold mb-4">Job Opportunities</h1>
+                    <div className="flex flex-col sm:flex-row gap-4">
+                        <Input
+                            placeholder="Search all fields..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-64"
+                        />
+                        <Select
+                            value={selectedType}
+                            onValueChange={setSelectedType}
+                        >
+                            <SelectTrigger className="w-full sm:w-32">
+                                <SelectValue placeholder="Type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All Types</SelectItem>
+                                {types.map((type) => (
+                                    <SelectItem key={type} value={type}>
+                                        {type === "new-grad"
+                                            ? "New Grad"
+                                            : type.charAt(0).toUpperCase() +
+                                              type.slice(1)}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <Select
+                            value={selectedCategory}
+                            onValueChange={setSelectedCategory}
+                        >
+                            <SelectTrigger className="w-full sm:w-48">
+                                <SelectValue placeholder="Category" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All Categories</SelectItem>
+                                {categories.map((cat) => (
+                                    <SelectItem key={cat} value={cat}>
+                                        {cat}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <Select
+                            value={selectedCountry}
+                            onValueChange={(value) => {
+                                setSelectedCountry(value);
+                                setSelectedState("all");
+                                setSelectedCity("all");
+                            }}
+                        >
+                            <SelectTrigger className="w-full sm:w-32">
+                                <SelectValue placeholder="Country" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All Countries</SelectItem>
+                                {availableCountries.map((country) => (
+                                    <SelectItem key={country} value={country}>
+                                        {country}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        {selectedCountry !== "all" &&
+                            availableStates.length > 0 && (
+                                <Select
+                                    value={selectedState}
+                                    onValueChange={(value) => {
+                                        setSelectedState(value);
+                                        setSelectedCity("all");
+                                    }}
+                                >
                                 <SelectTrigger className="w-full sm:w-32">
                                     <SelectValue placeholder="State" />
                                 </SelectTrigger>
@@ -473,38 +476,45 @@ export function UnifiedJobBoard({ limit }: UnifiedJobBoardProps) {
                                 </SelectContent>
                             </Select>
                         )}
-                    {selectedState !== "all" && availableCities.length > 0 && (
-                        <Select
-                            value={selectedCity}
-                            onValueChange={setSelectedCity}
-                        >
-                            <SelectTrigger className="w-full sm:w-32">
-                                <SelectValue placeholder="City" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">All Cities</SelectItem>
-                                {availableCities.map((city) => (
-                                    <SelectItem key={city} value={city}>
-                                        {city}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    )}
+                        {selectedState !== "all" && availableCities.length > 0 && (
+                            <Select
+                                value={selectedCity}
+                                onValueChange={setSelectedCity}
+                            >
+                                <SelectTrigger className="w-full sm:w-32">
+                                    <SelectValue placeholder="City" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Cities</SelectItem>
+                                    {availableCities.map((city) => (
+                                        <SelectItem key={city} value={city}>
+                                            {city}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        )}
+                    </div>
                 </div>
-            </div>
+            )}
 
-            <div className="mb-4">
-                <p className="text-muted-foreground">
-                    Showing {filteredJobs.length} opportunities
-                </p>
-            </div>
+            {!isPreview && (
+                <div className="mb-4">
+                    <p className="text-muted-foreground">
+                        Showing {filteredJobs.length} opportunities
+                    </p>
+                </div>
+            )}
 
-            <div className="flex flex-col gap-6">
+            <div className={isPreview ? "flex flex-col gap-4" : "flex flex-col gap-6"}>
                 {filteredJobs.slice(0, visibleCount).map((job, index) => (
                     <Card
                         key={job.id}
-                        className="hover:shadow-lg transition-shadow cursor-pointer"
+                        className={
+                            isPreview
+                                ? "hover:shadow-md transition-shadow cursor-pointer"
+                                : "hover:shadow-lg transition-shadow cursor-pointer"
+                        }
                         onClick={() => handleJobClick(job)}
                         ref={
                             index === visibleCount - 1
@@ -515,7 +525,7 @@ export function UnifiedJobBoard({ limit }: UnifiedJobBoardProps) {
                         <CardHeader>
                             <div className="flex items-start justify-between">
                                 <div className="flex items-center gap-2">
-                                    {job.organization?.logo ? (
+                                    {job.featured && job.organization.logo ? (
                                         <img
                                             src={job.organization.logo}
                                             alt={`${job.organization.name} logo`}

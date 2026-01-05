@@ -5,7 +5,17 @@ import {
     AccordionTrigger,
 } from "@/components/ui/accordion";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuGroup,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import {
     Sheet,
@@ -23,14 +33,19 @@ import {
     Rocket,
     BookOpen,
     Users,
-    Heart,
-    Sparkles
+    Sparkles,
+    LayoutDashboard,
+    LogOut,
+    Settings,
+    FileText
 } from "lucide-react";
 import * as React from "react";
 import { useEffect, type JSX } from "react";
 import { FaCalendarAlt, FaChartPie, FaCrown, FaEnvelope, FaGithub, FaLaptopCode, FaLinkedin, FaTrophy } from "react-icons/fa";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/use-auth";
+import { signOut } from "firebase/auth";
+import { studentAuth } from "@/lib/auth";
 import { SiDevpost } from "react-icons/si";
 
 type NavItem =
@@ -49,27 +64,27 @@ const Community = ({
     const items = [
         {
             icon: <Briefcase className="h-6 w-6" />,
-            labelKey: "Browse Opportunities",
+            labelKey: "Browse Jobs",
             descKey: "Discover internships and new grad positions from top companies",
             href: "/jobs",
         },
         {
             icon: <Code2 className="h-6 w-6" />,
-            labelKey: "Your Dashboard",
-            descKey: "Track your applications and manage your profile",
-            href: "/dashboard",
-        },
-        {
-            icon: <Users className="h-6 w-6" />,
-            labelKey: "Student Projects",
-            descKey: "Showcase your work and discover what others are building",
-            href: "https://github.com/tailed-community",
+            labelKey: "Student Association",
+            descKey: "Connect with fellow students and join the community",
+            href: "/association",
         },
         {
             icon: <Sparkles className="h-6 w-6" />,
-            labelKey: "Get Recognized",
-            descKey: "Highlight your hackathon wins and open source contributions",
-            href: "/dashboard",
+            labelKey: "Student Spotlight",
+            descKey: "Showcase your projects and get recognized for your work",
+            href: "/spotlight",
+        },
+        {
+            icon: <Users className="h-6 w-6" />,
+            labelKey: "GitHub Community",
+            descKey: "Explore open source projects and contribute",
+            href: "https://github.com/tailed-community",
         },
     ];
 
@@ -151,6 +166,95 @@ const Community = ({
                     href: "/catalog",
                 },
             ],
+        },
+    ];
+
+    if (variant === "mobile") {
+        return (
+            <div className="w-full space-y-2">
+                {items.map((item, idx) => (
+                    <a
+                        key={idx}
+                        href={item.href}
+                        className="block rounded-xl px-3 py-2 hover:bg-muted/60 focus:outline-none focus:ring-2 focus:ring-ring ring-offset-background"
+                    >
+                        <div className="flex items-start gap-2">
+                            <div className="h-7 w-7 shrink-0 grid place-items-center text-primary">
+                                {item.icon}
+                            </div>
+                            <div className="min-w-0">
+                                <div className="text-sm font-medium text-foreground">
+                                    {item.labelKey}
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    {item.descKey}
+                                </p>
+                            </div>
+                        </div>
+                    </a>
+                ))}
+            </div>
+        );
+    }
+
+    return (
+        <div className="w-full p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {items.map((item, idx) => (
+                    <a
+                        key={idx}
+                        href={item.href}
+                        className="block rounded-xl px-4 py-3 hover:bg-muted/60 focus:outline-none focus:ring-2 focus:ring-ring ring-offset-background"
+                    >
+                        <div className="flex items-start gap-3">
+                            <div className="h-8 w-8 shrink-0 grid place-items-center text-primary">
+                                {item.icon}
+                            </div>
+                            <div className="min-w-0">
+                                <div className="text-sm font-medium text-foreground">
+                                    {item.labelKey}
+                                </div>
+                                <p className="text-sm text-muted-foreground">
+                                    {item.descKey}
+                                </p>
+                            </div>
+                        </div>
+                    </a>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+const Opportunities = ({
+    variant = "desktop",
+}: {
+    variant?: "desktop" | "mobile";
+}) => {
+    const items = [
+        {
+            icon: <Briefcase className="h-6 w-6" />,
+            labelKey: "All Jobs",
+            descKey: "Browse all available internships and full-time positions",
+            href: "/jobs",
+        },
+        {
+            icon: <BookOpen className="h-6 w-6" />,
+            labelKey: "Companies",
+            descKey: "Discover companies and learn about their culture",
+            href: "/companies",
+        },
+        {
+            icon: <FaCalendarAlt className="h-6 w-6" />,
+            labelKey: "Events",
+            descKey: "Stay updated with hackathons, career fairs, and workshops",
+            href: "/events",
+        },
+        {
+            icon: <Rocket className="h-6 w-6" />,
+            labelKey: "Featured Opportunities",
+            descKey: "Curated positions from top employers",
+            href: "/",
         },
     ];
 
@@ -489,9 +593,11 @@ const Resources = () => {
 };
 
 const navItems: NavItem[] = [
-    // { type: "link", labelKey: "Jobs", href: "/jobs" },
-    { type: "menu", labelKey: "Community", items: <Community /> },
-    // { type: "menu", labelKey: "Resources", items: <Resources /> },
+    { type: "link", labelKey: "Discover Jobs", href: "/jobs" },
+    { type: "link", labelKey: "Discover Companies", href: "/companies" },
+    { type: "link", labelKey: "Events", href: "/events" },
+    { type: "link", labelKey: "Student Associations", href: "/association" },
+    { type: "link", labelKey: "Student Spotlights", href: "/spotlight" },
 ];
 
 function Logo() {
@@ -524,226 +630,263 @@ function NavLink({
     );
 }
 
-export function Header() {
-    const [openMenu, setOpenMenu] = React.useState<string | null>(null);
-    const [isOverNav, setIsOverNav] = React.useState(false);
-    const [isOverPanel, setIsOverPanel] = React.useState(false);
-    const { user } = useAuth();
+function UserAvatarMenu({ user }: { user: any }) {
+    const navigate = useNavigate();
 
-    useEffect(() => {
-        if (!openMenu) return;
-        if (isOverNav || isOverPanel) return;
-        setOpenMenu(null);
-    }, [isOverNav, isOverPanel, openMenu]);
+    const handleLogout = async () => {
+        try {
+            await signOut(studentAuth);
+            navigate("/");
+        } catch (error) {
+            console.error("Error logging out:", error);
+        }
+    };
+
+    // Extract user info with fallbacks
+    const displayName = user.displayName || user.email?.split('@')[0] || 'User';
+    const firstName = user.firstName || displayName.split(' ')[0] || '';
+    const lastName = user.lastName || displayName.split(' ')[1] || '';
+    const initials = user.initials || 
+        (firstName.charAt(0) + lastName.charAt(0)).toUpperCase() || 
+        displayName.charAt(0).toUpperCase();
+    const photoURL = user.photoURL || user.avatar || '';
 
     return (
-        <header className="relative z-50 w-full my-2">
-            <div className=" mx-auto max-w-[1536px]">
-                <nav
-                    className={cn(
-                        "relative flex flex-col items-center justify-between p-2 sm:p-4 z-50",
-                        openMenu ? "bg-white rounded-t-4xl" : ""
-                    )}
-                    onMouseEnter={() => setIsOverNav(true)}
-                    onMouseLeave={() => setIsOverNav(false)}
-                >
-                    <div className="flex w-full z-50">
-                        <div className="flex flex-1 min-w-0 items-center gap-8">
-                            <Logo />
-                            <ul className="hidden nav:flex items-center gap-1">
-                                {navItems.map((item, idx) =>
-                                    item.type === "link" ? (
-                                        <li key={idx}>
-                                            <NavLink href={item.href}>
-                                                {item.labelKey}
-                                            </NavLink>
-                                        </li>
-                                    ) : (
-                                        <li
-                                            key={idx}
-                                            onMouseEnter={() =>
-                                                setOpenMenu(item.labelKey)
-                                            }
-                                        >
-                                            <div
-                                                data-slot="accordion-trigger"
-                                                aria-expanded={
-                                                    openMenu === item.labelKey
-                                                }
-                                                aria-haspopup="true"
-                                                onFocus={() =>
-                                                    setOpenMenu(item.labelKey)
-                                                }
-                                                className={cn(
-                                                    "focus-visible:border-ring focus-visible:ring-ring/50 flex flex-1 items-start justify-between gap-4 rounded-md py-4 text-left text-sm font-medium transition-all outline-none focus-visible:ring-[3px] disabled:pointer-events-none disabled:opacity-50 hover:[&>svg]:rotate-180",
-                                                    "px-3 py-2 text-sm outline-none",
-                                                    openMenu === item.labelKey
-                                                        ? " bg-primary/10 rounded-lg"
-                                                        : ""
-                                                )}
-                                            >
-                                                {item.labelKey}
-                                                <ChevronDownIcon className="text-muted-foreground pointer-events-none size-4 shrink-0 translate-y-0.5 transition-transform duration-200" />
-                                            </div>
-                                        </li>
-                                    )
-                                )}
-                            </ul>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                            <a
-                                href="https://github.com/tailed-community/dashboard"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="hidden nav:inline-flex items-center gap-2 text-sm rounded-lg px-4 py-3 hover:bg-muted/60"
-                                aria-label="GitHub repository"
-                            >
-                                <FaGithub className="h-4 w-4" /> GitHub
-                            </a>
-                            <div className="h-6 w-2 text-black hidden nav:block">
-                                <Separator
-                                    orientation="vertical"
-                                    className="bg-gray-700"
-                                />
-                            </div>
-                            {user ? (
-                                <a
-                                    href="/dashboard"
-                                    className="hidden nav:inline-block text-sm rounded-lg px-4 py-3 bg-primary text-primary-foreground hover:bg-primary/90 font-medium"
-                                >
-                                    Go To Dashboard
-                                </a>
-                            ) : (
-                                <a
-                                    href="/sign-in"
-                                    className="hidden nav:inline-block text-sm rounded-lg px-4 py-3 bg-primary text-primary-foreground hover:bg-primary/90 font-medium"
-                                >
-                                    Get Started
-                                </a>
-                            )}
-
-                            <Sheet>
-                                <SheetTrigger asChild>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="nav:hidden"
-                                    >
-                                        <MenuIcon className="h-5 w-5" />
-                                        <span className="sr-only">
-                                            open_menu
-                                        </span>
-                                    </Button>
-                                </SheetTrigger>
-                                <SheetContent
-                                    side="left"
-                                    className="p-0 flex flex-col"
-                                >
-                                    <SheetHeader className="px-4 py-3 shrink-0">
-                                        <SheetTitle className="sr-only">
-                                            main_navigation
-                                        </SheetTitle>
-                                        <div className="flex items-center">
-                                            <Logo />
-                                        </div>
-                                    </SheetHeader>
-                                    <div className="px-4 pb-6 overflow-y-auto flex-1">
-                                        <Accordion
-                                            type="single"
-                                            collapsible
-                                            className="w-full"
-                                        >
-                                            {navItems.map((item, idx) =>
-                                                item.type === "link" ? (
-                                                    <a
-                                                        key={idx}
-                                                        href={item.href}
-                                                        className="block py-3 text-base rounded-lg hover:bg-muted/60"
-                                                    >
-                                                        {item.labelKey}
-                                                    </a>
-                                                ) : (
-                                                    <AccordionItem
-                                                        key={idx}
-                                                        value={item.labelKey}
-                                                    >
-                                                        <AccordionTrigger className="py-3 text-base">
-                                                            {item.labelKey}
-                                                        </AccordionTrigger>
-                                                        <AccordionContent className="pb-4">
-                                                            {item.labelKey ===
-                                                            "Community" ? (
-                                                                <Community variant="mobile" />
-                                                            ) : (
-                                                                item.items
-                                                            )}
-                                                        </AccordionContent>
-                                                    </AccordionItem>
-                                                )
-                                            )}
-                                        </Accordion>
-                                        <div className="mt-6 space-y-2">
-                                            <a
-                                                href="https://github.com/tailed-community/dashboard"
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60"
-                                            >
-                                                <span className="inline-flex items-center gap-2">
-                                                    <FaGithub className="h-4 w-4" />{" "}
-                                                    GitHub
-                                                </span>
-                                            </a>
-                                            {user ? (
-                                                <a
-                                                    href="/dashboard"
-                                                    className="block text-sm rounded-lg px-4 py-3 bg-primary text-primary-foreground font-medium text-center"
-                                                >
-                                                    Go To Dashboard
-                                                </a>
-                                            ) : (
-                                                <a
-                                                    href="/sign-in"
-                                                    className="block text-sm rounded-lg px-4 py-3 bg-primary text-primary-foreground font-medium text-center"
-                                                >
-                                                    Get Started
-                                                </a>
-                                            )}
-                                        </div>
-                                    </div>
-                                </SheetContent>
-                            </Sheet>
-                        </div>
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <button className="hidden nav:inline-flex items-center gap-2 text-sm rounded-lg px-2 py-2 hover:bg-muted/60 focus:outline-none focus:ring-2 focus:ring-primary">
+                    <Avatar className="h-8 w-8">
+                        <AvatarImage src={photoURL} alt={displayName} />
+                        <AvatarFallback className="bg-gradient-to-br from-primary to-secondary text-primary-foreground">
+                            {initials}
+                        </AvatarFallback>
+                    </Avatar>
+                    <ChevronDownIcon className="h-4 w-4 text-muted-foreground" />
+                </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>
+                    <div className="flex flex-col space-y-1">
+                        <p className="text-sm font-medium">{displayName}</p>
+                        <p className="text-xs text-muted-foreground">{user.email}</p>
                     </div>
-                </nav>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                    <DropdownMenuItem asChild>
+                        <a href="/account" className="cursor-pointer">
+                            <Settings className="mr-2 h-4 w-4" />
+                            <span>Profile</span>
+                        </a>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                        <a href="/jobs/applied" className="cursor-pointer">
+                            <FileText className="mr-2 h-4 w-4" />
+                            <span>My Applications</span>
+                        </a>
+                    </DropdownMenuItem>
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive focus:text-destructive">
+                    <LogOut className="mr-2 h-4 w-4" />
+                    <span>Log out</span>
+                </DropdownMenuItem>
+            </DropdownMenuContent>
+        </DropdownMenu>
+    );
+}
 
-                <div className="absolute left-0 right-0 top-full z-40">
-                    {openMenu && (
-                        <div
-                            className="relative mx-auto bg-white max-w-[1536px] pt-4 px-1 sm:px-2 md:px-0 rounded-b-4xl shadow-[0_50px_150px_-25px_rgba(0,0,0,0.85)]"
-                            onMouseEnter={() => setIsOverPanel(true)}
-                            onMouseLeave={() => setIsOverPanel(false)}
-                        >
-                            {openMenu &&
-                                (() => {
-                                    const active =
-                                        navItems.find(
-                                            (
-                                                it
-                                            ): it is Extract<
-                                                NavItem,
-                                                { type: "menu" }
-                                            > =>
-                                                it.type === "menu" &&
-                                                it.labelKey === openMenu
-                                        ) ?? null;
-                                    if (!active) return null;
-                                    return active.items;
-                                })()}
-                        </div>
-                    )}
-                </div>
+export function Header() {
+    const { user } = useAuth();
+    const navigate = useNavigate();
+
+    const handleLogout = async () => {
+        try {
+            await signOut(studentAuth);
+            navigate("/");
+        } catch (error) {
+            console.error("Error logging out:", error);
+        }
+    };
+
+    return (
+        <header className="w-full bg-brand-cream/80 dark:bg-brand-cream-950/80 backdrop-blur-md dark:border-brand-cream-800 px-4 lg:px-6 pt-4 flex items-center justify-between transition-all">
+            <div className="flex items-center gap-6">
+                <Link className="flex items-center gap-2 group" to="/">
+                    <div className="flex items-center h-16 w-40">
+                        <AspectRatio ratio={3042 / 968}>
+                            <img
+                                src="/Tailed_Community_logo.png"
+                                alt="Logo"
+                                className="object-contain h-full w-full"
+                            />
+                        </AspectRatio>
+                    </div>
+                </Link>
+                <nav className="hidden md:flex items-center gap-6 ml-4">
+                    <Link to="/explore" className="text-sm font-medium text-brand-cream-600 hover:text-brand-cream-900 dark:text-brand-cream-400 dark:hover:text-brand-cream-50 transition-colors">Explore</Link>
+                    { user ?
+                        <>
+                            <Link to="/jobs" className="text-sm font-medium text-brand-cream-600 hover:text-brand-cream-900 dark:text-brand-cream-400 dark:hover:text-brand-cream-50 transition-colors">Jobs</Link>
+                            <Link to="/events" className="text-sm font-medium text-brand-cream-600 hover:text-brand-cream-900 dark:text-brand-cream-400 dark:hover:text-brand-cream-50 transition-colors">Events</Link>
+                            <Link to="/association" className="text-sm font-medium text-brand-cream-600 hover:text-brand-cream-900 dark:text-brand-cream-400 dark:hover:text-brand-cream-50 transition-colors">Associations</Link>
+                        </> : <></>
+                    }
+                </nav>
+            </div>
+            <div className="flex items-center gap-2 sm:gap-4">
+                {user ? (
+                    <>
+                        <UserAvatarMenu user={user} />
+                        <Sheet>
+                            <SheetTrigger asChild>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="md:hidden"
+                                >
+                                    <MenuIcon className="h-5 w-5" />
+                                    <span className="sr-only">Open menu</span>
+                                </Button>
+                            </SheetTrigger>
+                            <SheetContent side="left" className="p-0 flex flex-col">
+                                <SheetHeader className="px-4 py-3 shrink-0">
+                                    <SheetTitle className="sr-only">Navigation</SheetTitle>
+                                    <div className="flex items-center">
+                                        <Logo />
+                                    </div>
+                                </SheetHeader>
+                                <div className="px-4 pb-6 overflow-y-auto flex-1">
+                                    <div className="space-y-2">
+                                        <Link to="/jobs" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
+                                            <span className="inline-flex items-center gap-2">
+                                                <Briefcase className="h-4 w-4" />
+                                                Jobs
+                                            </span>
+                                        </Link>
+                                        <Link to="/companies" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
+                                            <span className="inline-flex items-center gap-2">
+                                                <BookOpen className="h-4 w-4" />
+                                                Companies
+                                            </span>
+                                        </Link>
+                                        <Link to="/events" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
+                                            <span className="inline-flex items-center gap-2">
+                                                <FaCalendarAlt className="h-4 w-4" />
+                                                Events
+                                            </span>
+                                        </Link>
+                                        <Link to="/association" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
+                                            <span className="inline-flex items-center gap-2">
+                                                <Users className="h-4 w-4" />
+                                                Student Associations
+                                            </span>
+                                        </Link>
+                                        <Link to="/spotlight" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
+                                            <span className="inline-flex items-center gap-2">
+                                                <Sparkles className="h-4 w-4" />
+                                                Student Spotlights
+                                            </span>
+                                        </Link>
+                                        <Link to="/jobs/applied" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
+                                            <span className="inline-flex items-center gap-2">
+                                                <FileText className="h-4 w-4" />
+                                                My Applications
+                                            </span>
+                                        </Link>
+                                        <Link to="/account" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
+                                            <span className="inline-flex items-center gap-2">
+                                                <Settings className="h-4 w-4" />
+                                                Account Settings
+                                            </span>
+                                        </Link>
+                                        <button
+                                            onClick={handleLogout}
+                                            className="block w-full text-sm rounded-lg px-4 py-3 bg-destructive text-destructive-foreground font-medium text-center hover:bg-destructive/90"
+                                        >
+                                            <span className="inline-flex items-center gap-2 justify-center">
+                                                <LogOut className="h-4 w-4" />
+                                                Log Out
+                                            </span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </SheetContent>
+                        </Sheet>
+                    </>
+                ) : (
+                    <>
+                        <Link className="px-5 py-2.5 rounded-full bg-brand-cream-100 text-brand-cream-900 text-sm font-semibold hover:bg-brand-cream-200 dark:bg-brand-cream-800 dark:text-brand-cream-50 dark:hover:bg-brand-cream-700 transition-all" to="/sign-in">Sign in</Link>
+                        <Sheet>
+                            <SheetTrigger asChild>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="md:hidden"
+                                >
+                                    <MenuIcon className="h-5 w-5" />
+                                    <span className="sr-only">Open menu</span>
+                                </Button>
+                            </SheetTrigger>
+                            <SheetContent side="left" className="p-0 flex flex-col">
+                                <SheetHeader className="px-4 py-3 shrink-0">
+                                    <SheetTitle className="sr-only">Navigation</SheetTitle>
+                                    <div className="flex items-center">
+                                        <Logo />
+                                    </div>
+                                </SheetHeader>
+                                <div className="px-4 pb-6 overflow-y-auto flex-1">
+                                    <div className="space-y-2">
+                                        <Link to="/jobs" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
+                                            <span className="inline-flex items-center gap-2">
+                                                <Briefcase className="h-4 w-4" />
+                                                Jobs
+                                            </span>
+                                        </Link>
+                                        <Link to="/companies" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
+                                            <span className="inline-flex items-center gap-2">
+                                                <BookOpen className="h-4 w-4" />
+                                                Companies
+                                            </span>
+                                        </Link>
+                                        <Link to="/events" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
+                                            <span className="inline-flex items-center gap-2">
+                                                <FaCalendarAlt className="h-4 w-4" />
+                                                Events
+                                            </span>
+                                        </Link>
+                                        <Link to="/association" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
+                                            <span className="inline-flex items-center gap-2">
+                                                <Users className="h-4 w-4" />
+                                                Student Associations
+                                            </span>
+                                        </Link>
+                                        <Link to="/spotlight" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
+                                            <span className="inline-flex items-center gap-2">
+                                                <Sparkles className="h-4 w-4" />
+                                                Student Spotlights
+                                            </span>
+                                        </Link>
+                                        <a
+                                            href="https://github.com/tailed-community/dashboard"
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60"
+                                        >
+                                            <span className="inline-flex items-center gap-2">
+                                                <FaGithub className="h-4 w-4" />
+                                                GitHub
+                                            </span>
+                                        </a>
+                                        <Link to="/sign-in" className="block text-sm rounded-lg px-4 py-3 bg-primary text-primary-foreground font-medium text-center">
+                                            Get Started
+                                        </Link>
+                                    </div>
+                                </div>
+                            </SheetContent>
+                        </Sheet>
+                    </>
+                )}
             </div>
         </header>
     );

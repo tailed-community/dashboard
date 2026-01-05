@@ -1,10 +1,73 @@
 rules_version = '2';
 
-// Craft rules based on data in your Firestore database
-// allow write: if firestore.get(
-//    /databases/(default)/documents/users/$(request.auth.uid)).data.isAdmin;
 service firebase.storage {
   match /b/{bucket}/o {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user owns the association
+    function isAssociationOwner(associationId) {
+      return isAuthenticated() 
+        && firestore.get(/databases/(default)/documents/associations/$(associationId)).data.createdBy == request.auth.uid;
+    }
+    
+    // Helper function to check if user is a member of the association
+    function isAssociationMember(associationId) {
+      return isAuthenticated() 
+        && request.auth.uid in firestore.get(/databases/(default)/documents/associations/$(associationId)).data.members;
+    }
+    
+    // Helper function to check if user owns the event
+    function isEventOwner(eventId) {
+      return isAuthenticated() 
+        && firestore.get(/databases/(default)/documents/events/$(eventId)).data.createdBy == request.auth.uid;
+    }
+    
+    // Association images rules
+    match /associations/{associationId}/{imageType} {
+      // Anyone can read association images
+      allow read: if true;
+      
+      // Only authenticated users can create association images during creation
+      // The association document must exist and user must be the creator
+      allow create: if isAuthenticated()
+                    && (imageType == 'logo' || imageType == 'banner')
+                    && request.resource.size < 5 * 1024 * 1024 // Max 5MB
+                    && request.resource.contentType.matches('image/.*');
+      
+      // Only association creator or members can update images
+      allow update: if (isAssociationOwner(associationId) || isAssociationMember(associationId))
+                    && (imageType == 'logo' || imageType == 'banner')
+                    && request.resource.size < 5 * 1024 * 1024 // Max 5MB
+                    && request.resource.contentType.matches('image/.*');
+      
+      // Only association creator can delete images
+      allow delete: if isAssociationOwner(associationId);
+    }
+    
+    // Event hero images rules
+    match /events/{eventId}/hero {
+      // Anyone can read event hero images
+      allow read: if true;
+      
+      // Only authenticated event creators can upload hero images
+      allow create: if isAuthenticated()
+                    && request.resource.size < 5 * 1024 * 1024 // Max 5MB
+                    && request.resource.contentType.matches('image/.*');
+      
+      // Only event creator can update hero images
+      allow update: if isEventOwner(eventId)
+                    && request.resource.size < 5 * 1024 * 1024 // Max 5MB
+                    && request.resource.contentType.matches('image/.*');
+      
+      // Only event creator can delete hero images
+      allow delete: if isEventOwner(eventId);
+    }
+    
+    // Default: deny all other access
     match /{allPaths=**} {
       allow read, write: if false;
     }
