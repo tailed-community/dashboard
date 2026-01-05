@@ -31,3 +31,4 @@ functions/.env
 functions/firebase-debug.log
 .data
 *firebase-export*
+.todo

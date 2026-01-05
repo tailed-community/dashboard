@@ -1,0 +1,95 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user is the document owner
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Events collection rules
+    match /events/{eventId} {
+      // Anyone can read events (authenticated or not)
+      allow read: if true;
+      
+      // Only authenticated users can create events
+      allow create: if isAuthenticated()
+                    && request.resource.data.createdBy == request.auth.uid
+                    && request.resource.data.createdAt == request.time
+                    && request.resource.data.updatedAt == request.time;
+      
+      // Only the event creator can update their own events
+      // Allow update for hero image upload (when updatedAt is updated)
+      allow update: if isOwner(resource.data.createdBy)
+                    && request.resource.data.createdBy == resource.data.createdBy
+                    && request.resource.data.updatedAt == request.time;
+      
+      // Only the event creator can delete their own events
+      allow delete: if isOwner(resource.data.createdBy);
+    }
+    
+    // communities collection rules
+    match /communities/{communityId} {
+      // Anyone can read communities (authenticated or not)
+      allow read: if true;
+      
+      // Only authenticated users can create communities
+      allow create: if isAuthenticated()
+                    && request.resource.data.createdBy == request.auth.uid
+                    && request.resource.data.createdAt == request.time
+                    && request.resource.data.updatedAt == request.time
+                    && request.resource.data.members is list
+                    && request.auth.uid in request.resource.data.members;
+      
+      // Allow updates for:
+      // 1. Community creator can update anything
+      // 2. Authenticated users can join (add themselves to members)
+      // 3. Authenticated users can leave (remove themselves from members)
+      allow update: if isAuthenticated()
+                    && request.resource.data.updatedAt == request.time
+                    && request.resource.data.createdBy == resource.data.createdBy // Prevent changing creator
+                    && (
+                      // Creator can update anything
+                      isOwner(resource.data.createdBy)
+                      ||
+                      // User joining: adding themselves to members and incrementing count
+                      (
+                        !(request.auth.uid in resource.data.members)
+                        && request.auth.uid in request.resource.data.members
+                        && request.resource.data.memberCount == resource.data.memberCount + 1
+                      )
+                      ||
+                      // User leaving: removing themselves from members and decrementing count
+                      (
+                        request.auth.uid in resource.data.members
+                        && !(request.auth.uid in request.resource.data.members)
+                        && request.resource.data.memberCount == resource.data.memberCount - 1
+                      )
+                    );
+      
+      // Only the community creator can delete
+      allow delete: if isOwner(resource.data.createdBy);
+    }
+    
+    // Profiles collection rules
+    match /profiles/{userId} {
+      // Users can only read their own profile
+      allow read: if isOwner(userId);
+      
+      // Users can update their own profile
+      allow update: if isOwner(userId)
+                    && request.resource.data.userId == resource.data.userId; // Prevent changing userId
+    }
+    
+    // Default: deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

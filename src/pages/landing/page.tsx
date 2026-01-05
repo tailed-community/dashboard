@@ -1,526 +1,339 @@
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Link } from "react-router-dom";
 import {
-  Github,
-  Star,
-  Users,
-  Rocket,
-  Sparkles,
-  Briefcase,
-  Code2,
-  TrendingUp,
   ArrowRight,
-  HeartHandshake,
-  BookOpen,
-  Globe,
-  Puzzle,
+  Briefcase,
+  Calendar,
+  CheckCircle,
+  Instagram,
+  Mail,
+  MapPin,
+  Rocket,
+  Share2,
+  ShieldCheck,
+  Twitter,
+  Users,
 } from "lucide-react";
 import { Header } from "@/components/landing/header";
-import { UnifiedJobBoard } from "@/components/unified-job-board";
+import { useEffect, useState } from "react";
+import { collection, query, where, orderBy, limit, getDocs, getFirestore } from "firebase/firestore";
+import { SiDiscord, SiGithub, SiInstagram, SiYoutube } from "react-icons/si";
+import { getApp } from "firebase/app";
+
+interface Event {
+  id: string;
+  title: string;
+  datetime: Date;
+  location?: string;
+  city?: string;
+  heroImageUrl?: string;
+  price?: number;
+  attendees?: number;
+  maxAttendees?: number;
+}
+
+interface Community {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  memberCount: number;
+  logoUrl?: string;
+  bannerUrl?: string;
+}
+
+const mockEvent: Event = {
+  id: "mock",
+  title: "NYC Tech Students Mixer",
+  datetime: new Date(),
+  location: "The Standard, High Line",
+  city: "New York",
+  heroImageUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuAZ3Ujh7h950aqQW1IFQk96kBbq8-Jw6RIG3ELoHJ3XQykj0P-NJQpldCcEbEDZo3wnLUpw5TjhLAxQSZCyrTUsT8_OwcFptbNiPM9afVLwf9dHJFyluseMx2dfrL4WOdJ7SQPOq-YISYLXhaPL02jsZgLeNrlSm2y7ySR4Q811M2dn_SW9iS5c84-FMIY_lki9RbUyvM7uoRuLyHbRSlmcKnzJpQXGvQlQf5sdCtmg6_ZEAeKL_fAa-FmtGTtBBYozzlAEl4tyiEgk)",
+  price: 0,
+  attendees: 44,
+  maxAttendees: 100,
+};
+
+const mockCommunity: Community = {
+  id: "mock",
+  name: "Design Guild",
+  description: "A community for student designers to share work, get feedback, and find mentorship.",
+  category: "Arts & Culture",
+  memberCount: 2400,
+  logoUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuB5Z-pwwrKkVf2i83sPKxgaGvmwFd292YucasHSDp_QeTRg4Ec6iOuDGYM2A1m03ROjBdO2CSnb7hQN9oqF2okj7LpaOQ524Ug1eKj9sRPKXh6n7UNN6pZQlm2pP4xk7eYLHzlnAGQFpokGqHl9-ZTWzOV4Km3ICb1MekAqWLgGJOxRRw34Kb1PqSrgSXzSiHHFPj5mGEYDojZncq6mf1gprJgw3h3qDIE85Eo-C9Liwq9tGBIACedsSvKnPxsPyrGeYM5h397OXeIJ",
+  bannerUrl: undefined,
+};
 
 export default function LandingPage() {
-  return (
-    <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-background via-primary/5 to-secondary/20 text-foreground">
-      <Header />
-      
-      {/* Dynamic background elements with brand colors */}
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute left-[10%] top-[-5rem] h-[35rem] w-[35rem] rounded-full bg-gradient-to-br from-[#EB7A24]/30 to-[#FFD37D]/20 blur-3xl animate-pulse" />
-        <div className="absolute right-[-8rem] top-[15%] h-[32rem] w-[32rem] rounded-full bg-gradient-to-tr from-[#8ec4f3]/30 to-[#c0bbff]/20 blur-3xl animate-pulse [animation-delay:2s]" />
-        <div className="absolute left-[-5rem] bottom-[20%] h-[28rem] w-[28rem] rounded-full bg-gradient-to-tl from-[#ef4441]/20 to-[#FFD37D]/25 blur-3xl animate-pulse [animation-delay:4s]" />
-        <div className="absolute right-[15%] bottom-[-8rem] h-[30rem] w-[30rem] rounded-full bg-gradient-to-bl from-[#c0bbff]/25 to-[#8ec4f3]/20 blur-3xl animate-pulse [animation-delay:1s]" />
-      </div>
+  const [featuredEvent, setFeaturedEvent] = useState<Event>(mockEvent);
+  const [featuredCommunity, setFeaturedCommunity] = useState<Community>(mockCommunity);
 
-      {/* Hero Section - Asymmetrical Layout */}
-      <header className="mx-auto max-w-7xl px-6 pt-12 pb-8 sm:pt-20 sm:pb-12">
-        <div className="grid lg:grid-cols-2 gap-12 items-center">
-          {/* Left side - Main Content */}
-          <div className="space-y-6">
-            <Badge 
-              variant="secondary" 
-              className="gap-2 px-4 py-2 text-sm bg-gradient-to-r from-primary/20 to-secondary/20 border-primary/30 inline-flex"
-            >
-              <Sparkles className="h-4 w-4 text-primary" /> 
-              <span className="bg-gradient-to-r from-primary to-[#ef4441] bg-clip-text text-transparent font-semibold">
-                Built by Students, For Students
-              </span>
-            </Badge>
-            
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-tight">
-              <span className="block">Empower Your</span>
-              <span className="block bg-gradient-to-r from-[#EB7A24] via-[#ef4441] to-[#c0bbff] bg-clip-text text-transparent">
-                Growth Journey
-              </span>
-            </h1>
-            
-            <p className="text-lg sm:text-xl text-muted-foreground max-w-xl leading-relaxed">
-              A world where every student with talent and grit can access meaningful opportunities—and where creativity meets recognition.
-            </p>
-            
-            <div className="flex flex-wrap items-center gap-4 pt-4">
-              <Link to="/jobs">
-                <Button 
-                  size="lg" 
-                  className="gap-2 bg-gradient-to-r from-primary to-[#ef4441] hover:opacity-90 text-lg px-8 shadow-lg"
-                >
-                  <Briefcase className="h-5 w-5" /> Explore Opportunities
-                </Button>
-              </Link>
-              <Link to="/sign-in">
-                <Button 
-                  size="lg" 
-                  variant="outline" 
-                  className="gap-2 text-lg px-8 border-2 border-primary/50 hover:bg-primary/10"
-                >
-                  <Users className="h-5 w-5" /> Join Community
-                </Button>
-              </Link>
-            </div>
-
-            {/* Quick Stats */}
-            <div className="flex flex-wrap items-center gap-6 pt-6">
-              <a
-                href="https://github.com/tailed-community/dashboard/stargazers"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <Star className="h-4 w-4 fill-[#FFD37D] text-[#FFD37D]" />
-                <span className="font-semibold">Open Source</span>
-              </a>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <TrendingUp className="h-4 w-4 text-[#8ec4f3]" />
-                <span className="font-semibold">1000+ Opportunities</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Users className="h-4 w-4 text-[#c0bbff]" />
-                <span className="font-semibold">Student-First</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Right side - Visual Element */}
-          <div className="relative lg:ml-auto">
-            <div className="relative rounded-2xl bg-gradient-to-br from-primary/10 via-secondary/10 to-background p-8 border-2 border-primary/20 shadow-2xl backdrop-blur-sm">
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 p-4 bg-background/80 rounded-xl border border-primary/20 transform hover:scale-105 transition-transform">
-                  <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#EB7A24] to-[#FFD37D] flex items-center justify-center">
-                    <Code2 className="h-6 w-6 text-white" />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-foreground">Student Creator</div>
-                    <div className="text-sm text-muted-foreground">Build & Share Projects</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 p-4 bg-background/80 rounded-xl border border-primary/20 transform hover:scale-105 transition-transform">
-                  <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#8ec4f3] to-[#c0bbff] flex items-center justify-center">
-                    <Rocket className="h-6 w-6 text-white" />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-foreground">Get Recognized</div>
-                    <div className="text-sm text-muted-foreground">Showcase Your Talent</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 p-4 bg-background/80 rounded-xl border border-primary/20 transform hover:scale-105 transition-transform">
-                  <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#ef4441] to-[#EB7A24] flex items-center justify-center">
-                    <Briefcase className="h-6 w-6 text-white" />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-foreground">Find Opportunities</div>
-                    <div className="text-sm text-muted-foreground">Your Dream Job Awaits</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Features */}
-      <section className="border-t">
-        <div className="mx-auto max-w-6xl px-6 py-12 sm:py-16">
-          <h2 className="text-center text-2xl font-semibold sm:text-3xl">
-            What makes Tail’ed different
-          </h2>
-
-          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Feature
-              icon={<HeartHandshake className="h-5 w-5" />}
-              title="Built by and for students"
-              description="A community where your voice, projects, and ambitions truly matter."
-            />
-            <Feature
-              icon={<Puzzle className="h-5 w-5" />}
-              title="Modern stack"
-              description="React + TypeScript, shadcn/ui, Tailwind, Firebase, Stripe, and Paraglide i18n."
-            />
-            <Feature
-              icon={<BookOpen className="h-5 w-5" />}
-              title="Documentation"
-              description="Clear, actionable docs and examples to help you contribute fast."
-            />
-            <Feature
-              icon={<Globe className="h-5 w-5" />}
-              title="Internationalized"
-              description="First-class localization so the community can thrive worldwide."
-            />
-            <Feature
-              icon={<Users className="h-5 w-5" />}
-              title="Community-first"
-              description="Hackathons, challenges, and spotlights to help you grow and get noticed."
-            />
-            <Feature
-              icon={<Star className="h-5 w-5" />}
-              title="Open source"
-              description="MIT licensed. Transparent, collaborative, and welcoming to newcomers."
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* Job Board Showcase Section */}
-      <section className="relative py-12 sm:py-16">
-        <div className="mx-auto max-w-7xl px-6">
-          {/* Section Header */}
-          <div className="text-center mb-12">
-            <Badge 
-              variant="outline" 
-              className="mb-4 gap-2 px-4 py-2 border-primary/30 bg-primary/5"
-            >
-              <Briefcase className="h-4 w-4 text-primary" />
-              <span className="text-primary font-semibold">Live Opportunities</span>
-            </Badge>
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mb-4">
-              <span className="bg-gradient-to-r from-[#EB7A24] to-[#ef4441] bg-clip-text text-transparent">
-                Latest Opportunities
-              </span>
-              <span className="text-foreground"> for Student Creators</span>
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Discover internships and new grad positions from top companies. No gatekeeping, just opportunities.
-            </p>
-          </div>
-
-          {/* Job Board Component */}
-          <div className="relative">
-              <UnifiedJobBoard limit={8} />
-          </div>
-
-          {/* CTA to full job board */}
-          <div className="text-center mt-8">
-            <Link to="/jobs">
-              <Button 
-                size="lg" 
-                variant="outline"
-                className="gap-2 text-lg px-8 border-2 border-primary hover:bg-primary hover:text-primary-foreground"
-              >
-                View All Opportunities 
-                <ArrowRight className="h-5 w-5" />
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* Student Impact Section */}
-      <section className="relative py-16 sm:py-24 overflow-hidden">
-        <div className="absolute top-0 left-0 right-0 h-24 bg-gradient-to-b from-background to-transparent" />
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const db = getFirestore(getApp());
         
-        <div className="mx-auto max-w-6xl px-6">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mb-4">
-              Built for <span className="bg-gradient-to-r from-[#8ec4f3] to-[#c0bbff] bg-clip-text text-transparent">Student Creators</span>
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              A platform where your talent, grit, and creativity are celebrated and rewarded.
-            </p>
+        // Fetch event
+        const eventsRef = collection(db, "events");
+        const now = new Date();
+        const eventQuery = query(
+          eventsRef,
+          where("datetime", ">=", now),
+          orderBy("datetime", "asc"),
+          limit(1)
+        );
+        
+        const eventSnapshot = await getDocs(eventQuery);
+        
+        if (!eventSnapshot.empty) {
+          const doc = eventSnapshot.docs[0];
+          const data = doc.data();
+          setFeaturedEvent({
+            id: doc.id,
+            title: data.title,
+            datetime: data.datetime.toDate(),
+            location: data.location,
+            city: data.city,
+            heroImageUrl: data.heroImageUrl,
+            price: data.price,
+            attendees: data.attendees || 0,
+            maxAttendees: data.maxAttendees,
+          });
+        }
+
+        // Fetch community
+        const communitiesRef = collection(db, "communities");
+        const communityQuery = query(
+          communitiesRef,
+          orderBy("memberCount", "desc"),
+          limit(1)
+        );
+        
+        const communitiesnapshot = await getDocs(communityQuery);
+        
+        if (!communitiesnapshot.empty) {
+          const doc = communitiesnapshot.docs[0];
+          const data = doc.data();
+          setFeaturedCommunity({
+            id: doc.id,
+            name: data.name,
+            description: data.description,
+            category: data.category,
+            memberCount: data.memberCount || 0,
+            logoUrl: data.logoUrl,
+            bannerUrl: data.bannerUrl,
+          });
+        }
+      } catch (error) {
+        console.error("Error fetching data:", error);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  const formatEventDateTime = (date: Date) => {
+    const now = new Date();
+    const diffInHours = (date.getTime() - now.getTime()) / (1000 * 60 * 60);
+    
+    if (diffInHours < 24 && date.getDate() === now.getDate()) {
+      return `Today • ${date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+    } else if (diffInHours < 48 && date.getDate() === now.getDate() + 1) {
+      return `Tomorrow • ${date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+    } else {
+      return `${date.toLocaleDateString("en-US", { month: "short", day: "numeric" })} • ${date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+    }
+  };
+
+  return (
+    <div className="bg-brand-cream dark:bg-neutral-950 font-sans text-brand-cream-900 dark:text-brand-cream-100 overflow-x-hidden transition-colors duration-200 antialiased selection:bg-[oklch(0.62_0.15_45)]/20 selection:text-[oklch(0.62_0.15_45)]">
+      <Header />
+      <main className="w-full">
+        <section className="pt-32 pb-16 md:pt-40 md:pb-24 px-4 md:px-6 max-w-7xl mx-auto flex flex-col items-center text-center relative isolate">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] sm:w-[600px] sm:h-[600px] bg-gradient-to-tr from-[oklch(0.62_0.15_45)]/30 via-[oklch(0.88_0.12_80)]/30 to-[oklch(0.77_0.08_220)]/30 dark:from-blue-900/30 dark:via-purple-900/30 dark:to-pink-900/30 rounded-full blur-[100px] -z-10 pointer-events-none"></div>
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-brand-cream-50 dark:bg-brand-cream-900 border border-brand-cream-100 dark:border-brand-cream-800 mb-8 animate-in fade-in slide-in-from-bottom-4 duration-700 shadow-sm">
+            <span className="text-xs font-bold uppercase tracking-wide text-brand-orange">New</span>
+            <span className="w-px h-3 bg-brand-cream-200 dark:bg-gray-700"></span>
+            <span className="text-xs font-medium text-brand-cream-600 dark:text-brand-cream-300">The Community Platform for Students</span>
           </div>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            <ImpactCard
-              icon={<Code2 className="h-6 w-6" />}
-              title="Showcase Your Work"
-              description="Build your portfolio and highlight your projects, hackathon wins, and open source contributions."
-              gradient="from-[#EB7A24] to-[#FFD37D]"
-            />
-            <ImpactCard
-              icon={<Rocket className="h-6 w-6" />}
-              title="Get Discovered"
-              description="Connect with companies looking for talented students like you. Your next opportunity is here."
-              gradient="from-[#8ec4f3] to-[#c0bbff]"
-            />
-            <ImpactCard
-              icon={<Users className="h-6 w-6" />}
-              title="Join the Community"
-              description="Network with fellow student creators, collaborate on projects, and grow together."
-              gradient="from-[#ef4441] to-[#EB7A24]"
-            />
-            <ImpactCard
-              icon={<Star className="h-6 w-6" />}
-              title="Open Source"
-              description="Contribute to our MIT-licensed platform and make it better for everyone."
-              gradient="from-[#FFD37D] to-[#8ec4f3]"
-            />
-            <ImpactCard
-              icon={<Sparkles className="h-6 w-6" />}
-              title="No Gatekeeping"
-              description="Access opportunities without barriers. If you have the talent and grit, you belong here."
-              gradient="from-[#c0bbff] to-[#ef4441]"
-            />
-            <ImpactCard
-              icon={<TrendingUp className="h-6 w-6" />}
-              title="Track Your Growth"
-              description="Monitor your applications, achievements, and progress all in one place."
-              gradient="from-[#EB7A24] to-[#c0bbff]"
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* Contribute */}
-      <section className="border-t">
-        <div className="mx-auto max-w-6xl px-6 py-12 sm:py-16">
-          <div className="grid items-start gap-8 lg:grid-cols-2">
-            <div>
-              <h2 className="text-2xl font-semibold sm:text-3xl">
-                Contribute in 3 steps
-              </h2>
-              <ol className="mt-4 list-decimal space-y-2 pl-5 text-muted-foreground">
-                <li>Fork the repository on GitHub</li>
-                <li>Create a feature branch</li>
-                <li>Open a pull request — we'll review and help you land it</li>
-              </ol>
-
-              <Card className="mt-6">
-                <CardHeader>
-                  <CardTitle className="text-base">
-                    Suggested workflow
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <pre className="overflow-x-auto rounded-md bg-muted p-4 text-xs">
-                    <code>
-                      {`# 1) Fork & clone
-git clone https://github.com/tailed-community/dashboard
-cd dashboard
-
-# 2) Install & run
-npm install
-npm run dev
-
-# 3) Create your branch
-git checkout -b feat/amazing-contribution
-
-# 4) Commit & push
-git commit -m "feat: add awesome thing"
-git push origin feat/amazing-contribution
-
-# 5) Open a PR on GitHub`}
-                    </code>
-                  </pre>
-                </CardContent>
-              </Card>
-            </div>
-
-            <div className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Github className="h-4 w-4" /> Good first issues
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  New to the project? Pick up a starter task and make your first
-                  meaningful contribution.
-                  <div className="mt-4">
-                    <a
-                      className="text-primary underline underline-offset-4"
-                      href="https://github.com/tailed-community/dashboard/labels/good%20first%20issue"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      Browse good first issues →
-                    </a>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <HeartHandshake className="h-4 w-4" /> Code of Conduct
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  We’re committed to a welcoming, inclusive community.
-                  <div className="mt-4">
-                    <a
-                      className="text-primary underline underline-offset-4"
-                      href="/docs/CODE_OF_CONDUCT.md"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      Read our Code of Conduct →
-                    </a>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <BookOpen className="h-4 w-4" /> Contribution Guide
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  Learn how to set up your environment, run the app, and submit
-                  great pull requests.
-                  <div className="mt-4">
-                    <a
-                      className="text-primary underline underline-offset-4"
-                      href="/CONTRIBUTING.md"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      Read CONTRIBUTING.md →
-                    </a>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Get involved CTA */}
-      <section className="border-t">
-        <div className="mx-auto max-w-5xl px-6 py-16 text-center">
-          <h2 className="text-2xl font-semibold sm:text-3xl">
-            Ready to get involved?
-          </h2>
-          <p className="mx-auto mt-4 max-w-2xl text-muted-foreground">
-            Whether you’re fixing a typo or building a feature, you’re welcome
-            here. Star the repo, join the community, and let’s build the future
-            of early‑career tech together.
+          <h1 className="text-5xl md:text-7xl lg:text-8xl font-extrabold tracking-tighter text-brand-cream-950 dark:text-brand-cream-50 mb-6 max-w-5xl mx-auto leading-[1.05]">
+            Where Student Communities <span className="bg-gradient-to-r from-brand-orange to-brand-yellow bg-clip-text text-transparent">Connect &amp; Grow</span>
+          </h1>
+          <p className="text-xl text-brand-cream-600 dark:text-brand-cream-400 max-w-2xl mx-auto mb-10 leading-relaxed font-light">
+            Unlock exclusive events, discover career opportunities, and join vibrant clubs. <strong className="text-brand-cream-900 dark:text-brand-cream-50 font-medium">Built by students, for students</strong>.
           </p>
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-            <a
-              href="https://github.com/tailed-community/dashboard"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <Button size="lg" className="gap-2">
-                <Star className="h-4 w-4" /> Star the repo
-              </Button>
-            </a>
-            <Link to="/sign-in">
-              <Button size="lg" variant="outline" className="gap-2">
-                <Users className="h-4 w-4" /> Join now
-              </Button>
+          <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto">
+            <Link to="/sign-in" className="w-full sm:w-auto px-8 py-4 rounded-full bg-brand-cream-950 text-brand-cream-50 dark:bg-brand-cream-50 dark:text-brand-cream-950 font-semibold text-lg hover:scale-105 transition-all shadow-lg hover:shadow-xl hover:shadow-blue-500/10 flex items-center justify-center">
+              Join for free
+            </Link>
+            <Link to="/community" className="w-full sm:w-auto px-8 py-4 rounded-full bg-brand-cream-50 dark:bg-brand-cream-950 border border-brand-cream-200 dark:border-brand-cream-800 text-brand-cream-900 dark:text-brand-cream-50 font-medium text-lg hover:border-blue-500/50 dark:hover:border-blue-500/50 hover:bg-brand-cream-50 dark:hover:bg-brand-cream-900 transition-all group flex items-center justify-center">
+              Explore communities <span className="inline-block transition-transform group-hover:translate-x-1 ml-1">→</span>
             </Link>
           </div>
-        </div>
-      </section>
-
-      {/* Final CTA Section */}
-      <section className="relative py-16 sm:py-24">
-        <div className="mx-auto max-w-5xl px-6 text-center">
-          <div className="relative rounded-3xl bg-gradient-to-br from-primary/10 via-secondary/10 to-background p-12 sm:p-16 border-2 border-primary/30 shadow-2xl overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-r from-[#EB7A24]/10 via-[#8ec4f3]/10 to-[#c0bbff]/10 animate-pulse" />
-            
-            <div className="relative z-10">
-              <Badge 
-                variant="secondary" 
-                className="mb-6 gap-2 px-4 py-2 bg-primary/20 border-primary/40"
-              >
-                <Sparkles className="h-4 w-4 text-primary" />
-                <span className="text-primary font-semibold">Start Your Journey Today</span>
-              </Badge>
-              
-              <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mb-6">
-                Ready to Lead Your Own <span className="bg-gradient-to-r from-[#EB7A24] via-[#ef4441] to-[#c0bbff] bg-clip-text text-transparent">Growth</span>?
-              </h2>
-              
-              <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
-                Join thousands of student creators who are building their future, one opportunity at a time. No barriers, just possibilities.
-              </p>
-              
-              <div className="flex flex-wrap items-center justify-center gap-4">
-                <Link to="/sign-in">
-                  <Button 
-                    size="lg" 
-                    className="gap-2 bg-gradient-to-r from-primary to-[#ef4441] hover:opacity-90 text-lg px-10 shadow-xl"
-                  >
-                    <Rocket className="h-5 w-5" /> Get Started Free
-                  </Button>
+          <div className="mt-8 flex items-center gap-2 text-sm text-brand-cream-500 font-medium">
+            <CheckCircle className="text-green-500 w-5 h-5" />
+            <span>Always free for students</span>
+          </div>
+        </section>
+        <section className="px-4 pb-24 max-w-[1400px] mx-auto">
+          <div className="relative bg-brand-cream-50 dark:bg-brand-cream-900/50 rounded-[2.5rem] p-6 md:p-12 overflow-hidden border border-brand-cream-200 dark:border-brand-cream-800 shadow-2xl shadow-brand-cream-100/50 dark:shadow-none">
+            <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/4 w-[500px] h-[500px] bg-[oklch(0.77_0.08_220)]/5 rounded-full blur-3xl pointer-events-none"></div>
+            <div className="absolute bottom-0 left-0 translate-y-1/2 -translate-x-1/4 w-[500px] h-[500px] bg-[oklch(0.62_0.15_45)]/5 rounded-full blur-3xl pointer-events-none"></div>
+            <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 items-start">
+              <div className="space-y-4 group">
+                <div className="flex items-center gap-3 mb-2 px-1">
+                  <h3 className="font-bold text-lg text-brand-cream-900 dark:text-brand-cream-50">Discover Events</h3>
+                </div>
+                <Link to="/events" className="block space-y-3 cursor-pointer bg-brand-cream-50 dark:bg-brand-cream-950 p-4 rounded-3xl shadow-sm border border-brand-cream-100 dark:border-brand-cream-800 group-hover:border-[oklch(0.62_0.15_45)]/30 dark:group-hover:border-[oklch(0.62_0.15_45)]/30 group-hover:shadow-lg transition-all duration-300">
+                  <div className="relative aspect-[3/2] overflow-hidden rounded-2xl bg-brand-cream-100">
+                    <div className="w-full h-full bg-cover bg-center transition-transform duration-700 group-hover:scale-105" style={{ backgroundImage: `url("${featuredEvent.heroImageUrl}")` }}></div>
+                    <div className="absolute top-3 left-3 bg-brand-cream-50/90 dark:bg-brand-cream-950/80 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold shadow-sm text-[oklch(0.77_0.08_220)] uppercase tracking-wider">
+                      {featuredEvent.price === 0 ? "Free" : `$${featuredEvent.price}`}
+                    </div>
+                  </div>
+                  <div className="space-y-1 px-1">
+                    <p className="text-xs font-bold text-[oklch(0.62_0.15_45)] uppercase tracking-wide">
+                      {formatEventDateTime(featuredEvent.datetime)}
+                    </p>
+                    <h3 className="text-lg font-bold text-brand-cream-950 dark:text-brand-cream-50 leading-tight">
+                      {featuredEvent.title}
+                    </h3>
+                    {featuredEvent.location && (
+                      <p className="text-sm text-brand-cream-500 line-clamp-1 flex items-center gap-1">
+                        <MapPin className="w-3.5 h-3.5" />
+                        {featuredEvent.location}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between pt-2 px-1">
+                    <div className="flex items-center -space-x-2">
+                      <img alt="attendee" className="size-7 rounded-full border-2 border-brand-cream-50 dark:border-brand-cream-950" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAVeg0mCZyOyxZ27Vsz6dimTV-VWKazJuch4TujH5iBHHd_y5xDPbp3QKTLM01oTEluBODkwcoRykpHqEqJwAz5bz8w4KVOOeyw0flGpqYwiS1t15CnwdVoEtg-TvULDjGD5JQttNB-trZmXROG0G4H2iupERxH63202IOE2bJ3rreXsUfEO4v_UDGL5MJi3DzHaks8tWDtm8CePXtgvNv5AteGMrTmZpBgwIi5oCL6j-KXXdUcWRgQaxxed0EaUCE32byNy9nxB_je" />
+                      <img alt="attendee" className="size-7 rounded-full border-2 border-brand-cream-50 dark:border-brand-cream-950" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBEUNIUuj7BhQ8_-MwJtMtICghKsonXRAYhQe4yNwUjlXfOshEwJJb4x3Loz93Jpdvw5Wg0koYZLnnjBgoeJ73mwxN524ArdylNSjdbF1y886rOL9V2cWH-YOk_UP-NuA8yI8NxpxVsRHWe1CdpJZKZqdAixIMCLaYRBFtyIJGjjkcLERza2sX9tpLre_-r-F6Hc0BrO4BCMqycvl4oeis6hBaDgEYBVvRWwxZrhKuojTLvGYYeHN_FrKo5LOSCWkwiJBhlGmJkbIFf" />
+                      {(featuredEvent.attendees ?? 0) > 2 && (
+                        <div className="size-7 rounded-full border-2 border-brand-cream-50 dark:border-brand-cream-950 bg-brand-cream-100 dark:bg-brand-cream-800 flex items-center justify-center text-[10px] text-brand-cream-600 dark:text-brand-cream-300 font-bold">
+                          +{(featuredEvent.attendees ?? 0) - 2}
+                        </div>
+                      )}
+                    </div>
+                    <span className="text-sm font-semibold text-brand-cream-900 dark:text-brand-cream-50 bg-brand-cream-50 dark:bg-brand-cream-900 px-3 py-1.5 rounded-lg hover:bg-brand-cream-100 dark:hover:bg-brand-cream-800 transition-colors">
+                      View Events
+                    </span>
+                  </div>
                 </Link>
-                <a
-                  href="https://github.com/tailed-community/dashboard"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <Button 
-                    size="lg" 
-                    variant="outline" 
-                    className="gap-2 text-lg px-10 border-2 border-primary/50 hover:bg-primary/10"
-                  >
-                    <Github className="h-5 w-5" /> Star on GitHub
-                  </Button>
-                </a>
+              </div>
+              <div className="space-y-4 group">
+                <div className="flex items-center gap-3 mb-2 px-1">
+                  <h3 className="font-bold text-lg text-brand-cream-900 dark:text-brand-cream-50">Find Opportunities</h3>
+                </div>
+                <Link to="/jobs" className="block bg-brand-cream-50 dark:bg-brand-cream-950 p-5 rounded-3xl shadow-sm border border-brand-cream-100 dark:border-brand-cream-800 group-hover:border-[oklch(0.77_0.08_220)]/30 dark:group-hover:border-[oklch(0.77_0.08_220)]/30 group-hover:shadow-lg transition-all duration-300">
+                  <div className="flex items-start justify-between gap-4 mb-4">
+                    <div className="size-14 rounded-xl bg-brand-cream-50 border border-brand-cream-100 dark:border-brand-cream-800 bg-center bg-cover shadow-sm" style={{ backgroundImage: 'url("https://lh3.googleusercontent.com/aida-public/AB6AXuBWBYpefzD8NOWhQ_NcngMCplUELaIUd9oMWeVb5kOuXAZiYKP622HmRyJjgs4A33RQN_ptNeFfpUD0PFOwvgQYznWwfjBR29MtTGdzApW6mC2sMRWwkjuXg_8-mxh4Jm27Yoy118m6g6e4IwJdt-tYHqllQAkgk9WTJLfCAVzAmRDUZ7_xU4tPdvlfMrSTbB0zMbhEZyP19TjT0tFkN_FS3-Gv1C4wuEAsYGzFg2Lebx2haWtFRpKgkywNsHfLPPZ8OmV9E95gglg8")' }}></div>
+                    <span className="px-2.5 py-1 rounded-full bg-[oklch(0.77_0.08_220)]/10 dark:bg-[oklch(0.77_0.08_220)]/20 text-[oklch(0.77_0.08_220)] dark:text-[oklch(0.77_0.08_220)] text-xs font-bold border border-[oklch(0.77_0.08_220)]/20 dark:border-[oklch(0.77_0.08_220)]/30 uppercase tracking-wide">New</span>
+                  </div>
+                  <div className="space-y-1 mb-5">
+                    <h3 className="font-bold text-lg text-brand-cream-950 dark:text-brand-cream-50 leading-tight">Product Design Intern</h3>
+                    <p className="text-brand-cream-500 text-sm font-medium">Stripe • Remote</p>
+                  </div>
+                  <div className="flex gap-2 mb-5 flex-wrap">
+                    <span className="px-2.5 py-1 rounded-md bg-brand-cream-50 dark:bg-brand-cream-900 text-brand-cream-600 dark:text-brand-cream-400 text-xs font-semibold border border-brand-cream-100 dark:border-brand-cream-800">Internship</span>
+                    <span className="px-2.5 py-1 rounded-md bg-brand-cream-50 dark:bg-brand-cream-900 text-brand-cream-600 dark:text-brand-cream-400 text-xs font-semibold border border-brand-cream-100 dark:border-brand-cream-800">Design</span>
+                    <span className="px-2.5 py-1 rounded-md bg-brand-cream-50 dark:bg-brand-cream-900 text-brand-cream-600 dark:text-brand-cream-400 text-xs font-semibold border border-brand-cream-100 dark:border-brand-cream-800">5/hr</span>
+                  </div>
+                  <span className="block w-full py-2.5 text-sm font-bold bg-brand-blue hover:bg-brand-blue/90 text-brand-cream-50 rounded-xl transition-colors shadow-sm shadow-[oklch(0.77_0.08_220)]/30 dark:shadow-none text-center">View Details</span>
+                </Link>
+              </div>
+              <div className="space-y-4 group">
+                <div className="flex items-center gap-3 mb-2 px-1">
+                  <h3 className="font-bold text-lg text-brand-cream-900 dark:text-brand-cream-50">Discover Communities</h3>
+                </div>
+                <Link to="/community" className="block space-y-3 cursor-pointer bg-brand-cream-50 dark:bg-brand-cream-950 p-4 rounded-3xl shadow-sm border border-brand-cream-100 dark:border-brand-cream-800 group-hover:border-purple-200 dark:group-hover:border-purple-900/50 group-hover:shadow-lg transition-all duration-300">
+                  <div className="relative aspect-[3/2] overflow-hidden rounded-2xl bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20">
+                    {featuredCommunity.bannerUrl ? (
+                      <div className="w-full h-full bg-cover bg-center transition-transform duration-700 group-hover:scale-105" style={{ backgroundImage: `url("${featuredCommunity.bannerUrl}")` }}></div>
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <Users className="w-16 h-16 text-purple-200 dark:text-purple-700" />
+                      </div>
+                    )}
+                    <div className="absolute top-3 right-3 bg-brand-cream-50/90 dark:bg-brand-cream-950/80 backdrop-blur-md px-3 py-1.5 rounded-full text-xs font-bold shadow-sm flex items-center gap-1.5">
+                      <Users className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                      <span className="text-purple-600 dark:text-purple-400">
+                        {featuredCommunity.memberCount >= 1000 
+                          ? `${(featuredCommunity.memberCount / 1000).toFixed(1).replace(/\.0$/, '')}k` 
+                          : featuredCommunity.memberCount}
+                      </span>
+                    </div>
+                    {featuredCommunity.logoUrl && (
+                      <div className="absolute -bottom-6 left-3 size-12 rounded-xl shadow-lg border-2 border-brand-cream-50 dark:border-brand-cream-950 bg-brand-cream-50 dark:bg-brand-cream-950 overflow-hidden">
+                        <img src={featuredCommunity.logoUrl} alt={featuredCommunity.name} className="w-full h-full object-cover" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-1 px-1 pt-2">
+                    <p className="text-xs font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wide">
+                      {featuredCommunity.category}
+                    </p>
+                    <h3 className="text-lg font-bold text-brand-cream-950 dark:text-brand-cream-50 leading-tight">
+                      {featuredCommunity.name}
+                    </h3>
+                    <p className="text-sm text-brand-cream-500 line-clamp-2">
+                      {featuredCommunity.description}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between pt-2 px-1">
+                    <div className="flex items-center -space-x-2">
+                      <img alt="member" className="size-7 rounded-full border-2 border-brand-cream-50 dark:border-brand-cream-950" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAGrL8ZaLleb-9sFwTFBI6_2X7uuf7pgUtpRF8cdYEqv2k3W-Nygr-SWnJSs_8fO4Nn000p2UD8ISrspF7wKecTmx_YAUIotQEYcMTRp8zXCAZocbe-Ep44gTEnE_3NeNNbSql0xXOmRdo2DLKkDfBCRpJGrObacMNgxc0ktj1BkChV9LSBmD2p-nSMCRCXJtsabA964b1455ye0LFhl67Kd0a7-pPGJtHR2Yo-LUDncr8AJ1MD5VO7E96Lau_tkll1dNjbndb0Ap07" />
+                      <img alt="member" className="size-7 rounded-full border-2 border-brand-cream-50 dark:border-brand-cream-950" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAVeg0mCZyOyxZ27Vsz6dimTV-VWKazJuch4TujH5iBHHd_y5xDPbp3QKTLM01oTEluBODkwcoRykpHqEqJwAz5bz8w4KVOOeyw0flGpqYwiS1t15CnwdVoEtg-TvULDjGD5JQttNB-trZmXROG0G4H2iupERxH63202IOE2bJ3rreXsUfEO4v_UDGL5MJi3DzHaks8tWDtm8CePXtgvNv5AteGMrTmZpBgwIi5oCL6j-KXXdUcWRgQaxxed0EaUCE32byNy9nxB_je" />
+                      <img alt="member" className="size-7 rounded-full border-2 border-brand-cream-50 dark:border-brand-cream-950" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBEUNIUuj7BhQ8_-MwJtMtICghKsonXRAYhQe4yNwUjlXfOshEwJJb4x3Loz93Jpdvw5Wg0koYZLnnjBgoeJ73mwxN524ArdylNSjdbF1y886rOL9V2cWH-YOk_UP-NuA8yI8NxpxVsRHWe1CdpJZKZqdAixIMCLaYRBFtyIJGjjkcLERza2sX9tpLre_-r-F6Hc0BrO4BCMqycvl4oeis6hBaDgEYBVvRWwxZrhKuojTLvGYYeHN_FrKo5LOSCWkwiJBhlGmJkbIFf" />
+                    </div>
+                    <span className="text-sm font-semibold text-brand-cream-900 dark:text-brand-cream-50 bg-brand-cream-50 dark:bg-brand-cream-900 px-3 py-1.5 rounded-lg hover:bg-brand-cream-100 dark:hover:bg-brand-cream-800 transition-colors">
+                      View Communities
+                    </span>
+                  </div>
+                </Link>
               </div>
             </div>
           </div>
+        </section>
+        <section className="py-12 px-6">
+          <div className="max-w-5xl mx-auto bg-brand-cream-950 dark:bg-brand-cream-50 rounded-[2.5rem] p-12 md:p-24 text-center relative overflow-hidden group">
+            <div className="relative z-10 space-y-8">
+              <span className="inline-block py-1 px-3 rounded-full bg-brand-cream-50/10 dark:bg-brand-cream-950/5 text-brand-cream-50 dark:text-brand-cream-950 text-sm font-semibold mb-2 backdrop-blur-sm border border-brand-cream-50/10 dark:border-brand-cream-950/10">100% Free Forever</span>
+              <h2 className="text-4xl md:text-6xl font-bold text-brand-cream-50 dark:text-brand-cream-950 tracking-tight max-w-3xl mx-auto leading-tight">Ready to join your community?</h2>
+              <p className="text-lg text-brand-cream-300 dark:text-brand-cream-600 max-w-xl mx-auto">Start connecting with students, attending events, and building your future today.</p>
+              <div className="flex justify-center pt-4">
+                <Link to="/sign-in" className="px-10 py-4 bg-brand-cream-50 dark:bg-brand-cream-950 text-brand-cream-950 dark:text-brand-cream-50 rounded-full font-bold text-lg hover:bg-brand-cream-100 dark:hover:bg-brand-cream-800 transition-colors shadow-[0_0_40px_-10px_rgba(255,255,255,0.3)] dark:shadow-[0_0_40px_-10px_rgba(0,0,0,0.3)]">
+                  Get Started
+                </Link>
+              </div>
+            </div>
+            <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/2 w-[500px] h-[500px] bg-brand-blue dark:bg-brand-blue/50 rounded-full blur-[100px] opacity-40 group-hover:opacity-60 transition-opacity duration-1000"></div>
+            <div className="absolute bottom-0 left-0 translate-y-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-brand-orange dark:bg-brand-orange/50 rounded-full blur-[100px] opacity-40 group-hover:opacity-60 transition-opacity duration-1000"></div>
+          </div>
+        </section>
+      </main>
+      <footer className="border-t border-brand-cream-100 dark:border-brand-cream-800 py-8 bg-brand-cream-50 dark:bg-brand-cream-950">
+        <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
+          <div className="flex items-center gap-8">
+            <Link to="/discover" className="text-sm font-medium text-brand-cream-600 hover:text-brand-cream-900 dark:text-brand-cream-400 dark:hover:text-brand-cream-50 transition-colors">Discover</Link>
+            <Link to="/about" className="text-sm font-medium text-brand-cream-600 hover:text-brand-cream-900 dark:text-brand-cream-400 dark:hover:text-brand-cream-50 transition-colors">About</Link>
+            <a href="mailto:community@tailed.ca" className="text-sm font-medium text-brand-cream-600 hover:text-brand-cream-900 dark:text-brand-cream-400 dark:hover:text-brand-cream-50 transition-colors">Help</a>
+          </div>
+          <div className="flex items-center gap-6">
+            <Link to="https://www.youtube.com/@tailedcommunity" target="_blank" rel="noopener noreferrer" className="text-brand-cream-400 hover:text-brand-cream-900 dark:hover:text-brand-cream-50 transition-colors">
+              <SiYoutube className="w-5 h-5" />
+            </Link>
+            <Link to="https://www.instagram.com/tailed.community" target="_blank" rel="noopener noreferrer" className="text-brand-cream-400 hover:text-brand-cream-900 dark:hover:text-brand-cream-50 transition-colors">
+              <SiInstagram className="w-5 h-5" />
+            </Link>
+            <Link to="https://discord.gg/gpbtFXTgNQ" target="_blank" rel="noopener noreferrer" className="text-brand-cream-400 hover:text-brand-cream-900 dark:hover:text-brand-cream-50 transition-colors">
+              <SiDiscord className="w-5 h-5" />
+            </Link>
+            <Link to="https://github.com/tailed-community" target="_blank" rel="noopener noreferrer" className="text-brand-cream-400 hover:text-brand-cream-900 dark:hover:text-brand-cream-50 transition-colors">
+              <SiGithub className="w-5 h-5" />
+            </Link>
+          </div>
         </div>
-      </section>
+      </footer>
     </div>
-  );
-}
-
-// Impact Card Component
-interface ImpactCardProps {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-  gradient: string;
-}
-
-function ImpactCard({ icon, title, description, gradient }: ImpactCardProps) {
-  return (
-    <div className="relative group">
-      <div className={`absolute -inset-px bg-gradient-to-r ${gradient} rounded-xl opacity-75 group-hover:opacity-100 blur transition duration-300`} />
-      <div className="relative h-full bg-background p-6 rounded-xl border border-border">
-        <div className={`inline-flex p-3 rounded-lg bg-gradient-to-br ${gradient} text-white mb-4`}>
-          {icon}
-        </div>
-        <h3 className="text-lg font-semibold mb-2 text-foreground">{title}</h3>
-        <p className="text-sm text-muted-foreground leading-relaxed">{description}</p>
-      </div>
-    </div>
-  );
-}
-
-function Feature({
-  icon,
-  title,
-  description,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-}) {
-  return (
-    <Card className="h-full">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          {icon}
-          <span>{title}</span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p className="text-sm text-muted-foreground">{description}</p>
-      </CardContent>
-    </Card>
   );
 }
