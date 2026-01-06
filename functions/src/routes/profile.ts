@@ -8,7 +8,7 @@ import { FieldValue } from "firebase-admin/firestore";
 const router = express.Router();
 
 // Function to calculate profile completeness
-const calculateProfileScore = (profileData: any) => {
+export const calculateProfileScore = (profileData: any) => {
     const checks = {
         githubUsername: !!(
             profileData.githubUsername &&

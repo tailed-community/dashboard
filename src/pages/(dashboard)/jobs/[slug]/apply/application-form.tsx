@@ -8,6 +8,8 @@ import {
     ArrowLeft,
     ArrowRight,
     FileText,
+    MessageSquare,
+    CheckCircle2,
 } from "lucide-react";
 import { apiFetch } from "@/lib/fetch";
 import { fetchGithubUserProfile, type GithubProfile } from "@/lib/github";
@@ -27,7 +29,8 @@ import PersonalInfoSection from "./components/PersonalInfoSection";
 import GithubProfileSection from "./components/GithubProfileSection";
 import DevpostProfileSection from "./components/DevpostProfileSection";
 import ResumeSection from "./components/ResumeSection";
-import JobDetailsSection from "./components/JobDetailsSection";
+import CoverLetterSection from "./components/CoverLetterSection";
+import ApplicationSummarySection from "./components/ApplicationSummarySection";
 import {
     linkWithPopup,
     GithubAuthProvider,
@@ -701,8 +704,12 @@ export default function ApplicationForm({
                         <Step icon={<Award size={18} />} title="Hackathons" />
                         <Step icon={<FileText size={18} />} title="Resume" />
                         <Step
-                            icon={<Briefcase size={18} />}
-                            title="Job Details"
+                            icon={<MessageSquare size={18} />}
+                            title="Cover Letter"
+                        />
+                        <Step
+                            icon={<CheckCircle2 size={18} />}
+                            title="Summary"
                         />
                     </Steps>
                 </CardHeader>
@@ -751,14 +758,24 @@ export default function ApplicationForm({
                             />
                         )}
 
-                        {/* Step 5: Job Details */}
+                        {/* Step 5: Cover Letter */}
                         {currentStep === 4 && (
-                            <JobDetailsSection
+                            <CoverLetterSection
                                 formData={formData}
                                 handleInputChange={handleInputChange}
+                            />
+                        )}
+
+                        {/* Step 6: Summary */}
+                        {currentStep === 5 && (
+                            <ApplicationSummarySection
+                                formData={formData}
                                 tokenInfo={tokenInfo}
                                 githubProfile={githubProfile}
                                 devpostProfile={devpostProfile}
+                                onNavigateToCoverLetter={() =>
+                                    setCurrentStep(4)
+                                }
                             />
                         )}
                     </form>
@@ -777,7 +794,7 @@ export default function ApplicationForm({
                         <div></div>
                     )}
 
-                    {currentStep < 4 ? (
+                    {currentStep < 5 ? (
                         <div
                             className={
                                 !checkCurrentStepValid()

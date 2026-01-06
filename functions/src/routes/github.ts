@@ -1,6 +1,7 @@
 import express from "express";
 import { logger } from "firebase-functions";
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { calculateProfileScore } from "./profile";
 
 interface GithubUser {
     login: string;
@@ -693,15 +694,36 @@ router.post("/profile", async (req, res) => {
                     `Saving GitHub profile for ${username}: ${cleanProfileData.contributionCount} contributions, ${cleanProfileData.repoCount} repos`
                 );
 
+                // Get current profile data to calculate complete profile score
+                const currentProfile = await db
+                    .collection("profiles")
+                    .doc(uid)
+                    .get();
+                const currentData = currentProfile.exists
+                    ? currentProfile.data()
+                    : {};
+
+                // Merge with new GitHub data
+                const updatedProfileData = {
+                    ...currentData,
+                    github: cleanProfileData,
+                    githubUsername: profileData.username,
+                };
+
+                // Calculate profile score
+                const profileScore = calculateProfileScore(updatedProfileData);
+
                 await db.collection("profiles").doc(uid).set(
                     {
                         github: cleanProfileData,
                         githubUsername: profileData.username,
+                        profileScore: profileScore,
+                        updatedAt: new Date(),
                     },
                     { merge: true }
                 );
                 logger.info(
-                    `Successfully saved GitHub profile for user: ${user.login}`
+                    `Successfully saved GitHub profile for user: ${user.login}, profile score: ${profileScore.score}%`
                 );
             } catch (dbError) {
                 logger.error("Error saving profile to database:", dbError);
@@ -735,13 +757,31 @@ router.delete("/delete", async (req, res) => {
         const db = getFirestore();
 
         // Remove the github field from the profile using FieldValue.delete()
-        const { FieldValue } = await import("firebase-admin/firestore");
+
+        // Get current profile data to recalculate profile score
+        const currentProfile = await db.collection("profiles").doc(uid).get();
+        const currentData = currentProfile.exists ? currentProfile.data() : {};
+
+        // Merge with removed GitHub data
+        const updatedProfileData = {
+            ...currentData,
+            github: undefined,
+            githubUsername: undefined,
+        };
+
+        // Calculate updated profile score
+        const profileScore = calculateProfileScore(updatedProfileData);
 
         await db.collection("profiles").doc(uid).update({
             github: FieldValue.delete(),
+            githubUsername: FieldValue.delete(),
+            profileScore: profileScore,
+            updatedAt: new Date(),
         });
 
-        logger.info(`Deleted GitHub profile for user: ${uid}`);
+        logger.info(
+            `Deleted GitHub profile for user: ${uid}, profile score: ${profileScore.score}%`
+        );
 
         return res.json({
             success: true,

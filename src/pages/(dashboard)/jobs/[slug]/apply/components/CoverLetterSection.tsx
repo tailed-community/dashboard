@@ -2,32 +2,19 @@ import React from "react";
 import { CheckCircle, Sparkles, Lightbulb } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Separator } from "@/components/ui/separator";
-import { type GithubProfile } from "@/lib/github";
-import {
-    type TokenInfo,
-    type DevpostProfile,
-    type ApplicationFormData,
-} from "../types";
-import { HTMLContent } from "@/components/ui/html-content";
+import { type ApplicationFormData } from "../types";
 
-interface JobDetailsSectionProps {
+interface CoverLetterSectionProps {
     formData: ApplicationFormData;
     handleInputChange: (
         e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
     ) => void;
-    tokenInfo: TokenInfo;
-    githubProfile: GithubProfile | null;
-    devpostProfile: DevpostProfile | null;
 }
 
-export default function JobDetailsSection({
+export default function CoverLetterSection({
     formData,
     handleInputChange,
-    tokenInfo,
-    githubProfile,
-    devpostProfile,
-}: JobDetailsSectionProps) {
+}: CoverLetterSectionProps) {
     return (
         <div className="space-y-6">
             {/* Cover Letter Section - Enhanced */}
@@ -98,79 +85,6 @@ export default function JobDetailsSection({
                         </span>
                     )}
                 </p>
-            </div>
-
-            {tokenInfo.job.description && (
-                <div className="mt-4 p-4 bg-muted rounded-lg">
-                    <h3 className="font-medium mb-2">Job Description</h3>
-                    <p className="text-sm whitespace-pre-line">
-                        <HTMLContent
-                            content={
-                                tokenInfo.job.description ||
-                                "<p>No description provided.</p>"
-                            }
-                            className="text-md"
-                        />
-                    </p>
-                </div>
-            )}
-
-            <div className="rounded-lg border p-4">
-                <h3 className="font-medium mb-2">Application Summary</h3>
-                <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                        <span className="text-muted-foreground">
-                            Personal Information
-                        </span>
-                        <span className="flex items-center gap-1 text-green-600">
-                            <CheckCircle className="h-4 w-4" />
-                            Complete
-                        </span>
-                    </div>
-                    <Separator />
-
-                    <div className="flex justify-between">
-                        <span className="text-muted-foreground">
-                            GitHub Profile
-                        </span>
-                        {githubProfile ? (
-                            <span className="flex items-center gap-1 text-green-600">
-                                <CheckCircle className="h-4 w-4" />
-                                Linked
-                            </span>
-                        ) : (
-                            <span className="text-amber-500">Not linked</span>
-                        )}
-                    </div>
-                    <Separator />
-
-                    <div className="flex justify-between">
-                        <span className="text-muted-foreground">
-                            Hackathon History
-                        </span>
-                        {devpostProfile ? (
-                            <span className="flex items-center gap-1 text-green-600">
-                                <CheckCircle className="h-4 w-4" />
-                                Imported
-                            </span>
-                        ) : (
-                            <span className="text-amber-500">Not imported</span>
-                        )}
-                    </div>
-                    <Separator />
-
-                    <div className="flex justify-between">
-                        <span className="text-muted-foreground">Resume</span>
-                        {formData.resume ? (
-                            <span className="flex items-center gap-1 text-green-600">
-                                <CheckCircle className="h-4 w-4" />
-                                Uploaded
-                            </span>
-                        ) : (
-                            <span className="text-red-500">Required</span>
-                        )}
-                    </div>
-                </div>
             </div>
         </div>
     );
