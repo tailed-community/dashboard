@@ -1,6 +1,7 @@
 import express from "express";
 import { db } from "../lib/firebase";
 import { logger } from "firebase-functions";
+import { calculateProfileScore } from "./profile";
 
 const router = express.Router();
 
@@ -377,17 +378,37 @@ router.post("/profile", async (req, res) => {
 
         // Save Devpost profile to user's profile immediately after verification
         try {
+            // Get current profile data to calculate complete profile score
+            const currentProfile = await db
+                .collection("profiles")
+                .doc(uid)
+                .get();
+            const currentData = currentProfile.exists
+                ? currentProfile.data()
+                : {};
+
+            // Merge with new Devpost data
+            const updatedProfileData = {
+                ...currentData,
+                devpost: comprehensiveProfile,
+                devpostUsername: comprehensiveProfile.username,
+            };
+
+            // Calculate profile score
+            const profileScore = calculateProfileScore(updatedProfileData);
+
             await db.collection("profiles").doc(uid).set(
                 {
                     devpost: comprehensiveProfile,
                     devpostUsername: comprehensiveProfile.username,
+                    profileScore: profileScore,
                     updatedAt: new Date(),
                 },
                 { merge: true }
             );
 
             logger.info(
-                `Saved Devpost profile for user ${uid}: ${comprehensiveProfile.username}`
+                `Saved Devpost profile for user ${uid}: ${comprehensiveProfile.username}, profile score: ${profileScore.score}%`
             );
         } catch (dbError) {
             logger.error("Error saving Devpost profile to database:", dbError);
