@@ -154,7 +154,7 @@ router.patch("/main-resume/", async (req, res): Promise<void> => {
         let responseHandled = false;
 
         // Handle file upload
-        busboy.on("file", (fieldname, file, info) => {
+        busboy.on("file", (fieldname: string, file: any, info: { filename: any; mimeType: any; }) => {
             logger.info(`Busboy file event triggered: ${fieldname}`);
 
             const { filename, mimeType: mime } = info;
@@ -185,7 +185,7 @@ router.patch("/main-resume/", async (req, res): Promise<void> => {
 
             const chunks: Buffer[] = [];
 
-            file.on("data", (data) => {
+            file.on("data", (data: Buffer) => {
                 chunks.push(data);
             });
 
@@ -204,13 +204,13 @@ router.patch("/main-resume/", async (req, res): Promise<void> => {
                 }
             });
 
-            file.on("error", (error) => {
+            file.on("error", (error: any) => {
                 logger.error("File stream error:", error);
             });
         });
 
         // Handle field (we don't expect any, but log if we get them)
-        busboy.on("field", (fieldname, value) => {
+        busboy.on("field", (fieldname: any, value: any) => {
             logger.info(`Unexpected field: ${fieldname} = ${value}`);
         });
 
@@ -334,7 +334,7 @@ router.patch("/main-resume/", async (req, res): Promise<void> => {
         });
 
         // Handle errors
-        busboy.on("error", (error) => {
+        busboy.on("error", (error: { message: any; }) => {
             logger.error("Busboy error:", error);
             if (!fileProcessed && !responseHandled) {
                 fileProcessed = true;
