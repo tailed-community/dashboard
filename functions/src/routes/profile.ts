@@ -10,32 +10,22 @@ const router = express.Router();
 // Function to calculate profile completeness
 export const calculateProfileScore = (profileData: any) => {
     const checks = {
-        githubUsername: !!(
-            profileData.githubUsername &&
-            profileData.githubUsername.trim() !== ""
-        ),
+        githubUsername: !!profileData.githubUsername?.trim(),
         github: !!(
             profileData.github && Object.keys(profileData.github).length > 0
         ),
-        devpostUsername: !!(
-            profileData.devpostUsername &&
-            profileData.devpostUsername.trim() !== ""
-        ),
+        devpostUsername: !!profileData.devpostUsername?.trim(),
         devpost: !!(
             profileData.devpost && Object.keys(profileData.devpost).length > 0
         ),
-        resume: !!(profileData.resume && profileData.resume.url),
+        resume: !!profileData.resume?.url,
         skills: !!(
             profileData.skills &&
             Array.isArray(profileData.skills) &&
             profileData.skills.length > 0
         ),
-        linkedinUrl: !!(
-            profileData.linkedinUrl && profileData.linkedinUrl.trim() !== ""
-        ),
-        portfolioUrl: !!(
-            profileData.portfolioUrl && profileData.portfolioUrl.trim() !== ""
-        ),
+        linkedinUrl: !!profileData.linkedinUrl?.trim(),
+        portfolioUrl: !!profileData.portfolioUrl?.trim(),
     };
 
     // Calculate score: each field is worth 12.5 points (100/8)
@@ -154,60 +144,67 @@ router.patch("/main-resume/", async (req, res): Promise<void> => {
         let responseHandled = false;
 
         // Handle file upload
-        busboy.on("file", (fieldname: string, file: any, info: { filename: any; mimeType: any; }) => {
-            logger.info(`Busboy file event triggered: ${fieldname}`);
+        busboy.on(
+            "file",
+            (
+                fieldname: string,
+                file: any,
+                info: { filename: any; mimeType: any }
+            ) => {
+                logger.info(`Busboy file event triggered: ${fieldname}`);
 
-            const { filename, mimeType: mime } = info;
+                const { filename, mimeType: mime } = info;
 
-            // Validate field name
-            if (fieldname !== "resume") {
-                logger.warn(`Invalid field name: ${fieldname}`);
-                file.resume();
-                return;
-            }
-
-            // Validate file type (PDF only)
-            if (mime !== "application/pdf") {
-                logger.warn(`Invalid mime type: ${mime}`);
-                file.resume();
-                if (!fileProcessed && !responseHandled) {
-                    fileProcessed = true;
-                    responseHandled = true;
-                    res.status(400).json({
-                        error: "Only PDF files are allowed",
-                    });
+                // Validate field name
+                if (fieldname !== "resume") {
+                    logger.warn(`Invalid field name: ${fieldname}`);
+                    file.resume();
+                    return;
                 }
-                return;
-            }
 
-            fileName = filename;
-            logger.info(`Processing file: ${filename}, type: ${mime}`);
-
-            const chunks: Buffer[] = [];
-
-            file.on("data", (data: Buffer) => {
-                chunks.push(data);
-            });
-
-            file.on("limit", () => {
-                logger.warn("File size limit exceeded");
-                fileSizeExceeded = true;
-                file.resume(); // Drain the stream
-            });
-
-            file.on("end", () => {
-                if (!fileSizeExceeded) {
-                    fileBuffer = Buffer.concat(chunks);
-                    logger.info(
-                        `File buffered successfully: ${fileBuffer.length} bytes`
-                    );
+                // Validate file type (PDF only)
+                if (mime !== "application/pdf") {
+                    logger.warn(`Invalid mime type: ${mime}`);
+                    file.resume();
+                    if (!fileProcessed && !responseHandled) {
+                        fileProcessed = true;
+                        responseHandled = true;
+                        res.status(400).json({
+                            error: "Only PDF files are allowed",
+                        });
+                    }
+                    return;
                 }
-            });
 
-            file.on("error", (error: any) => {
-                logger.error("File stream error:", error);
-            });
-        });
+                fileName = filename;
+                logger.info(`Processing file: ${filename}, type: ${mime}`);
+
+                const chunks: Buffer[] = [];
+
+                file.on("data", (data: Buffer) => {
+                    chunks.push(data);
+                });
+
+                file.on("limit", () => {
+                    logger.warn("File size limit exceeded");
+                    fileSizeExceeded = true;
+                    file.resume(); // Drain the stream
+                });
+
+                file.on("end", () => {
+                    if (!fileSizeExceeded) {
+                        fileBuffer = Buffer.concat(chunks);
+                        logger.info(
+                            `File buffered successfully: ${fileBuffer.length} bytes`
+                        );
+                    }
+                });
+
+                file.on("error", (error: any) => {
+                    logger.error("File stream error:", error);
+                });
+            }
+        );
 
         // Handle field (we don't expect any, but log if we get them)
         busboy.on("field", (fieldname: any, value: any) => {
@@ -334,7 +331,7 @@ router.patch("/main-resume/", async (req, res): Promise<void> => {
         });
 
         // Handle errors
-        busboy.on("error", (error: { message: any; }) => {
+        busboy.on("error", (error: { message: any }) => {
             logger.error("Busboy error:", error);
             if (!fileProcessed && !responseHandled) {
                 fileProcessed = true;
