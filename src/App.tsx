@@ -43,7 +43,9 @@ const EventDetailPage = lazy(() => import("./pages/events/[id]/page"));
 const CreateEventPage = lazy(() => import("./pages/events/create/page"));
 const CommunitiesPage = lazy(() => import("./pages/communities/page"));
 const CommunityDetailPage = lazy(() => import("./pages/communities/[id]/page"));
-const CreateCommunityPage = lazy(() => import("./pages/communities/create/page"));
+const CreateCommunityPage = lazy(
+    () => import("./pages/communities/create/page")
+);
 const SpotlightPage = lazy(() => import("./pages/spotlight/page"));
 const ExplorePage = lazy(() => import("./pages/explore/page"));
 const AboutPage = lazy(() => import("./pages/about/page"));
@@ -86,10 +88,19 @@ function App() {
                                 path="/jobs/:slug"
                                 element={<PublicJobPage />}
                             />
-                            <Route path="/companies" element={<CompaniesPage />} />
-                            <Route path="/companies/:id" element={<CompanyDetailPage />} />
+                            <Route
+                                path="/companies"
+                                element={<CompaniesPage />}
+                            />
+                            <Route
+                                path="/companies/:id"
+                                element={<CompanyDetailPage />}
+                            />
                             <Route path="/events" element={<EventsPage />} />
-                            <Route path="/events/:id" element={<EventDetailPage />} />
+                            <Route
+                                path="/events/:id"
+                                element={<EventDetailPage />}
+                            />
                             <Route
                                 path="/events/create"
                                 element={
@@ -98,8 +109,14 @@ function App() {
                                     </PrivateRoute>
                                 }
                             />
-                            <Route path="/communities" element={<CommunitiesPage />} />
-                            <Route path="/communities/:id" element={<CommunityDetailPage />} />
+                            <Route
+                                path="/communities"
+                                element={<CommunitiesPage />}
+                            />
+                            <Route
+                                path="/communities/:id"
+                                element={<CommunityDetailPage />}
+                            />
                             <Route
                                 path="/communities/create"
                                 element={
@@ -108,7 +125,10 @@ function App() {
                                     </PrivateRoute>
                                 }
                             />
-                            <Route path="/spotlight" element={<SpotlightPage />} />
+                            <Route
+                                path="/spotlight"
+                                element={<SpotlightPage />}
+                            />
                             <Route path="/explore" element={<ExplorePage />} />
                             <Route path="/about" element={<AboutPage />} />
                         </Route>

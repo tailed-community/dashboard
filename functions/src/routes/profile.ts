@@ -109,7 +109,7 @@ router.get("/", async (req, res) => {
  * - Accepts a PDF resume upload using Busboy
  * - Validates the file type and name
  * - Generates a unique resume ID
- * - Uploads to Firebase Storage under /resumes/{userId}/main_resume/{resumeId}.pdf
+ * - Uploads to Firebase Storage under /profiles/{userId}/resumes/main_resume/{resumeId}.pdf
  * - Makes file public and stores { id, name, url } under the user's profile
  */
 router.patch("/main-resume/", async (req, res): Promise<void> => {
@@ -261,7 +261,7 @@ router.patch("/main-resume/", async (req, res): Promise<void> => {
                 if (!originalName) originalName = "Resume";
 
                 // Delete any existing resumes in this folder
-                const folderPath = `resumes/${userId}/main_resume/`;
+                const folderPath = `profiles/${userId}/resumes/main_resume/`;
                 const [existingFiles] = await storage.getFiles({
                     prefix: folderPath,
                 });
@@ -276,7 +276,7 @@ router.patch("/main-resume/", async (req, res): Promise<void> => {
                 const resumeId = crypto.randomBytes(16).toString("hex");
 
                 // Upload file to Firebase Storage
-                const filePath = `resumes/${userId}/main_resume/${resumeId}.pdf`;
+                const filePath = `profiles/${userId}/resumes/main_resume/${resumeId}.pdf`;
                 const storageFile = storage.file(filePath);
 
                 await storageFile.save(fileBuffer, {
@@ -657,7 +657,7 @@ router.delete("/main-resume", async (req, res) => {
         }
 
         // Delete the file from Firebase Storage
-        const filePath = `resumes/${userId}/main_resume/${resume.id}.pdf`;
+        const filePath = `profiles/${userId}/resumes/main_resume/${resume.id}.pdf`;
         try {
             const storageFile = storage.file(filePath);
             await storageFile.delete();
