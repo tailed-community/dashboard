@@ -189,34 +189,23 @@ export default function AccountPage() {
     // Function to calculate profile completeness
     const calculateProfileScore = (profileData: any) => {
         const checks = {
-            githubUsername: !!(
-                profileData.githubUsername &&
-                profileData.githubUsername.trim() !== ""
-            ),
+            githubUsername: !!profileData.githubUsername?.trim(),
             github: !!(
                 profileData.github && Object.keys(profileData.github).length > 0
             ),
-            devpostUsername: !!(
-                profileData.devpostUsername &&
-                profileData.devpostUsername.trim() !== ""
-            ),
+            devpostUsername: !!profileData.devpostUsername?.trim(),
             devpost: !!(
                 profileData.devpost &&
                 Object.keys(profileData.devpost).length > 0
             ),
-            resume: !!(profileData.resume && profileData.resume.url),
+            resume: !!profileData.resume?.url,
             skills: !!(
                 profileData.skills &&
                 Array.isArray(profileData.skills) &&
                 profileData.skills.length > 0
             ),
-            linkedinUrl: !!(
-                profileData.linkedinUrl && profileData.linkedinUrl.trim() !== ""
-            ),
-            portfolioUrl: !!(
-                profileData.portfolioUrl &&
-                profileData.portfolioUrl.trim() !== ""
-            ),
+            linkedinUrl: !!profileData.linkedinUrl?.trim(),
+            portfolioUrl: !!profileData.portfolioUrl?.trim(),
         };
 
         // Calculate score: each field is worth 12.5 points (100/8)
