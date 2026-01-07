@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { MapPin, Clock, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type OpportunityType = "job" | "company" | "featured" | "event";
+export type OpportunityType = "job" | "company" | "featured" | "event" | "community";
 
 export interface BaseOpportunity {
   id: string;

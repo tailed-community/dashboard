@@ -198,7 +198,7 @@ export default function ExplorePage() {
             id: data.slug || doc.id,
             type: "community",
             name: data.name,
-            description: data.description || "Join our community",
+            description: data.shortDescription || "Join our community",
             category: data.category || "Community",
             tags: [data.category || "Community", `${data.memberCount || 0} members`],
             logo: data.logoUrl,
