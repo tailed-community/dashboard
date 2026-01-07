@@ -25,8 +25,8 @@ import {
     SheetTrigger,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { 
-    ChevronDownIcon, 
+import {
+    ChevronDownIcon,
     Menu as MenuIcon,
     Briefcase,
     Code2,
@@ -37,11 +37,20 @@ import {
     LayoutDashboard,
     LogOut,
     Settings,
-    FileText
+    FileText,
 } from "lucide-react";
 import * as React from "react";
 import { useEffect, type JSX } from "react";
-import { FaCalendarAlt, FaChartPie, FaCrown, FaEnvelope, FaGithub, FaLaptopCode, FaLinkedin, FaTrophy } from "react-icons/fa";
+import {
+    FaCalendarAlt,
+    FaChartPie,
+    FaCrown,
+    FaEnvelope,
+    FaGithub,
+    FaLaptopCode,
+    FaLinkedin,
+    FaTrophy,
+} from "react-icons/fa";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/use-auth";
 import { signOut } from "firebase/auth";
@@ -65,7 +74,8 @@ const Community = ({
         {
             icon: <Briefcase className="h-6 w-6" />,
             labelKey: "Browse Jobs",
-            descKey: "Discover internships and new grad positions from top companies",
+            descKey:
+                "Discover internships and new grad positions from top companies",
             href: "/jobs",
         },
         {
@@ -247,7 +257,8 @@ const Opportunities = ({
         {
             icon: <FaCalendarAlt className="h-6 w-6" />,
             labelKey: "Events",
-            descKey: "Stay updated with hackathons, career fairs, and workshops",
+            descKey:
+                "Stay updated with hackathons, career fairs, and workshops",
             href: "/events",
         },
         {
@@ -643,13 +654,14 @@ function UserAvatarMenu({ user }: { user: any }) {
     };
 
     // Extract user info with fallbacks
-    const displayName = user.displayName || user.email?.split('@')[0] || 'User';
-    const firstName = user.firstName || displayName.split(' ')[0] || '';
-    const lastName = user.lastName || displayName.split(' ')[1] || '';
-    const initials = user.initials || 
-        (firstName.charAt(0) + lastName.charAt(0)).toUpperCase() || 
+    const displayName = user.displayName || user.email?.split("@")[0] || "User";
+    const firstName = user.firstName || displayName.split(" ")[0] || "";
+    const lastName = user.lastName || displayName.split(" ")[1] || "";
+    const initials =
+        user.initials ||
+        (firstName.charAt(0) + lastName.charAt(0)).toUpperCase() ||
         displayName.charAt(0).toUpperCase();
-    const photoURL = user.photoURL || user.avatar || '';
+    const photoURL = user.photoURL || user.avatar || "";
 
     return (
         <DropdownMenu>
@@ -668,7 +680,9 @@ function UserAvatarMenu({ user }: { user: any }) {
                 <DropdownMenuLabel>
                     <div className="flex flex-col space-y-1">
                         <p className="text-sm font-medium">{displayName}</p>
-                        <p className="text-xs text-muted-foreground">{user.email}</p>
+                        <p className="text-xs text-muted-foreground">
+                            {user.email}
+                        </p>
                     </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
@@ -687,7 +701,10 @@ function UserAvatarMenu({ user }: { user: any }) {
                     </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive focus:text-destructive">
+                <DropdownMenuItem
+                    onClick={handleLogout}
+                    className="cursor-pointer text-destructive focus:text-destructive"
+                >
                     <LogOut className="mr-2 h-4 w-4" />
                     <span>Log out</span>
                 </DropdownMenuItem>
@@ -724,14 +741,36 @@ export function Header() {
                     </div>
                 </Link>
                 <nav className="hidden md:flex items-center gap-6 ml-4">
-                    <Link to="/explore" className="text-sm font-medium text-brand-cream-600 hover:text-brand-cream-900 dark:text-brand-cream-400 dark:hover:text-brand-cream-50 transition-colors">Explore</Link>
-                    { user ?
+                    <Link
+                        to="/explore"
+                        className="text-sm font-medium text-brand-cream-600 hover:text-brand-cream-900 dark:text-brand-cream-400 dark:hover:text-brand-cream-50 transition-colors"
+                    >
+                        Explore
+                    </Link>
+                    {user ? (
                         <>
-                            <Link to="/jobs" className="text-sm font-medium text-brand-cream-600 hover:text-brand-cream-900 dark:text-brand-cream-400 dark:hover:text-brand-cream-50 transition-colors">Jobs</Link>
-                            <Link to="/events" className="text-sm font-medium text-brand-cream-600 hover:text-brand-cream-900 dark:text-brand-cream-400 dark:hover:text-brand-cream-50 transition-colors">Events</Link>
-                            <Link to="/communities" className="text-sm font-medium text-brand-cream-600 hover:text-brand-cream-900 dark:text-brand-cream-400 dark:hover:text-brand-cream-50 transition-colors">Communities</Link>
-                        </> : <></>
-                    }
+                            <Link
+                                to="/jobs"
+                                className="text-sm font-medium text-brand-cream-600 hover:text-brand-cream-900 dark:text-brand-cream-400 dark:hover:text-brand-cream-50 transition-colors"
+                            >
+                                Jobs
+                            </Link>
+                            <Link
+                                to="/events"
+                                className="text-sm font-medium text-brand-cream-600 hover:text-brand-cream-900 dark:text-brand-cream-400 dark:hover:text-brand-cream-50 transition-colors"
+                            >
+                                Events
+                            </Link>
+                            <Link
+                                to="/communities"
+                                className="text-sm font-medium text-brand-cream-600 hover:text-brand-cream-900 dark:text-brand-cream-400 dark:hover:text-brand-cream-50 transition-colors"
+                            >
+                                Communities
+                            </Link>
+                        </>
+                    ) : (
+                        <></>
+                    )}
                 </nav>
             </div>
             <div className="flex items-center gap-2 sm:gap-4">
@@ -749,52 +788,78 @@ export function Header() {
                                     <span className="sr-only">Open menu</span>
                                 </Button>
                             </SheetTrigger>
-                            <SheetContent side="left" className="p-0 flex flex-col">
+                            <SheetContent
+                                side="left"
+                                className="p-0 flex flex-col"
+                            >
                                 <SheetHeader className="px-4 py-3 shrink-0">
-                                    <SheetTitle className="sr-only">Navigation</SheetTitle>
+                                    <SheetTitle className="sr-only">
+                                        Navigation
+                                    </SheetTitle>
                                     <div className="flex items-center">
                                         <Logo />
                                     </div>
                                 </SheetHeader>
                                 <div className="px-4 pb-6 overflow-y-auto flex-1">
                                     <div className="space-y-2">
-                                        <Link to="/jobs" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
+                                        <Link
+                                            to="/jobs"
+                                            className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60"
+                                        >
                                             <span className="inline-flex items-center gap-2">
                                                 <Briefcase className="h-4 w-4" />
                                                 Jobs
                                             </span>
                                         </Link>
-                                        <Link to="/companies" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
+                                        <Link
+                                            to="/companies"
+                                            className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60"
+                                        >
                                             <span className="inline-flex items-center gap-2">
                                                 <BookOpen className="h-4 w-4" />
                                                 Companies
                                             </span>
                                         </Link>
-                                        <Link to="/events" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
+                                        <Link
+                                            to="/events"
+                                            className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60"
+                                        >
                                             <span className="inline-flex items-center gap-2">
                                                 <FaCalendarAlt className="h-4 w-4" />
                                                 Events
                                             </span>
                                         </Link>
-                                        <Link to="/community" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
+                                        <Link
+                                            to="/community"
+                                            className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60"
+                                        >
                                             <span className="inline-flex items-center gap-2">
                                                 <Users className="h-4 w-4" />
                                                 Student communities
                                             </span>
                                         </Link>
-                                        <Link to="/spotlight" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
+                                        <Link
+                                            to="/spotlight"
+                                            className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60"
+                                        >
                                             <span className="inline-flex items-center gap-2">
                                                 <Sparkles className="h-4 w-4" />
                                                 Student Spotlights
                                             </span>
                                         </Link>
-                                        <Link to="/jobs/applied" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
+                                        <Link
+                                            to="/jobs/applied"
+                                            className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60"
+                                        >
                                             <span className="inline-flex items-center gap-2">
                                                 <FileText className="h-4 w-4" />
                                                 My Applications
                                             </span>
                                         </Link>
-                                        <Link to="/account" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
+                                        <Link
+                                            to="/account"
+                                            className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60"
+                                        >
                                             <span className="inline-flex items-center gap-2">
                                                 <Settings className="h-4 w-4" />
                                                 Account Settings
@@ -816,7 +881,12 @@ export function Header() {
                     </>
                 ) : (
                     <>
-                        <Link className="px-5 py-2.5 rounded-full bg-brand-cream-100 text-brand-cream-900 text-sm font-semibold hover:bg-brand-cream-200 dark:bg-brand-cream-800 dark:text-brand-cream-50 dark:hover:bg-brand-cream-700 transition-all" to="/sign-in">Sign in</Link>
+                        <Link
+                            className="px-5 py-2.5 rounded-full bg-brand-cream-100 text-brand-cream-900 text-sm font-semibold hover:bg-brand-cream-200 dark:bg-brand-cream-800 dark:text-brand-cream-50 dark:hover:bg-brand-cream-700 transition-all"
+                            to="/sign-in"
+                        >
+                            Sign in
+                        </Link>
                         <Sheet>
                             <SheetTrigger asChild>
                                 <Button
@@ -828,40 +898,60 @@ export function Header() {
                                     <span className="sr-only">Open menu</span>
                                 </Button>
                             </SheetTrigger>
-                            <SheetContent side="left" className="p-0 flex flex-col">
+                            <SheetContent
+                                side="left"
+                                className="p-0 flex flex-col"
+                            >
                                 <SheetHeader className="px-4 py-3 shrink-0">
-                                    <SheetTitle className="sr-only">Navigation</SheetTitle>
+                                    <SheetTitle className="sr-only">
+                                        Navigation
+                                    </SheetTitle>
                                     <div className="flex items-center">
                                         <Logo />
                                     </div>
                                 </SheetHeader>
                                 <div className="px-4 pb-6 overflow-y-auto flex-1">
                                     <div className="space-y-2">
-                                        <Link to="/jobs" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
+                                        <Link
+                                            to="/jobs"
+                                            className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60"
+                                        >
                                             <span className="inline-flex items-center gap-2">
                                                 <Briefcase className="h-4 w-4" />
                                                 Jobs
                                             </span>
                                         </Link>
-                                        <Link to="/companies" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
+                                        <Link
+                                            to="/companies"
+                                            className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60"
+                                        >
                                             <span className="inline-flex items-center gap-2">
                                                 <BookOpen className="h-4 w-4" />
                                                 Companies
                                             </span>
                                         </Link>
-                                        <Link to="/events" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
+                                        <Link
+                                            to="/events"
+                                            className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60"
+                                        >
                                             <span className="inline-flex items-center gap-2">
                                                 <FaCalendarAlt className="h-4 w-4" />
                                                 Events
                                             </span>
                                         </Link>
-                                        <Link to="/community" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
+                                        <Link
+                                            to="/community"
+                                            className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60"
+                                        >
                                             <span className="inline-flex items-center gap-2">
                                                 <Users className="h-4 w-4" />
                                                 Student communities
                                             </span>
                                         </Link>
-                                        <Link to="/spotlight" className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60">
+                                        <Link
+                                            to="/spotlight"
+                                            className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60"
+                                        >
                                             <span className="inline-flex items-center gap-2">
                                                 <Sparkles className="h-4 w-4" />
                                                 Student Spotlights
@@ -878,7 +968,10 @@ export function Header() {
                                                 GitHub
                                             </span>
                                         </a>
-                                        <Link to="/sign-in" className="block text-sm rounded-lg px-4 py-3 bg-primary text-primary-foreground font-medium text-center">
+                                        <Link
+                                            to="/sign-in"
+                                            className="block text-sm rounded-lg px-4 py-3 bg-primary text-primary-foreground font-medium text-center"
+                                        >
                                             Get Started
                                         </Link>
                                     </div>
