@@ -2,6 +2,7 @@ import admin from "firebase-admin";
 import dotenv from "dotenv";
 import { getFirestore } from "firebase-admin/firestore";
 import { TENANT_IDS } from "../routes/auth";
+import type { Request, Response, NextFunction } from "express";
 
 dotenv.config();
 
@@ -32,7 +33,7 @@ export const createTenantAuth = async (tenantId: string) => {
 export const studentAuth = async () => createTenantAuth(TENANT_IDS.STUDENTS);
 
 export const decodedToken = () => {
-  return async (req: any, res: any, next: any) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
     const authHeader = req.headers.authorization;
 
     if (authHeader && authHeader.startsWith("Bearer ")) {
@@ -57,4 +58,4 @@ export const decodedToken = () => {
 
 export const db = getFirestore();
 
-export const storage = admin.storage().bucket();
+export const storage = admin.storage();

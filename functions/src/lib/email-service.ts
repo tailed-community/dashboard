@@ -292,3 +292,192 @@ export const sendEmail = async ({
 
   return transport.sendMail(mailOptions);
 };
+
+/**
+ * Send welcome email when a new account is created via community import
+ */
+export const sendCommunityWelcomeEmail = async (
+  email: string,
+  firstName: string,
+  communityName: string,
+  eventTitle: string,
+  loginLink: string
+) => {
+  if (process.env.NODE_ENV === "development") {
+    console.log(
+      `Welcome email sent to ${email} params: ${JSON.stringify({
+        firstName,
+        communityName,
+        eventTitle,
+        loginLink,
+      })}`
+    );
+    return Promise.resolve();
+  }
+
+  const mailOptions = {
+    from: process.env.EMAIL_FROM || "Tail'ed <no-reply@tailed.ca>",
+    sender: "no-reply@tailed.ca",
+    to: email,
+    subject: `Welcome to Tail'ed Community! 🎉`,
+    html: `
+      <div style="
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+        max-width: 600px; 
+        margin: 0 auto; 
+        background-color: #ffffff;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        overflow: hidden;
+      ">
+        <!-- Header -->
+        <div style="
+          background: linear-gradient(135deg, #EB7A24 0%, #FFD37D 100%);
+          padding: 40px 20px;
+          text-align: center;
+        ">
+          <h1 style="
+            color: #ffffff;
+            margin: 0;
+            font-size: 32px;
+            font-weight: 600;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+          ">Welcome to Tail'ed! 🎉</h1>
+        </div>
+
+        <!-- Content -->
+        <div style="padding: 40px 30px;">
+          <p style="
+            color: #333333;
+            font-size: 16px;
+            line-height: 1.6;
+            margin: 0 0 20px 0;
+          ">
+            Hi ${firstName || 'there'},
+          </p>
+
+          <p style="
+            color: #333333;
+            font-size: 16px;
+            line-height: 1.6;
+            margin: 0 0 20px 0;
+          ">
+            Great news! You've been registered for <strong style="color: #EB7A24;">${eventTitle}</strong> through <strong style="color: #EB7A24;">${communityName}</strong> on Tail'ed Community.
+          </p>
+
+          <p style="
+            color: #333333;
+            font-size: 16px;
+            line-height: 1.6;
+            margin: 0 0 30px 0;
+          ">
+            We've created an account for you to help you connect with opportunities, events, and fellow community members.
+          </p>
+
+          <!-- CTA Button -->
+          <div style="text-align: center; margin: 30px 0;">
+            <a 
+              href="${loginLink}"
+              style="
+                display: inline-block;
+                padding: 14px 32px;
+                background: #EB7A24;
+                color: #ffffff;
+                text-decoration: none;
+                border-radius: 6px;
+                font-weight: 600;
+                font-size: 16px;
+                box-shadow: 0 4px 6px rgba(235, 122, 36, 0.25);
+              "
+            >
+              Access Your Account
+            </a>
+          </div>
+
+          <!-- Features Box -->
+          <div style="
+            background-color: #FFF9F0;
+            border-left: 4px solid #EB7A24;
+            padding: 20px;
+            margin: 30px 0;
+            border-radius: 4px;
+          ">
+            <h3 style="
+              color: #EB7A24;
+              font-size: 18px;
+              margin: 0 0 15px 0;
+            ">What you can do with Tail'ed:</h3>
+            <ul style="
+              color: #555555;
+              font-size: 15px;
+              line-height: 1.8;
+              margin: 0;
+              padding-left: 20px;
+            ">
+              <li>Discover and register for upcoming events</li>
+              <li>Connect with communities and organizations</li>
+              <li>Explore job opportunities tailored for students</li>
+              <li>Build your profile and showcase your skills</li>
+            </ul>
+          </div>
+
+          <p style="
+            color: #666666;
+            font-size: 14px;
+            line-height: 1.6;
+            margin: 20px 0 0 0;
+          ">
+            Need help getting started? Visit our <a href="mailto:support@community.tailed.ca" style="color: #EB7A24; text-decoration: none;">support@community.tailed.ca</a> or reply to this email.
+          </p>
+        </div>
+
+        <!-- Footer -->
+        <div style="
+          background-color: #FFF9F0;
+          padding: 25px 30px;
+          text-align: center;
+          border-top: 1px solid #FFD37D;
+        ">
+          <p style="
+            color: #999999;
+            font-size: 13px;
+            margin: 0 0 10px 0;
+          ">
+            © ${new Date().getFullYear()} Tail'ed Community. All rights reserved.
+          </p>
+          <p style="
+            color: #999999;
+            font-size: 13px;
+            margin: 0;
+          ">
+            Questions? Contact us at <a href="mailto:community@tailed.ca" style="color: #EB7A24; text-decoration: none;">community@tailed.ca</a>
+          </p>
+        </div>
+      </div>
+    `,
+    text: `
+Welcome to Tail'ed Community! 🎉
+
+Hi ${firstName || 'there'},
+
+Great news! You've been registered for ${eventTitle} through ${communityName} on Tail'ed Community.
+
+We've created an account for you to help you connect with opportunities, events, and fellow community members.
+
+Access your account: ${loginLink}
+
+What you can do with Tail'ed:
+• Discover and register for upcoming events
+• Connect with communities and organizations
+• Explore job opportunities tailored for students
+• Build your profile and showcase your skills
+
+Need help getting started? Visit our help center at <a href="mailto:support@community.tailed.ca" style="color: #667eea; text-decoration: none;">support@community.tailed.ca</a> or reply to this email.
+
+© ${new Date().getFullYear()} Tail'ed Community. All rights reserved.
+Questions? Contact us at community@tailed.ca
+    `,
+  };
+  return transport.sendMail(mailOptions);
+};
+

@@ -43,6 +43,7 @@ const EventDetailPage = lazy(() => import("./pages/events/[id]/page"));
 const CreateEventPage = lazy(() => import("./pages/events/create/page"));
 const CommunitiesPage = lazy(() => import("./pages/communities/page"));
 const CommunityDetailPage = lazy(() => import("./pages/communities/[id]/page"));
+const CommunityAdminPage = lazy(() => import("./pages/communities/[id]/admin/page"));
 const CreateCommunityPage = lazy(
     () => import("./pages/communities/create/page")
 );
@@ -116,6 +117,14 @@ function App() {
                             <Route
                                 path="/communities/:id"
                                 element={<CommunityDetailPage />}
+                            />
+                            <Route
+                                path="/communities/:id/admin"
+                                element={
+                                    <PrivateRoute>
+                                        <CommunityAdminPage />
+                                    </PrivateRoute>
+                                }
                             />
                             <Route
                                 path="/communities/create"

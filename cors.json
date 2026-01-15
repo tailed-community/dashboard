@@ -1,0 +1,6 @@
+[
+  {
+    "origin": ["https://community.tailed.ca"],
+    "maxAgeSeconds": 3600
+  }
+]

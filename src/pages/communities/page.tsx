@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { getFirestore, collection, getDocs, query, orderBy, doc, updateDoc, arrayUnion, arrayRemove, increment, serverTimestamp } from "firebase/firestore";
-import { getApp } from "firebase/app";
 import { toast } from "sonner";
 import { CommunityCard, type Community } from "@/components/community/community-card";
 import { Input } from "@/components/ui/input";
@@ -9,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Search, Plus, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
+import { apiFetch } from "@/lib/fetch";
 
 const categories = [
   "All",
@@ -32,32 +31,32 @@ export default function CommunityPage() {
   const [error, setError] = useState<string | null>(null);
   const [joiningId, setJoiningId] = useState<string | null>(null);
 
-  // Fetch communities from Firestore
+  // Fetch communities from API
   useEffect(() => {
     const fetchcommunities = async () => {
       try {
         setIsLoading(true);
         setError(null);
-        const db = getFirestore(getApp());
-        const communitiesRef = collection(db, "communities");
-        const q = query(communitiesRef, orderBy("createdAt", "desc"));
         
-        const querySnapshot = await getDocs(q);
-        const fetchedcommunities: Community[] = querySnapshot.docs.map((doc) => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            name: data.name,
-            description: data.description,
-            shortDescription: data.shortDescription,
-            slug: data.slug,
-            category: data.category,
-            memberCount: data.memberCount || 0,
-            logoUrl: data.logoUrl,
-            bannerUrl: data.bannerUrl,
-            members: data.members || [],
-          };
-        });
+        const response = await apiFetch("/public/communities");
+        const data = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to fetch communities");
+        }
+        
+        const fetchedcommunities: Community[] = data.communities.map((comm: any) => ({
+          id: comm.id,
+          name: comm.name,
+          description: comm.description,
+          shortDescription: comm.shortDescription,
+          slug: comm.slug,
+          category: comm.category,
+          memberCount: comm.memberCount || 0,
+          logoUrl: comm.logo,
+          bannerUrl: comm.banner,
+          members: comm.members || [],
+        }));
         
         setcommunities(fetchedcommunities);
       } catch (err) {
@@ -94,21 +93,25 @@ export default function CommunityPage() {
     setJoiningId(communityId);
 
     try {
-      const db = getFirestore(getApp());
-      const communityRef = doc(db, "communities", communityId);
-      
       const community = communities.find(a => a.id === communityId);
       const isMember = community?.members?.includes(user.uid);
 
-      if (isMember) {
-        // Leave community
-        await updateDoc(communityRef, {
-          members: arrayRemove(user.uid),
-          memberCount: increment(-1),
-          updatedAt: serverTimestamp(),
-        });
+      const endpoint = isMember 
+        ? `/communities/${communityId}/leave`
+        : `/communities/${communityId}/join`;
 
-        // Update local state
+      const response = await apiFetch(endpoint, {
+        method: "POST",
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to update membership");
+      }
+
+      // Update local state
+      if (isMember) {
         setcommunities(prev => prev.map(a => 
           a.id === communityId 
             ? { 
@@ -123,14 +126,6 @@ export default function CommunityPage() {
           description: `You've left ${community?.name}`,
         });
       } else {
-        // Join community
-        await updateDoc(communityRef, {
-          members: arrayUnion(user.uid),
-          memberCount: increment(1),
-          updatedAt: serverTimestamp(),
-        });
-
-        // Update local state
         setcommunities(prev => prev.map(a => 
           a.id === communityId 
             ? { 
