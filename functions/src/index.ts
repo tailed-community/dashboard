@@ -8,6 +8,9 @@ import profileRouter from "./routes/profile";
 import githubRouter from "./routes/github";
 import devpostRouter from "./routes/devpost";
 import jobRouter from "./routes/job";
+import eventRouter from "./routes/event";
+import communityRouter from "./routes/community";
+import publicRouter from "./routes/public";
 
 declare global {
   namespace Express {
@@ -41,12 +44,20 @@ app.use((req, res, next) => {
   express.json()(req, res, next);
 });
 
+// Apply authentication middleware globally
+// If a Bearer token is present, it will decode and set req.user
+// If no token or invalid token, req.user will be undefined
+app.use(decodedToken());
+
 //Routes
 app.use("/auth", authRouter);
-app.use("/profile", decodedToken(), profileRouter);
-app.use("/github", decodedToken(), githubRouter);
-app.use("/devpost", decodedToken(), devpostRouter);
-app.use("/job", decodedToken(), jobRouter);
+app.use("/public", publicRouter); // Public routes (no auth required)
+app.use("/profile", profileRouter);
+app.use("/github", githubRouter);
+app.use("/devpost", devpostRouter);
+app.use("/job", jobRouter);
+app.use("/events", eventRouter);
+app.use("/communities", communityRouter);
 
 if (process.env.NODE_ENV === "development") {
   // In development, we can add a simple health check endpoint

@@ -15,9 +15,8 @@ import {
 } from "lucide-react";
 import { Header } from "@/components/landing/header";
 import { useEffect, useState } from "react";
-import { collection, query, where, orderBy, limit, getDocs, getFirestore } from "firebase/firestore";
 import { SiDiscord, SiGithub, SiInstagram, SiYoutube } from "react-icons/si";
-import { getApp } from "firebase/app";
+import { apiFetch } from "@/lib/fetch";
 
 interface Event {
   id: string;
@@ -70,58 +69,39 @@ export default function LandingPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const db = getFirestore(getApp());
+        const response = await apiFetch("/public/featured");
+        const data = await response.json();
         
-        // Fetch event
-        const eventsRef = collection(db, "events");
-        const now = new Date();
-        const eventQuery = query(
-          eventsRef,
-          where("datetime", ">=", now),
-          orderBy("datetime", "asc"),
-          limit(1)
-        );
-        
-        const eventSnapshot = await getDocs(eventQuery);
-        
-        if (!eventSnapshot.empty) {
-          const doc = eventSnapshot.docs[0];
-          const data = doc.data();
-          setFeaturedEvent({
-            id: doc.id,
-            title: data.title,
-            datetime: data.datetime.toDate(),
-            location: data.location,
-            city: data.city,
-            heroImageUrl: data.heroImageUrl,
-            price: data.price,
-            attendees: data.attendees || 0,
-            maxAttendees: data.maxAttendees,
-          });
-        }
+        if (response.ok && data.success) {
+          // Set featured event
+          if (data.featuredEvent) {
+            const evt = data.featuredEvent;
+            setFeaturedEvent({
+              id: evt.id,
+              title: evt.title,
+              datetime: new Date(evt.datetime._seconds * 1000),
+              location: evt.location,
+              city: evt.city,
+              heroImageUrl: evt.heroImage,
+              price: evt.price,
+              attendees: evt.attendees || 0,
+              maxAttendees: evt.maxAttendees,
+            });
+          }
 
-        // Fetch community
-        const communitiesRef = collection(db, "communities");
-        const communityQuery = query(
-          communitiesRef,
-          orderBy("memberCount", "desc"),
-          limit(1)
-        );
-        
-        const communitiesnapshot = await getDocs(communityQuery);
-        
-        if (!communitiesnapshot.empty) {
-          const doc = communitiesnapshot.docs[0];
-          const data = doc.data();
-          setFeaturedCommunity({
-            id: doc.id,
-            name: data.name,
-            description: data.description,
-            category: data.category,
-            memberCount: data.memberCount || 0,
-            logoUrl: data.logoUrl,
-            bannerUrl: data.bannerUrl,
-          });
+          // Set featured community
+          if (data.topCommunity) {
+            const comm = data.topCommunity;
+            setFeaturedCommunity({
+              id: comm.id,
+              name: comm.name,
+              description: comm.description,
+              category: comm.category,
+              memberCount: comm.memberCount || 0,
+              logoUrl: comm.logo,
+              bannerUrl: comm.banner,
+            });
+          }
         }
       } catch (error) {
         console.error("Error fetching data:", error);

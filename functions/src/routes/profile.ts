@@ -259,7 +259,7 @@ router.patch("/main-resume/", async (req, res): Promise<void> => {
 
                 // Delete any existing resumes in this folder
                 const folderPath = `profiles/${userId}/resumes/main_resume/`;
-                const [existingFiles] = await storage.getFiles({
+                const [existingFiles] = await storage.bucket().getFiles({
                     prefix: folderPath,
                 });
                 if (existingFiles.length > 0) {
@@ -274,7 +274,7 @@ router.patch("/main-resume/", async (req, res): Promise<void> => {
 
                 // Upload file to Firebase Storage
                 const filePath = `profiles/${userId}/resumes/main_resume/${resumeId}.pdf`;
-                const storageFile = storage.file(filePath);
+                const storageFile = storage.bucket().file(filePath);
 
                 await storageFile.save(fileBuffer, {
                     contentType: "application/pdf",
@@ -285,7 +285,7 @@ router.patch("/main-resume/", async (req, res): Promise<void> => {
 
                 // Construct a Firebase public download URL
                 const encodedPath = encodeURIComponent(filePath);
-                const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${storage.name}/o/${encodedPath}?alt=media`;
+                const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${storage.bucket().name}/o/${encodedPath}?alt=media`;
 
                 // Save resume metadata to the user's profile
                 await db
@@ -656,7 +656,7 @@ router.delete("/main-resume", async (req, res) => {
         // Delete the file from Firebase Storage
         const filePath = `profiles/${userId}/resumes/main_resume/${resume.id}.pdf`;
         try {
-            const storageFile = storage.file(filePath);
+            const storageFile = storage.bucket().file(filePath);
             await storageFile.delete();
             logger.info(`Deleted resume file: ${filePath}`);
         } catch (storageError) {

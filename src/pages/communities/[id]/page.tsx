@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/hooks/use-auth";
-import { getFirestore, collection, query, where, orderBy, limit, getDocs, Timestamp, doc, getDoc } from "firebase/firestore";
-import { getApp } from "firebase/app";
+import { Timestamp } from "firebase/firestore";
+import { apiFetch } from "@/lib/fetch";
 import {
     Users,
     MapPin,
@@ -12,6 +12,7 @@ import {
     Loader2,
     Calendar,
     UserPlus,
+    Settings,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -57,6 +58,7 @@ export default function CommunityDetailPage() {
     const [isMember, setIsMember] = useState(false);
     const [joinLoading, setJoinLoading] = useState(false);
     const [upcomingEvents, setUpcomingEvents] = useState<Event[]>([]);
+    const [pastEvents, setPastEvents] = useState<Event[]>([]);
     const [loadingEvents, setLoadingEvents] = useState(true);
 
     useEffect(() => {
@@ -67,31 +69,20 @@ export default function CommunityDetailPage() {
 
         const fetchCommunity = async () => {
             try {
-                const db = getFirestore(getApp());
-                
-                // Try to find community by slug first
-                const communitiesRef = collection(db, "communities");
-                const slugQuery = query(communitiesRef, where("slug", "==", slug), limit(1));
-                const slugSnapshot = await getDocs(slugQuery);
+                const response = await apiFetch(`/public/communities/${slug}`);
+                const data = await response.json();
 
-                let communityDoc;
-                if (!slugSnapshot.empty) {
-                    communityDoc = slugSnapshot.docs[0];
-                } else {
-                    // Fallback to document ID
-                    const docRef = doc(db, "communities", slug);
-                    communityDoc = await getDoc(docRef);
-                }
-
-                if (!communityDoc || !communityDoc.exists()) {
-                    toast.error("Community not found");
+                if (!response.ok) {
+                    toast.error(data.error || "Community not found");
                     navigate("/communities");
                     return;
                 }
 
+                // Convert date fields to Timestamp
                 const communityData = {
-                    id: communityDoc.id,
-                    ...communityDoc.data(),
+                    ...data.community,
+                    createdAt: data.community.createdAt ? Timestamp.fromDate(new Date(data.community.createdAt._seconds * 1000)) : Timestamp.now(),
+                    updatedAt: data.community.updatedAt ? Timestamp.fromDate(new Date(data.community.updatedAt._seconds * 1000)) : Timestamp.now(),
                 } as CommunityData;
 
                 setCommunity(communityData);
@@ -117,31 +108,34 @@ export default function CommunityDetailPage() {
         const fetchUpcomingEvents = async () => {
             try {
                 setLoadingEvents(true);
-                const db = getFirestore(getApp());
 
-                // Fetch events hosted by this community
-                const eventsQuery = query(
-                    collection(db, "events"),
-                    where("status", "==", "published"),
-                    where("communityId", "==", community.id),
-                    where("datetime", ">=", Timestamp.now()),
-                    orderBy("datetime", "asc"),
-                    limit(6)
-                );
-                
-                const eventsSnapshot = await getDocs(eventsQuery);
-                const events: Event[] = [];
-                
-                eventsSnapshot.forEach((doc) => {
-                    events.push({
-                        id: doc.id,
-                        ...doc.data(),
-                    } as Event);
-                });
+                // Fetch upcoming events hosted by this community
+                const upcomingResponse = await apiFetch(`/public/events?communityId=${community.id}&upcoming=true&limit=6`);
+                const upcomingData = await upcomingResponse.json();
 
-                setUpcomingEvents(events);
+                const upcoming: Event[] = upcomingData.success && upcomingData.events
+                    ? upcomingData.events.map((evt: any) => ({
+                        ...evt,
+                        datetime: evt.datetime ? Timestamp.fromDate(new Date(evt.datetime._seconds * 1000)) : Timestamp.now(),
+                    }))
+                    : [];
+
+                setUpcomingEvents(upcoming);
+
+                // Fetch past events hosted by this community
+                const pastResponse = await apiFetch(`/public/events?communityId=${community.id}&upcoming=false&limit=6`);
+                const pastData = await pastResponse.json();
+
+                const past: Event[] = pastData.success && pastData.events
+                    ? pastData.events.map((evt: any) => ({
+                        ...evt,
+                        datetime: evt.datetime ? Timestamp.fromDate(new Date(evt.datetime._seconds * 1000)) : Timestamp.now(),
+                    }))
+                    : [];
+
+                setPastEvents(past);
             } catch (error) {
-                console.error("Error fetching upcoming events:", error);
+                console.error("Error fetching events:", error);
             } finally {
                 setLoadingEvents(false);
             }
@@ -202,32 +196,34 @@ export default function CommunityDetailPage() {
         try {
             setJoinLoading(true);
 
-            const db = getFirestore(getApp());
-            const { updateDoc, doc: docRef, arrayUnion, arrayRemove } = await import("firebase/firestore");
-            const communityRef = docRef(db, "communities", community.id);
+            const endpoint = isMember 
+                ? `/communities/${community.id}/leave`
+                : `/communities/${community.id}/join`;
+
+            const response = await apiFetch(endpoint, {
+                method: "POST",
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || "Failed to update membership");
+            }
 
             if (isMember) {
-                // Leave community
-                await updateDoc(communityRef, {
-                    members: arrayRemove(user.uid),
-                    memberCount: community.memberCount - 1,
-                });
+                // Left community
                 setIsMember(false);
                 setCommunity({ ...community, memberCount: community.memberCount - 1 });
                 toast.success("Left community");
             } else {
-                // Join community
-                await updateDoc(communityRef, {
-                    members: arrayUnion(user.uid),
-                    memberCount: community.memberCount + 1,
-                });
+                // Joined community
                 setIsMember(true);
                 setCommunity({ ...community, memberCount: community.memberCount + 1 });
                 toast.success("Joined community!");
             }
         } catch (error) {
             console.error("Error toggling membership:", error);
-            toast.error("An error occurred. Please try again.");
+            toast.error(error instanceof Error ? error.message : "An error occurred. Please try again.");
         } finally {
             setJoinLoading(false);
         }
@@ -249,13 +245,28 @@ export default function CommunityDetailPage() {
             {/* Main Content */}
             <div className="mx-auto max-w-7xl px-6 py-12">
                 {/* Back Button */}
-                <button
-                    onClick={() => navigate("/communities")}
-                    className="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-900 mb-8 transition-colors"
-                >
-                    <ArrowLeft className="h-4 w-4" />
-                    Back to Communities
-                </button>
+                <div className="flex items-center justify-between mb-8">
+                    <button
+                        onClick={() => navigate("/communities")}
+                        className="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-900 transition-colors"
+                    >
+                        <ArrowLeft className="h-4 w-4" />
+                        Back to Communities
+                    </button>
+
+                    {/* Admin Button - Only visible to creator */}
+                    {user && community.createdBy === user.uid && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => navigate(`/communities/${slug}/admin`)}
+                            className="flex items-center gap-2"
+                        >
+                            <Settings className="h-4 w-4" />
+                            Admin
+                        </Button>
+                    )}
+                </div>
 
                 <div className="grid gap-12 lg:grid-cols-[240px_1fr_260px]">
                     {/* Left Column - Community Logo */}
@@ -405,65 +416,152 @@ export default function CommunityDetailPage() {
                 </div>
 
                 {/* Upcoming Events Section */}
-                {!loadingEvents && upcomingEvents.length > 0 && (
-                    <div className="mt-16 space-y-8">
-                        <div className="space-y-6">
-                            <div className="flex items-center justify-between">
-                                <h2 className="text-2xl font-bold text-slate-900">Upcoming Events</h2>
-                                {upcomingEvents.length >= 6 && (
-                                    <Link to="/events">
-                                        <Button variant="outline" size="sm">
-                                            View All
-                                        </Button>
-                                    </Link>
-                                )}
-                            </div>
-                            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                                {upcomingEvents.map((event) => (
-                                    <Card 
-                                        key={event.id} 
-                                        className="hover:shadow-lg transition-shadow cursor-pointer overflow-hidden"
-                                        onClick={() => navigate(`/events/${event.id}`)}
-                                    >
-                                        {event.heroImageUrl && (
-                                            <div className="aspect-video w-full overflow-hidden">
-                                                <img 
-                                                    src={event.heroImageUrl} 
-                                                    alt={event.title}
-                                                    className="w-full h-full object-cover"
-                                                />
-                                            </div>
-                                        )}
-                                        <CardHeader>
-                                            <CardTitle className="text-lg line-clamp-2">{event.title}</CardTitle>
-                                        </CardHeader>
-                                        <CardContent>
-                                            <div className="space-y-3">
-                                                <div className="flex items-center gap-2">
-                                                    <Badge variant="outline">{event.category}</Badge>
-                                                    <Badge variant="secondary">{event.mode}</Badge>
+                {!loadingEvents && (upcomingEvents.length > 0 || pastEvents.length > 0) && (
+                    <div className="mt-16 space-y-12">
+                        {/* Upcoming Events */}
+                        {upcomingEvents.length > 0 && (
+                            <div className="space-y-6">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h2 className="text-2xl font-bold text-slate-900">Upcoming Events</h2>
+                                        <p className="text-sm text-slate-600 mt-1">
+                                            {upcomingEvents.length} upcoming {upcomingEvents.length === 1 ? 'event' : 'events'}
+                                        </p>
+                                    </div>
+                                    {upcomingEvents.length >= 6 && (
+                                        <Link to="/events">
+                                            <Button variant="outline" size="sm">
+                                                View All Events
+                                            </Button>
+                                        </Link>
+                                    )}
+                                </div>
+                                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                                    {upcomingEvents.map((event) => (
+                                        <Card 
+                                            key={event.id} 
+                                            className="hover:shadow-lg transition-shadow cursor-pointer overflow-hidden"
+                                            onClick={() => navigate(`/events/${event.id}`)}
+                                        >
+                                            {event.heroImageUrl && (
+                                                <div className="aspect-video w-full overflow-hidden">
+                                                    <img 
+                                                        src={event.heroImageUrl} 
+                                                        alt={event.title}
+                                                        className="w-full h-full object-cover"
+                                                    />
                                                 </div>
-                                                <div className="flex items-center gap-2 text-sm text-slate-600">
-                                                    <Calendar className="h-4 w-4" />
-                                                    <span>{event.datetime.toDate().toLocaleDateString()}</span>
-                                                </div>
-                                                {event.location && (
-                                                    <div className="flex items-center gap-2 text-sm text-slate-600">
-                                                        <MapPin className="h-4 w-4" />
-                                                        <span className="line-clamp-1">{event.location}</span>
+                                            )}
+                                            <CardHeader>
+                                                <CardTitle className="text-lg line-clamp-2">{event.title}</CardTitle>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <div className="space-y-3">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <Badge variant="outline">{event.category}</Badge>
+                                                        <Badge variant="secondary">{event.mode}</Badge>
                                                     </div>
-                                                )}
-                                                {event.price === "Free" && (
-                                                    <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
-                                                        Free
-                                                    </Badge>
-                                                )}
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                ))}
+                                                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                                                        <Calendar className="h-4 w-4" />
+                                                        <span>{event.datetime.toDate().toLocaleDateString()}</span>
+                                                    </div>
+                                                    {event.location && (
+                                                        <div className="flex items-center gap-2 text-sm text-slate-600">
+                                                            <MapPin className="h-4 w-4" />
+                                                            <span className="line-clamp-1">{event.location}</span>
+                                                        </div>
+                                                    )}
+                                                    {event.price === "Free" && (
+                                                        <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
+                                                            Free
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    ))}
+                                </div>
                             </div>
-                        </div>
+                        )}
+
+                        {/* Past Events */}
+                        {pastEvents.length > 0 && (
+                            <div className="space-y-6">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h2 className="text-2xl font-bold text-slate-900">Past Events</h2>
+                                        <p className="text-sm text-slate-600 mt-1">
+                                            {pastEvents.length} past {pastEvents.length === 1 ? 'event' : 'events'}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                                    {pastEvents.map((event) => (
+                                        <Card 
+                                            key={event.id} 
+                                            className="hover:shadow-lg transition-shadow cursor-pointer overflow-hidden opacity-90"
+                                            onClick={() => navigate(`/events/${event.id}`)}
+                                        >
+                                            {event.heroImageUrl && (
+                                                <div className="aspect-video w-full overflow-hidden relative">
+                                                    <img 
+                                                        src={event.heroImageUrl} 
+                                                        alt={event.title}
+                                                        className="w-full h-full object-cover grayscale-[30%]"
+                                                    />
+                                                    <div className="absolute top-2 right-2">
+                                                        <Badge variant="secondary" className="bg-slate-900/80 text-white">
+                                                            Past Event
+                                                        </Badge>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <CardHeader>
+                                                <CardTitle className="text-lg line-clamp-2">{event.title}</CardTitle>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <div className="space-y-3">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <Badge variant="outline">{event.category}</Badge>
+                                                        <Badge variant="secondary">{event.mode}</Badge>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                                                        <Calendar className="h-4 w-4" />
+                                                        <span>{event.datetime.toDate().toLocaleDateString()}</span>
+                                                    </div>
+                                                    {event.location && (
+                                                        <div className="flex items-center gap-2 text-sm text-slate-600">
+                                                            <MapPin className="h-4 w-4" />
+                                                            <span className="line-clamp-1">{event.location}</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* No Events Message */}
+                        {upcomingEvents.length === 0 && pastEvents.length === 0 && (
+                            <div className="text-center py-12 bg-slate-50 rounded-lg border border-slate-200">
+                                <Calendar className="h-12 w-12 mx-auto text-slate-400 mb-4" />
+                                <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                                    No Events Yet
+                                </h3>
+                                <p className="text-slate-600">
+                                    This community hasn't hosted any events yet. Check back soon!
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Loading Events */}
+                {loadingEvents && (
+                    <div className="mt-16 flex items-center justify-center py-12">
+                        <Loader2 className="h-8 w-8 animate-spin text-slate-600" />
                     </div>
                 )}
             </div>

@@ -21,6 +21,7 @@ import {
     GithubAuthProvider,
     signInWithCredential,
     unlink,
+    updateProfile,
 } from "firebase/auth";
 import { FirebaseError } from "firebase/app";
 import type { DevpostProfile } from "../jobs/[slug]/apply/types";
@@ -535,6 +536,20 @@ export default function AccountPage() {
 
             // Note: Devpost and GitHub profiles are already saved in the database during verification/OAuth
             // so no separate save call is needed here
+
+            // Update Firebase Auth displayName to match the new name
+            if (studentAuth.currentUser) {
+                try {
+                    await updateProfile(studentAuth.currentUser, {
+                        displayName: `${trimmedStudentData.firstName} ${trimmedStudentData.lastName}`,
+                    });
+                } catch (authError) {
+                    console.error("Error updating displayName:", authError);
+                    toast.warning("Profile saved, but display name update failed", {
+                        description: "Your profile was saved, but we couldn't update your display name. Please try again.",
+                    });
+                }
+            }
 
             // Update local state with trimmed data while preserving other fields
             const updatedStudent = {

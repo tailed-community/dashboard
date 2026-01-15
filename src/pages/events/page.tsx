@@ -9,8 +9,8 @@ import {
     Loader2,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { getFirestore, collection, getDocs, doc, getDoc, query, orderBy, where, Timestamp } from "firebase/firestore";
-import { getApp } from "firebase/app";
+import { Timestamp } from "firebase/firestore";
+import { apiFetch } from "@/lib/fetch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -344,19 +344,19 @@ export default function EventsPage() {
     useEffect(() => {
         const fetchEvents = async () => {
             try {
-                const db = getFirestore(getApp());
-                const eventsRef = collection(db, "events");
-                const eventsQuery = query(
-                    eventsRef,
-                    where("status", "==", "published"),
-                    orderBy("datetime", "asc")
-                );
-                
-                const snapshot = await getDocs(eventsQuery);
-                const fetchedEvents: FirestoreEvent[] = snapshot.docs.map((doc) => ({
-                    id: doc.id,
-                    ...doc.data(),
-                } as FirestoreEvent));
+                const response = await apiFetch("/public/events?upcoming=true&limit=50");
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || "Failed to fetch events");
+                }
+
+                const fetchedEvents: FirestoreEvent[] = data.events.map((evt: any) => ({
+                    ...evt,
+                    datetime: evt.datetime ? Timestamp.fromDate(new Date(evt.datetime._seconds * 1000)) : Timestamp.now(),
+                    createdAt: evt.createdAt ? Timestamp.fromDate(new Date(evt.createdAt._seconds * 1000)) : Timestamp.now(),
+                    updatedAt: evt.updatedAt ? Timestamp.fromDate(new Date(evt.updatedAt._seconds * 1000)) : Timestamp.now(),
+                }));
 
                 setEvents(fetchedEvents);
 
@@ -371,13 +371,10 @@ export default function EventsPage() {
                 if (communityIds.length > 0) {
                     for (const communityId of communityIds) {
                         try {
-                            const communityDocRef = doc(db, "communities", communityId);
-                            const communityDoc = await getDoc(communityDocRef);
-                            if (communityDoc.exists()) {
-                                const data = communityDoc.data();
-                                if (data.logoUrl) {
-                                    communityLogos[communityId] = data.logoUrl;
-                                }
+                            const communityResponse = await apiFetch(`/public/communities/${communityId}`);
+                            const communityData = await communityResponse.json();
+                            if (communityResponse.ok && communityData.community?.logo) {
+                                communityLogos[communityId] = communityData.community.logo;
                             }
                         } catch (error) {
                             console.error(`Error fetching community ${communityId}:`, error);

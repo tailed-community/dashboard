@@ -3,8 +3,6 @@ import { OpportunityCard, type Opportunity } from "@/components/explore/opportun
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { Separator } from "@/components/ui/separator";
-import { getFirestore, collection, getDocs, query, orderBy, limit, where, Timestamp } from "firebase/firestore";
-import { getApp } from "firebase/app";
 import { Loader2 } from "lucide-react";
 import { apiFetch } from "@/lib/fetch";
 import { type ExternalJob } from "@/types/jobs";
@@ -36,7 +34,6 @@ export default function ExplorePage() {
     const fetchOpportunities = async () => {
       try {
         setLoading(true);
-        const db = getFirestore(getApp());
         
         // Separate arrays for each type
         const featuredJobsArray: Opportunity[] = [];
@@ -52,14 +49,15 @@ export default function ExplorePage() {
         const eventsLimit = 20;
         const communitiesLimit = 20;
 
-        // Fetch featured jobs and external jobs in parallel
+        // Fetch featured jobs, external jobs, events, and communities in parallel
         const results = await Promise.allSettled([
           apiFetch("/public/jobs", {}, true),
           fetch(INTERNSHIPS_URL),
           fetch(NEW_GRADS_URL),
+          apiFetch("/public/explore"),
         ]);
 
-        const [featuredJobsResult, internshipsResult, newGradsResult] = results;
+        const [featuredJobsResult, internshipsResult, newGradsResult, exploreResult] = results;
 
         let totalFeaturedJobs = 0;
         let totalInternships = 0;
@@ -152,52 +150,44 @@ export default function ExplorePage() {
           }
         }
 
-        // Fetch events
-        const eventsRef = collection(db, "events");
-        const eventsQuery = query(
-          eventsRef,
-          where("status", "==", "published"),
-          where("datetime", ">=", Timestamp.now()),
-          orderBy("datetime", "asc"),
-          limit(eventsLimit)
-        );
-        const eventsSnapshot = await getDocs(eventsQuery);
-        const totalEvents = eventsSnapshot.size;
+        // Process explore data (events and communities from API)
+        let totalEvents = 0;
+        let totalcommunities = 0;
         
-        eventsSnapshot.forEach((doc) => {
-          const data = doc.data();
-          const eventDate = data.datetime.toDate();
-          
-          eventsArray.push({
-            id: doc.id,
-            type: "event",
-            title: data.title,
-            organization: data.hostType === "community" && data.communityName 
-              ? data.communityName 
-              : data.customHostName || "Community Event",
-            date: eventDate.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-            time: eventDate.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
-            color: "bg-blue-500",
-          });
-        });
+        if (exploreResult.status === "fulfilled") {
+          try {
+            const exploreData = await exploreResult.value.json();
+            
+            if (exploreData.success) {
+              // Process events
+              const events = exploreData.events || [];
+              totalEvents = events.length;
+              
+              events.slice(0, eventsLimit).forEach((evt: any) => {
+                const eventDate = new Date(evt.datetime._seconds * 1000);
+                
+                eventsArray.push({
+                  id: evt.id,
+                  type: "event",
+                  title: evt.title,
+                  organization: evt.hostType === "community" && evt.communityName 
+                    ? evt.communityName 
+                    : evt.customHostName || "Community Event",
+                  date: eventDate.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+                  time: eventDate.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
+                  color: "bg-blue-500",
+                });
+              });
 
-        // Fetch communities/communities as company cards
-        const communitiesRef = collection(db, "communities");
-        const communitiesQuery = query(
-          communitiesRef,
-          orderBy("memberCount", "desc"),
-          limit(communitiesLimit)
-        );
-        const communitiesSnapshot = await getDocs(communitiesQuery);
-        const totalcommunities = communitiesSnapshot.size;
-        
-        communitiesSnapshot.forEach((doc) => {
-          const data = doc.data();
-          
-          communitiesArray.push({
-            id: data.slug || doc.id,
-            type: "community",
-            name: data.name,
+              // Process communities
+              const communities = exploreData.communities || [];
+              totalcommunities = communities.length;
+              
+              communities.slice(0, communitiesLimit).forEach((comm: any) => {
+                communitiesArray.push({
+                  id: comm.slug || comm.id,
+                  type: "community",
+                  name: comm.name,
             description: data.shortDescription || "Join our community",
             category: data.category || "Community",
             tags: [data.category || "Community", `${data.memberCount || 0} members`],
