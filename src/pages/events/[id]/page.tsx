@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { getFirestore, doc, getDoc, Timestamp } from "firebase/firestore";
-import { getApp } from "firebase/app";
+import { DateTime } from "luxon";
 import {
     CalendarDays,
     MapPin,
@@ -13,6 +12,8 @@ import {
     ExternalLink,
     Loader2,
 } from "lucide-react";
+import { apiFetch } from "@/lib/fetch";
+import { getFileUrl } from "@/lib/firebase-client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -25,24 +26,29 @@ type EventData = {
     id: string;
     title: string;
     description: string;
-    datetime: Timestamp;
+    startDate: string;
+    startTime: string;
+    endDate?: string;
+    endTime?: string;
     location?: string;
     city?: string;
     digitalLink?: string;
     mode: "Online" | "In Person" | "Hybrid";
-    price: string;
+    isPaid: boolean;
+    registrationLink?: string;
     category: string;
     hostType: "community" | "custom";
     communityId?: string;
     communityName?: string;
     customHostName?: string;
-    heroImageUrl?: string;
-    maxAttendees?: number;
+    heroImage?: string;
+    capacity?: number;
     attendees: number;
     createdBy: string;
-    createdAt: Timestamp;
-    updatedAt: Timestamp;
+    createdAt: Date;
+    updatedAt: Date;
     status: string;
+    community?: CommunityData; // Populated by backend
 };
 
 type CommunityData = {
@@ -58,6 +64,7 @@ export default function EventDetailPage() {
     const navigate = useNavigate();
     const [event, setEvent] = useState<EventData | null>(null);
     const [community, setCommunity] = useState<CommunityData | null>(null);
+    const [heroImageUrl, setHeroImageUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [isRegistered, setIsRegistered] = useState(false);
 
@@ -69,36 +76,44 @@ export default function EventDetailPage() {
 
         const fetchEvent = async () => {
             try {
-                const db = getFirestore(getApp());
-                const eventRef = doc(db, "events", id);
-                const eventDoc = await getDoc(eventRef);
+                // Fetch event via API (includes populated community data)
+                const response = await apiFetch(`/events/${id}`);
+                const result = await response.json();
 
-                if (!eventDoc.exists()) {
-                    toast.error("Event not found");
-                    navigate("/events");
-                    return;
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        toast.error("Event not found");
+                        navigate("/events");
+                        return;
+                    }
+                    throw new Error(result.error || "Failed to load event");
                 }
 
-                const eventData = {
-                    id: eventDoc.id,
-                    ...eventDoc.data(),
-                } as EventData;
+                const eventData: EventData = {
+                    ...result.event,
+                    createdAt: result.event.createdAt?._seconds 
+                        ? DateTime.fromSeconds(result.event.createdAt._seconds).toJSDate() 
+                        : DateTime.now().toJSDate(),
+                    updatedAt: result.event.updatedAt?._seconds 
+                        ? DateTime.fromSeconds(result.event.updatedAt._seconds).toJSDate() 
+                        : DateTime.now().toJSDate(),
+                };
 
                 setEvent(eventData);
 
-                // Fetch community data if event is hosted by a community
-                if (eventData.hostType === "community" && eventData.communityId) {
-                    const communityRef = doc(db, "communities", eventData.communityId);
-                    const communityDoc = await getDoc(communityRef);
-
-                    if (communityDoc.exists()) {
-                        setCommunity({
-                            name: communityDoc.data().name,
-                            logoUrl: communityDoc.data().logoUrl,
-                            description: communityDoc.data().description,
-                            shortDescription: communityDoc.data().shortDescription,
-                            slug: communityDoc.data().slug,
-                        });
+                // Community data is already populated by backend
+                if (eventData.community) {
+                    setCommunity(eventData.community);
+                }
+                
+                // Load hero image from Firebase Storage if available
+                if (eventData.heroImage) {
+                    try {
+                        const imageUrl = await getFileUrl(eventData.heroImage);
+                        setHeroImageUrl(imageUrl);
+                    } catch (error) {
+                        console.error("Failed to load hero image:", error);
+                        setHeroImageUrl(null);
                     }
                 }
             } catch (error) {
@@ -127,23 +142,22 @@ export default function EventDetailPage() {
         return null;
     }
 
-    const eventDate = event.datetime.toDate();
-    const now = new Date();
-    const isPastEvent = eventDate < now;
-    const diffInDays = Math.ceil((eventDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    // Parse start date/time
+    const eventDateTime = DateTime.fromISO(`${event.startDate}T${event.startTime}`);
+    const now = DateTime.now();
+    const isPastEvent = eventDateTime < now;
+    const diff = eventDateTime.diff(now, ['days']).toObject();
+    const diffInDays = Math.ceil(diff.days || 0);
 
-    const formattedDate = eventDate.toLocaleDateString("en-US", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-    });
-
-    const formattedTime = eventDate.toLocaleTimeString("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-    });
+    const formattedDate = eventDateTime.toFormat('EEEE, MMMM d, yyyy');
+    const formattedTime = eventDateTime.toFormat('h:mm a');
+    
+    // Parse end date/time if provided
+    const hasEndTime = event.endDate && event.endTime;
+    const endDateTime = hasEndTime ? DateTime.fromISO(`${event.endDate}T${event.endTime}`) : null;
+    const formattedEndDate = endDateTime ? endDateTime.toFormat('EEEE, MMMM d, yyyy') : null;
+    const formattedEndTime = endDateTime ? endDateTime.toFormat('h:mm a') : null;
+    const isSameDay = endDateTime && eventDateTime.hasSame(endDateTime, 'day');
 
     const hostName = event.hostType === "community" && event.communityName
         ? event.communityName
@@ -184,9 +198,9 @@ export default function EventDetailPage() {
                 <div className="grid gap-12 lg:grid-cols-[240px_1fr_260px]">
                     {/* Left Column - Event Image */}
                     <div className="lg:col-span-1">
-                        {event.heroImageUrl ? (
+                        {heroImageUrl ? (
                             <img
-                                src={event.heroImageUrl}
+                                src={heroImageUrl}
                                 alt={event.title}
                                 className="w-full aspect-square object-cover rounded-2xl"
                             />
@@ -211,11 +225,12 @@ export default function EventDetailPage() {
                                 <Badge variant="outline" className="rounded-full">
                                     {event.mode}
                                 </Badge>
-                                {event.price === "Free" && (
-                                    <Badge variant="outline" className="rounded-full bg-emerald-50 text-emerald-700 border-emerald-200">
-                                        Free
-                                    </Badge>
-                                )}
+                                <Badge variant="outline" className={cn(
+                                    "rounded-full",
+                                    !event.isPaid && "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                )}>
+                                    {event.isPaid ? "Paid" : "Free"}
+                                </Badge>
                             </div>
                         </div>
 
@@ -243,7 +258,15 @@ export default function EventDetailPage() {
                                 </div>
                                 <div className="flex-1">
                                     <p className="text-sm font-medium text-slate-900">{formattedDate}</p>
-                                    <p className="text-sm text-slate-600">{formattedTime}</p>
+                                    <p className="text-sm text-slate-600">
+                                        {formattedTime}
+                                        {hasEndTime && isSameDay && ` - ${formattedEndTime}`}
+                                    </p>
+                                    {hasEndTime && !isSameDay && (
+                                        <p className="text-sm text-slate-600 mt-1">
+                                            Ends: {formattedEndDate} at {formattedEndTime}
+                                        </p>
+                                    )}
                                     {!isPastEvent && diffInDays >= 0 && (
                                         <p className="text-xs text-slate-500 mt-1">
                                             {diffInDays === 0 ? "Today" : diffInDays === 1 ? "Tomorrow" : `In ${diffInDays} days`}
@@ -328,10 +351,10 @@ export default function EventDetailPage() {
                         <div className="sticky top-8 border border-slate-200 rounded-2xl p-6 space-y-6 bg-slate-50/50">
                             {/* Price */}
                             <div className="text-center pb-4 border-b border-slate-200">
-                                <p className="text-3xl font-bold text-slate-900">{event.price}</p>
-                                {event.maxAttendees && (
+                                <p className="text-3xl font-bold text-slate-900">{event.isPaid ? "Paid Event" : "Free"}</p>
+                                {event.capacity && (
                                     <p className="text-sm text-slate-500 mt-1">
-                                        {event.maxAttendees - event.attendees} spots left
+                                        {event.capacity - event.attendees} spots left
                                     </p>
                                 )}
                             </div>
@@ -363,13 +386,18 @@ export default function EventDetailPage() {
                             {/* Action Buttons */}
                             <div className="space-y-3">
                                 {!isPastEvent ? (
-                                    <Button
-                                        onClick={handleRegister}
-                                        className="w-full bg-slate-900 hover:bg-slate-800 rounded-lg"
-                                        size="lg"
-                                    >
-                                        {isRegistered ? "Cancel Registration" : "Get Tickets"}
-                                    </Button>
+                                    event.registrationLink ? (
+                                        <Button
+                                            onClick={() => window.open(event.registrationLink, "_blank")}
+                                            className="w-full bg-slate-900 hover:bg-slate-800 rounded-lg"
+                                            size="lg"
+                                        >
+                                            Register Now
+                                            <ExternalLink className="h-4 w-4 ml-2" />
+                                        </Button>
+                                    ) : (
+                                        <>  </>
+                                    )
                                 ) : (
                                     <Button disabled className="w-full rounded-lg" size="lg">
                                         Event Ended
@@ -383,13 +411,6 @@ export default function EventDetailPage() {
                                         size="sm"
                                     >
                                         <Share2 className="h-4 w-4" />
-                                    </Button>
-                                    <Button
-                                        variant="outline"
-                                        className="flex-1 rounded-lg"
-                                        size="sm"
-                                    >
-                                        <Bookmark className="h-4 w-4" />
                                     </Button>
                                 </div>
                             </div>

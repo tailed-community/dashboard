@@ -2,6 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { HTMLContent } from "@/components/ui/html-content";
 import { MapPin, Clock, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -280,19 +281,20 @@ function CompanyCard({
 
         {/* Company Info */}
         <div className="mt-16 space-y-2">
-          <h3 className="font-semibold text-xl text-brand-cream">
+          <h3 className="font-semibold text-xl text-white">
             {opportunity.name}
           </h3>
-          <p className="text-brand-cream/90 text-sm line-clamp-2">
-            {opportunity.description}
-          </p>
+          <HTMLContent 
+            content={opportunity.description} 
+            className="text-white/90 text-sm line-clamp-2 [&_strong]:text-white [&_b]:text-white [&_*]:text-white/90"
+          />
 
           <div className="flex flex-wrap gap-2 pt-2">
             {opportunity.tags.map((tag) => (
               <Badge
                 key={tag}
                 variant="secondary"
-                className="bg-brand-cream/20 text-brand-cream hover:bg-brand-cream/30 backdrop-blur-sm border-0"
+                className="bg-white/20 text-white hover:bg-white/30 backdrop-blur-sm border-0"
               >
                 {tag}
               </Badge>
@@ -300,8 +302,8 @@ function CompanyCard({
           </div>
 
           <div className="flex items-center gap-1 pt-2">
-            <span className="text-brand-cream/90 text-sm">●</span>
-            <span className="text-brand-cream/90 text-sm font-medium">
+            <span className="text-white/90 text-sm">●</span>
+            <span className="text-white/90 text-sm font-medium">
               {opportunity.openRoles} Open Roles
             </span>
           </div>

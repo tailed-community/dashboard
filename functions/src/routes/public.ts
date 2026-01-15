@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { db } from "../lib/firebase";
+import { DateTime } from "luxon";
 
 const router = Router();
 
@@ -13,8 +14,8 @@ router.get("/featured", async (req: Request, res: Response) => {
     const eventsSnapshot = await db
       .collection("events")
       .where("status", "==", "published")
-      .where("datetime", ">=", new Date())
-      .orderBy("datetime", "asc")
+      .where("startDate", ">=", DateTime.now().toISODate())
+      .orderBy("startDate", "asc")
       .limit(1)
       .get();
 
@@ -49,18 +50,21 @@ router.get("/featured", async (req: Request, res: Response) => {
 
 /**
  * GET /public/explore
- * Get events and communities for explore page
+ * Get events, communities, and companies for explore page
  */
 router.get("/explore", async (req: Request, res: Response) => {
   try {
-    const { eventLimit = "12", communityLimit = "12" } = req.query;
+    const { 
+      eventLimit = "12", 
+      communityLimit = "12",
+    } = req.query;
 
     // Get upcoming events
     const eventsSnapshot = await db
       .collection("events")
       .where("status", "==", "published")
-      .where("datetime", ">=", new Date())
-      .orderBy("datetime", "asc")
+      .where("startDate", ">=", DateTime.now().toISODate())
+      .orderBy("startDate", "asc")
       .limit(parseInt(eventLimit as string, 10))
       .get();
 
@@ -229,10 +233,10 @@ router.get("/events", async (req: Request, res: Response) => {
     }
 
     if (upcoming === "true") {
-      query = query.where("datetime", ">=", new Date());
-      query = query.orderBy("datetime", "asc");
+      query = query.where("startDate", ">=", DateTime.now().toISODate());
+      query = query.orderBy("startDate", "asc");
     } else {
-      query = query.orderBy("datetime", "desc");
+      query = query.orderBy("startDate", "desc");
     }
 
     const limitNum = parseInt(limit as string, 10);
@@ -301,6 +305,119 @@ router.get("/events/:identifier", async (req: Request, res: Response) => {
     console.error("Error fetching event:", error);
     return res.status(500).json({
       error: "Failed to fetch event",
+      details: error.message,
+    });
+  }
+});
+
+/**
+ * GET /public/companies
+ * Get all companies (public access)
+ */
+router.get("/companies", async (req: Request, res: Response) => {
+  try {
+    const { industry, search, limit = "50" } = req.query;
+
+    let query: FirebaseFirestore.Query = db.collection("organizations");
+
+    if (industry && typeof industry === "string") {
+      query = query.where("industry", "==", industry);
+    }
+
+    // Order by a field that exists (you can adjust based on your needs)
+    // For now, we'll just get them without specific ordering
+    const limitNum = parseInt(limit as string, 10);
+    if (limitNum > 0 && limitNum <= 100) {
+      query = query.limit(limitNum);
+    }
+
+    const snapshot = await query.get();
+    let companies = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    // Apply client-side search filter if provided
+    if (search && typeof search === "string") {
+      const searchLower = search.toLowerCase();
+      companies = companies.filter((company: any) =>
+        company.name?.toLowerCase().includes(searchLower) ||
+        company.description?.toLowerCase().includes(searchLower)
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+      companies,
+      count: companies.length,
+    });
+  } catch (error: any) {
+    console.error("Error fetching companies:", error);
+    return res.status(500).json({
+      error: "Failed to fetch companies",
+      details: error.message,
+    });
+  }
+});
+
+/**
+ * GET /public/companies/:identifier
+ * Get a single company (public access)
+ */
+router.get("/companies/:identifier", async (req: Request, res: Response) => {
+  try {
+    const { identifier } = req.params;
+
+    let companyDoc;
+    
+    companyDoc = await db.collection("organizations").doc(identifier).get();
+    
+    if (!companyDoc.exists) {
+      const slugQuery = await db
+        .collection("organizations")
+        .where("slug", "==", identifier)
+        .limit(1)
+        .get();
+
+      if (!slugQuery.empty) {
+        companyDoc = slugQuery.docs[0];
+      }
+    }
+
+    if (!companyDoc.exists) {
+      return res.status(404).json({ error: "Company not found" });
+    }
+
+    const companyData = {
+      id: companyDoc.id,
+      ...companyDoc.data(),
+    };
+
+    // Optionally, fetch related jobs for this company
+    const jobsSnapshot = await db
+      .collection("jobs")
+      .where("organizationId", "==", companyDoc.id)
+      .where("status", "==", "Active")
+      .orderBy("postingDate", "desc")
+      .limit(10)
+      .get();
+
+    const jobs = jobsSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    return res.status(200).json({
+      success: true,
+      company: {
+        ...companyData,
+        jobs,
+      },
+    });
+  } catch (error: any) {
+    console.error("Error fetching company:", error);
+    return res.status(500).json({
+      error: "Failed to fetch company",
       details: error.message,
     });
   }

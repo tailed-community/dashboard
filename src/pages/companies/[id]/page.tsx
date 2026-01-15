@@ -2,16 +2,11 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { apiFetch } from "@/lib/fetch";
 import { useAuth } from "@/hooks/use-auth";
-import { getFirestore, collection, query, where, orderBy, limit, getDocs, Timestamp, doc, getDoc } from "firebase/firestore";
-import { getApp } from "firebase/app";
 import {
     Building2,
     MapPin,
     Users,
-    Briefcase,
-    ArrowLeft,
     Share2,
-    Bookmark,
     ExternalLink,
     Loader2,
     Globe,
@@ -22,7 +17,6 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { HTMLContent } from "@/components/ui/html-content";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
 
 type CompanyData = {
@@ -62,7 +56,7 @@ type Job = {
 type Event = {
     id: string;
     title: string;
-    datetime: Timestamp;
+    datetime: Date;
     location?: string;
     mode: "Online" | "In Person" | "Hybrid";
     category: string;
@@ -97,12 +91,30 @@ export default function CompanyDetailPage() {
                     return;
                 }
 
-                const companyData = await response.json() as CompanyData;
+                const data = await response.json();
+                const companyData = data.company || data;
                 setCompany(companyData);
                 
                 // Set jobs from company data
                 if (companyData.jobs) {
                     setRelatedJobs(companyData.jobs.slice(0, 3));
+                }
+                
+                // Check if user is following this company (from profile)
+                if (user) {
+                    try {
+                        const profileResponse = await apiFetch("/profile");
+                        if (profileResponse.ok) {
+                            const profileData = await profileResponse.json();
+                            const organizations = profileData.organizations || [];
+                            const isFollowingCompany = organizations.some(
+                                (org: any) => org.id === companyData.id
+                            );
+                            setIsFollowing(isFollowingCompany);
+                        }
+                    } catch (profileError) {
+                        console.error("Error fetching profile:", profileError);
+                    }
                 }
             } catch (error) {
                 console.error("Error fetching company:", error);
@@ -113,75 +125,14 @@ export default function CompanyDetailPage() {
         };
 
         fetchCompany();
-    }, [slug, navigate]);
+    }, [slug, navigate, user]);
 
     useEffect(() => {
-        if (!slug) return;
-
-        const fetchRelatedEvents = async () => {
-            try {
-                setLoadingRelated(true);
-                const db = getFirestore(getApp());
-
-                // Fetch related events (events where company is involved)
-                const eventsQuery = query(
-                    collection(db, "events"),
-                    where("status", "==", "published"),
-                    where("datetime", ">=", Timestamp.now()),
-                    orderBy("datetime", "asc"),
-                    limit(20)
-                );
-                
-                const eventsSnapshot = await getDocs(eventsQuery);
-                const events: Event[] = [];
-                
-                eventsSnapshot.forEach((doc) => {
-                    const data = doc.data();
-                    // Check if event is related to this company (by communityId or in description)
-                    if (data.communityId === slug) {
-                        events.push({
-                            id: doc.id,
-                            ...data,
-                        } as Event);
-                    }
-                });
-
-                setRelatedEvents(events.slice(0, 3)); // Show max 3 events
-            } catch (error) {
-                console.error("Error fetching related events:", error);
-            } finally {
-                setLoadingRelated(false);
-            }
-        };
-
-        fetchRelatedEvents();
+        // TODO: Implement proper company-event relationship endpoint if needed
+        // Current implementation was comparing company slug with event communityId (incorrect)
+        setLoadingRelated(false);
+        setRelatedEvents([]);
     }, [slug]);
-
-    useEffect(() => {
-        if (!user || !company) return;
-
-        const checkFollowStatus = async () => {
-            try {
-                const db = getFirestore(getApp());
-                const profileRef = doc(db, "profiles", user.uid);
-                const profileDoc = await getDoc(profileRef);
-
-                if (profileDoc.exists()) {
-                    const profileData = profileDoc.data();
-                    const subscribedCompanies = profileData?.subscribedCompanies || [];
-                    
-                    // Check if company is in subscribedCompanies using company.id
-                    const isSubscribed = subscribedCompanies.some((sub: any) => sub.orgId === company.id)
-                    
-                    setIsFollowing(isSubscribed);
-                }
-            } catch (error) {
-                console.error("Error checking follow status:", error);
-            }
-        };
-
-        checkFollowStatus();
-    }, [user, company]);
 
     if (loading) {
         return (
@@ -239,23 +190,29 @@ export default function CompanyDetailPage() {
             setFollowLoading(true);
 
             if (isFollowing) {
-                // Unsubscribe - assuming endpoint exists
-                const response = await apiFetch(`public/companies/${company.id}/unsubscribe`, {
+                // Unsubscribe
+                const response = await apiFetch(`/profile/organizations/${company.id}/unsubscribe`, {
                     method: "POST",
-                }, true);
+                });
 
                 if (response.ok) {
+                    const data = await response.json();
                     setIsFollowing(false);
-                    toast.success("Unfollowed company");
+                    toast.success(data.message || "Unfollowed company");
                 } else {
                     const error = await response.json();
-                    toast.error(error.message || "Failed to unfollow company");
+                    toast.error(error.error || "Failed to unfollow company");
                 }
             } else {
                 // Subscribe
-                const response = await apiFetch(`public/companies/${company.id}/subscribe`, {
+                const response = await apiFetch(`/profile/organizations/${company.id}/subscribe`, {
                     method: "POST",
-                }, true);
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        name: company.name,
+                        logo: company.logo,
+                    }),
+                });
 
                 if (response.ok) {
                     const data = await response.json();
@@ -263,7 +220,7 @@ export default function CompanyDetailPage() {
                     toast.success(data.message || "Following company!");
                 } else {
                     const error = await response.json();
-                    toast.error(error.message || "Failed to follow company");
+                    toast.error(error.error || "Failed to follow company");
                 }
             }
         } catch (error) {
@@ -345,7 +302,10 @@ export default function CompanyDetailPage() {
                                         <p className="text-sm font-medium text-slate-900">Website</p>
                                         <Button
                                             variant="link"
-                                            onClick={() => window.open(company.website, "_blank")}
+                                            onClick={() => {
+                                                const url = company.website;
+                                                if (url) window.open(url, "_blank");
+                                            }}
                                             className="h-auto p-0 text-sm text-blue-600 hover:text-blue-700"
                                         >
                                             {company.website.replace(/^https?:\/\//, '')}
@@ -500,7 +460,10 @@ export default function CompanyDetailPage() {
                                 {company.website && (
                                     <Button
                                         variant="outline"
-                                        onClick={() => window.open(company.website, "_blank")}
+                                        onClick={() => {
+                                            const url = company.website;
+                                            if (url) window.open(url, "_blank");
+                                        }}
                                         className="w-full rounded-lg"
                                         size="sm"
                                     >
@@ -600,7 +563,7 @@ export default function CompanyDetailPage() {
                                                     </div>
                                                     <div className="flex items-center gap-2 text-sm text-slate-600">
                                                         <Calendar className="h-4 w-4" />
-                                                        <span>{event.datetime.toDate().toLocaleDateString()}</span>
+                                                        <span>{new Date(event.datetime).toLocaleDateString()}</span>
                                                     </div>
                                                     {event.location && (
                                                         <div className="flex items-center gap-2 text-sm text-slate-600">

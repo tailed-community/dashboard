@@ -21,7 +21,7 @@ export function FirebaseClient() {
 export const getFirebaseStorage = () => {
   const app = getApp();
   return import.meta.env.DEV
-    ? getStorage(app, "gs://tailed-451211-dev")
+    ? getStorage(app, `gs://${import.meta.env.VITE_FIREBASE_STORAGE_BUCKET}`)
     : getStorage(app);
 };
 

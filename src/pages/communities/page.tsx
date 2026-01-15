@@ -8,6 +8,7 @@ import { Search, Plus, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/fetch";
+import { getFileUrl } from "@/lib/firebase-client";
 
 const categories = [
   "All",
@@ -53,12 +54,37 @@ export default function CommunityPage() {
           slug: comm.slug,
           category: comm.category,
           memberCount: comm.memberCount || 0,
-          logoUrl: comm.logo,
+          logoUrl: comm.logo, // Store path temporarily
           bannerUrl: comm.banner,
           members: comm.members || [],
         }));
         
-        setcommunities(fetchedcommunities);
+        // Fetch logo and banner URLs from Firebase Storage
+        const communitiesWithUrls = await Promise.all(
+          fetchedcommunities.map(async (community) => {
+            if (community.logoUrl) {
+              try {
+                community.logoUrl = await getFileUrl(community.logoUrl);
+              } catch (error) {
+                console.error(`Failed to load logo for ${community.id}:`, error);
+                community.logoUrl = undefined;
+              }
+            }
+            
+            if (community.bannerUrl) {
+              try {
+                community.bannerUrl = await getFileUrl(community.bannerUrl);
+              } catch (error) {
+                console.error(`Failed to load banner for ${community.id}:`, error);
+                community.bannerUrl = undefined;
+              }
+            }
+            
+            return community;
+          })
+        );
+        
+        setcommunities(communitiesWithUrls);
       } catch (err) {
         console.error("Error fetching communities:", err);
         setError("Failed to load communities. Please try again.");

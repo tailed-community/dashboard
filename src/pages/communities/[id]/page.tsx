@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
+import { DateTime } from "luxon";
 import { useAuth } from "@/hooks/use-auth";
-import { Timestamp } from "firebase/firestore";
 import { apiFetch } from "@/lib/fetch";
+import { getFileUrl } from "@/lib/firebase-client";
 import {
     Users,
     MapPin,
@@ -27,21 +28,23 @@ type CommunityData = {
     shortDescription?: string;
     description: string;
     category: string;
+    logo?: string;
+    banner?: string;
     logoUrl?: string;
     bannerUrl?: string;
     memberCount: number;
     members: string[];
     createdBy: string;
     createdByName: string;
-    createdAt: Timestamp;
-    updatedAt: Timestamp;
+    createdAt: Date;
+    updatedAt: Date;
     status: string;
 };
 
 type Event = {
     id: string;
     title: string;
-    datetime: Timestamp;
+    datetime: Date;
     location?: string;
     mode: "Online" | "In Person" | "Hybrid";
     category: string;
@@ -78,12 +81,33 @@ export default function CommunityDetailPage() {
                     return;
                 }
 
-                // Convert date fields to Timestamp
+                // Convert date fields to Date objects
                 const communityData = {
                     ...data.community,
-                    createdAt: data.community.createdAt ? Timestamp.fromDate(new Date(data.community.createdAt._seconds * 1000)) : Timestamp.now(),
-                    updatedAt: data.community.updatedAt ? Timestamp.fromDate(new Date(data.community.updatedAt._seconds * 1000)) : Timestamp.now(),
+                    createdAt: data.community.createdAt?._seconds 
+                        ? DateTime.fromSeconds(data.community.createdAt._seconds).toJSDate()
+                        : DateTime.now().toJSDate(),
+                    updatedAt: data.community.updatedAt?._seconds 
+                        ? DateTime.fromSeconds(data.community.updatedAt._seconds).toJSDate()
+                        : DateTime.now().toJSDate(),
                 } as CommunityData;
+
+                // Fetch logo and banner URLs from Firebase Storage
+                if (communityData.logo) {
+                    try {
+                        communityData.logoUrl = await getFileUrl(communityData.logo);
+                    } catch (error) {
+                        console.error("Failed to load logo:", error);
+                    }
+                }
+
+                if (communityData.banner) {
+                    try {
+                        communityData.bannerUrl = await getFileUrl(communityData.banner);
+                    } catch (error) {
+                        console.error("Failed to load banner:", error);
+                    }
+                }
 
                 setCommunity(communityData);
 
@@ -116,7 +140,9 @@ export default function CommunityDetailPage() {
                 const upcoming: Event[] = upcomingData.success && upcomingData.events
                     ? upcomingData.events.map((evt: any) => ({
                         ...evt,
-                        datetime: evt.datetime ? Timestamp.fromDate(new Date(evt.datetime._seconds * 1000)) : Timestamp.now(),
+                        datetime: evt.datetime?._seconds 
+                            ? DateTime.fromSeconds(evt.datetime._seconds).toJSDate()
+                            : DateTime.now().toJSDate(),
                     }))
                     : [];
 
@@ -129,7 +155,9 @@ export default function CommunityDetailPage() {
                 const past: Event[] = pastData.success && pastData.events
                     ? pastData.events.map((evt: any) => ({
                         ...evt,
-                        datetime: evt.datetime ? Timestamp.fromDate(new Date(evt.datetime._seconds * 1000)) : Timestamp.now(),
+                        datetime: evt.datetime?._seconds 
+                            ? DateTime.fromSeconds(evt.datetime._seconds).toJSDate()
+                            : DateTime.now().toJSDate(),
                     }))
                     : [];
 
@@ -333,11 +361,7 @@ export default function CommunityDetailPage() {
                                     <p className="text-sm font-medium text-slate-900">Created by</p>
                                     <p className="text-sm text-slate-600">{community.createdByName}</p>
                                     <p className="text-xs text-slate-500 mt-1">
-                                        {community.createdAt.toDate().toLocaleDateString("en-US", {
-                                            year: "numeric",
-                                            month: "long",
-                                            day: "numeric",
-                                        })}
+                                        {DateTime.fromJSDate(community.createdAt).toFormat('MMMM d, yyyy')}
                                     </p>
                                 </div>
                             </div>
@@ -383,7 +407,7 @@ export default function CommunityDetailPage() {
                                     ) : (
                                         <>
                                             {isMember ? (
-                                                "Member"
+                                                "Leave Community"
                                             ) : (
                                                 <>
                                                     <UserPlus className="h-4 w-4 mr-2" />
@@ -401,13 +425,6 @@ export default function CommunityDetailPage() {
                                         size="sm"
                                     >
                                         <Share2 className="h-4 w-4" />
-                                    </Button>
-                                    <Button
-                                        variant="outline"
-                                        className="flex-1 rounded-lg"
-                                        size="sm"
-                                    >
-                                        <Bookmark className="h-4 w-4" />
                                     </Button>
                                 </div>
                             </div>
@@ -463,7 +480,7 @@ export default function CommunityDetailPage() {
                                                     </div>
                                                     <div className="flex items-center gap-2 text-sm text-slate-600">
                                                         <Calendar className="h-4 w-4" />
-                                                        <span>{event.datetime.toDate().toLocaleDateString()}</span>
+                                                        <span>{DateTime.fromJSDate(event.datetime).toFormat('MMM d, yyyy')}</span>
                                                     </div>
                                                     {event.location && (
                                                         <div className="flex items-center gap-2 text-sm text-slate-600">
@@ -527,7 +544,7 @@ export default function CommunityDetailPage() {
                                                     </div>
                                                     <div className="flex items-center gap-2 text-sm text-slate-600">
                                                         <Calendar className="h-4 w-4" />
-                                                        <span>{event.datetime.toDate().toLocaleDateString()}</span>
+                                                        <span>{DateTime.fromJSDate(event.datetime).toFormat('MMM d, yyyy')}</span>
                                                     </div>
                                                     {event.location && (
                                                         <div className="flex items-center gap-2 text-sm text-slate-600">

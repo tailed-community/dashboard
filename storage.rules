@@ -49,22 +49,10 @@ service firebase.storage {
     }
     
     // Event hero images rules
-    match /events/{eventId}/hero {
+    match /events/{eventId}/{fileName} {
       // Anyone can read event hero images
       allow read: if true;
       
-      // Only authenticated event creators can upload hero images
-      allow create: if isAuthenticated()
-                    && request.resource.size < 5 * 1024 * 1024 // Max 5MB
-                    && request.resource.contentType.matches('image/.*');
-      
-      // Only event creator can update hero images
-      allow update: if isEventOwner(eventId)
-                    && request.resource.size < 5 * 1024 * 1024 // Max 5MB
-                    && request.resource.contentType.matches('image/.*');
-      
-      // Only event creator can delete hero images
-      allow delete: if isEventOwner(eventId);
     }
     
     // Default: deny all other access
