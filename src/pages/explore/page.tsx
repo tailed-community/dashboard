@@ -25,6 +25,7 @@ export default function ExplorePage() {
     newGrads: 0,
     events: 0,
     communities: 0,
+    companies: 0,
   });
   const { user } = useAuth();
   
@@ -41,6 +42,7 @@ export default function ExplorePage() {
         const newGradsArray: Opportunity[] = [];
         const eventsArray: Opportunity[] = [];
         const communitiesArray: Opportunity[] = [];
+        const companiesArray: Opportunity[] = [];
 
         // Fetch all data at once (no limits initially)
         const featuredJobsLimit = 50; // Reasonable max
@@ -48,16 +50,18 @@ export default function ExplorePage() {
         const newGradsLimit = 100;
         const eventsLimit = 20;
         const communitiesLimit = 20;
+        const companiesLimit = 20;
 
-        // Fetch featured jobs, external jobs, events, and communities in parallel
+        // Fetch featured jobs, external jobs, events, communities, and companies in parallel
         const results = await Promise.allSettled([
           apiFetch("/public/jobs", {}, true),
           fetch(INTERNSHIPS_URL),
           fetch(NEW_GRADS_URL),
           apiFetch("/public/explore"),
+          apiFetch(`/public/companies?pageSize=${companiesLimit}`, {}, true),
         ]);
 
-        const [featuredJobsResult, internshipsResult, newGradsResult, exploreResult] = results;
+        const [featuredJobsResult, internshipsResult, newGradsResult, exploreResult, companiesResult] = results;
 
         let totalFeaturedJobs = 0;
         let totalInternships = 0;
@@ -164,7 +168,17 @@ export default function ExplorePage() {
               totalEvents = events.length;
               
               events.slice(0, eventsLimit).forEach((evt: any) => {
-                const eventDate = new Date(evt.datetime._seconds * 1000);
+                // Handle Firestore timestamp format safely
+                let eventDate: Date;
+                if (evt.datetime?._seconds) {
+                  eventDate = new Date(evt.datetime._seconds * 1000);
+                } else if (evt.datetime) {
+                  eventDate = new Date(evt.datetime);
+                } else if (evt.startDate) {
+                  eventDate = new Date(evt.startDate);
+                } else {
+                  eventDate = new Date();
+                }
                 
                 eventsArray.push({
                   id: evt.id,
@@ -188,13 +202,53 @@ export default function ExplorePage() {
                   id: comm.slug || comm.id,
                   type: "community",
                   name: comm.name,
-            description: data.shortDescription || "Join our community",
-            category: data.category || "Community",
-            tags: [data.category || "Community", `${data.memberCount || 0} members`],
-            logo: data.logoUrl,
-            gradient: "bg-gradient-to-br from-purple-400 via-pink-400 to-rose-400",
-          });
-        });
+                  description: comm.shortDescription || "Join our community",
+                  category: comm.category || "Community",
+                  tags: [comm.category || "Community", `${comm.memberCount || 0} members`],
+                  logo: comm.logoUrl,
+                  gradient: "bg-gradient-to-br from-purple-400 via-pink-400 to-rose-400",
+                });
+              });
+
+              // Process companies - now from separate endpoint
+              if (companiesResult.status === "fulfilled") {
+                try {
+                  const companiesData = await companiesResult.value.json();
+                  const companies = companiesData.companies || [];
+                  const totalCompanies = companies.length;
+                  
+                  companies.forEach((comp: any) => {
+                    // only push companies with at least one open role
+                    if ((comp.openRoles || 0) < 1) return;
+                    
+                    companiesArray.push({
+                      id: comp.slug || comp.id,
+                      type: "company",
+                      name: comp.name,
+                      description: comp.description || "Explore opportunities with us",
+                      industry: comp.industry || "Technology",
+                      tags: [
+                        comp.industry || "Technology",
+                        comp.size || "Company",
+                        ...(comp.location ? [comp.location] : []),
+                      ].slice(0, 3),
+                      openRoles: comp.openRoles || 0,
+                      logo: comp.logo,
+                      gradient: "bg-gradient-to-br from-red-400 via-orange-400 to-pink-400",
+                    });
+                  });
+
+                  // Update total companies count
+                  setTotalCounts(prev => ({ ...prev, companies: totalCompanies }));
+                } catch (error) {
+                  console.error("Error parsing companies data:", error);
+                }
+              }
+            }
+          } catch (error) {
+            console.error("Error parsing explore data:", error);
+          }
+        }
         
         // Interleave opportunities to ensure each "page" has a mix of types
         const allOpportunities: Opportunity[] = [];
@@ -203,7 +257,8 @@ export default function ExplorePage() {
           internshipsArray.length,
           newGradsArray.length,
           eventsArray.length,
-          communitiesArray.length
+          communitiesArray.length,
+          companiesArray.length
         );
         
         // Round-robin distribution to ensure even mixing
@@ -211,6 +266,7 @@ export default function ExplorePage() {
           if (i < featuredJobsArray.length) allOpportunities.push(featuredJobsArray[i]);
           if (i < internshipsArray.length) allOpportunities.push(internshipsArray[i]);
           if (i < eventsArray.length) allOpportunities.push(eventsArray[i]);
+          if (i < companiesArray.length) allOpportunities.push(companiesArray[i]);
           if (i < newGradsArray.length) allOpportunities.push(newGradsArray[i]);
           if (i < communitiesArray.length) allOpportunities.push(communitiesArray[i]);
         }
@@ -225,6 +281,7 @@ export default function ExplorePage() {
           newGrads: totalNewGrads,
           events: totalEvents,
           communities: totalcommunities,
+          companies: companiesArray.length,
         };
         setTotalCounts(counts);
         

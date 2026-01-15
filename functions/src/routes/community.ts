@@ -133,8 +133,154 @@ router.get("/:identifier", async (req: Request, res: Response) => {
 });
 
 /**
+ * Helper: Upload images to Firebase Storage
+ * Returns public URLs for uploaded files
+ */
+const uploadImages = (
+  req: Request,
+  userId: string
+): Promise<{ fields: any; files: { [key: string]: string } }> => {
+  return new Promise((resolve, reject) => {
+    const busboy = Busboy({ headers: req.headers as any });
+    const fields: any = {};
+    const files: { [key: string]: string } = {};
+    const fileUploads: Promise<void>[] = [];
+
+    busboy.on("field", (fieldname, val) => {
+      fields[fieldname] = val;
+    });
+
+    busboy.on("file", (fieldname, file, info) => {
+      const { filename, mimeType } = info;
+      
+      // Validate file type (images only)
+      if (!mimeType.startsWith("image/")) {
+        file.resume();
+        return;
+      }
+
+      const timestamp = Date.now();
+      const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, "_");
+      const filepath = `communities/${userId}/${fieldname}-${timestamp}-${sanitizedFilename}`;
+      const blob = storage.bucket().file(filepath);
+      const blobStream = blob.createWriteStream({
+        metadata: {
+          contentType: mimeType,
+          metadata: {
+            uploadedBy: userId,
+            fieldname,
+          },
+        },
+      });
+
+      const uploadPromise = new Promise<void>((resolve, reject) => {
+        file.pipe(blobStream);
+        
+        blobStream.on("error", (err) => {
+          console.error(`Upload error for ${fieldname}:`, err);
+          reject(err);
+        });
+
+        blobStream.on("finish", async () => {
+          try {
+            // Store the file path for client-side Firebase SDK access
+            files[fieldname] = filepath;
+            resolve();
+          } catch (err) {
+            reject(err);
+          }
+        });
+      });
+
+      fileUploads.push(uploadPromise);
+    });
+
+    busboy.on("finish", async () => {
+      try {
+        await Promise.all(fileUploads);
+        resolve({ fields, files });
+      } catch (error) {
+        reject(error);
+      }
+    });
+
+    busboy.on("error", (error) => {
+      reject(error);
+    });
+
+    req.pipe(busboy);
+  });
+};
+
+/**
+ * Helper: Create community in database
+ * Handles validation, slug checking, and profile updates
+ */
+const createCommunityInDB = async (
+  communityData: any,
+  userId: string,
+  logoUrl: string | null = null,
+  bannerUrl: string | null = null
+): Promise<string> => {
+  // Validate required fields
+  const validationResult = createCommunitySchema.safeParse(communityData);
+  if (!validationResult.success) {
+    throw {
+      status: 400,
+      error: "Invalid request data",
+      details: validationResult.error.errors,
+    };
+  }
+
+  const validatedData = validationResult.data;
+
+  // Check if slug is unique
+  const existingSlug = await db
+    .collection("communities")
+    .where("slug", "==", validatedData.slug)
+    .limit(1)
+    .get();
+
+  if (!existingSlug.empty) {
+    throw {
+      status: 400,
+      error: "Community slug already exists",
+    };
+  }
+
+  // Create community document
+  const communityRef = await db.collection("communities").add({
+    ...validatedData,
+    logo: logoUrl,
+    banner: bannerUrl,
+    createdBy: userId,
+    members: [userId],
+    memberCount: 1,
+    eventCount: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  // Update creator's profile
+  const profileRef = db.collection("profiles").doc(userId);
+  const profileDoc = await profileRef.get();
+  
+  if (profileDoc.exists) {
+    const profileData = profileDoc.data();
+    const communities = profileData?.communities || [];
+    await profileRef.update({
+      communities: [...communities, communityRef.id],
+      updatedAt: new Date(),
+    });
+  }
+
+  return communityRef.id;
+};
+
+/**
  * POST /communities
- * Create a new community (with file upload support)
+ * Create a new community (with optional logo/banner upload)
+ * Always uses multipart/form-data (files are optional)
  */
 router.post("/", async (req: Request, res: Response) => {
   try {
@@ -144,190 +290,32 @@ router.post("/", async (req: Request, res: Response) => {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const contentType = req.headers["content-type"] || "";
-    
-    // Handle multipart form data (with file uploads)
-    if (contentType.includes("multipart/form-data")) {
-      const busboy = Busboy({ headers: req.headers as any });
-      const fields: any = {};
-      const fileUploads: Promise<string>[] = [];
+    // Always process as multipart (files are optional)
+    const { fields, files } = await uploadImages(req, userId);
 
-      busboy.on("field", (fieldname, val) => {
-        fields[fieldname] = val;
-      });
+    // Create community with optional file URLs
+    const communityId = await createCommunityInDB(
+      fields,
+      userId,
+      files.logo || null,
+      files.banner || null
+    );
 
-      busboy.on("file", (fieldname, file, info) => {
-        const { filename, mimeType } = info;
-        
-        // Validate file type (images only)
-        if (!mimeType.startsWith("image/")) {
-          file.resume();
-          return;
-        }
-
-        const timestamp = Date.now();
-        const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, "_");
-        const filepath = `communities/${userId}/${fieldname}-${timestamp}-${sanitizedFilename}`;
-        const blob = storage.bucket().file(filepath);
-        const blobStream = blob.createWriteStream({
-          metadata: {
-            contentType: mimeType,
-            metadata: {
-              uploadedBy: userId,
-              fieldname,
-            },
-          },
-        });
-
-        const uploadPromise = new Promise<string>((resolve, reject) => {
-          file.pipe(blobStream);
-          
-          blobStream.on("error", (err) => {
-            console.error(`Upload error for ${fieldname}:`, err);
-            reject(err);
-          });
-
-          blobStream.on("finish", async () => {
-            try {
-              await blob.makePublic();
-              const publicUrl = `https://storage.googleapis.com/${storage.bucket().name}/${filepath}`;
-              fields[fieldname] = publicUrl;
-              resolve(publicUrl);
-            } catch (err) {
-              reject(err);
-            }
-          });
-        });
-
-        fileUploads.push(uploadPromise);
-      });
-
-      busboy.on("finish", async () => {
-        try {
-          // Wait for all file uploads to complete
-          await Promise.all(fileUploads);
-
-          // Validate required fields
-          const validationResult = createCommunitySchema.safeParse(fields);
-          if (!validationResult.success) {
-            return res.status(400).json({
-              error: "Invalid request data",
-              details: validationResult.error.errors,
-            });
-          }
-
-          const communityData = validationResult.data;
-
-          // Check if slug is unique
-          const existingSlug = await db
-            .collection("communities")
-            .where("slug", "==", communityData.slug)
-            .limit(1)
-            .get();
-
-          if (!existingSlug.empty) {
-            return res.status(400).json({ error: "Community slug already exists" });
-          }
-
-          // Create community
-          const communityRef = await db.collection("communities").add({
-            ...communityData,
-            logo: fields.logo || null,
-            banner: fields.banner || null,
-            createdBy: userId,
-            members: [userId],
-            memberCount: 1,
-            eventCount: 0,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          });
-
-          // Update creator's profile
-          const profileRef = db.collection("profiles").doc(userId);
-          const profileDoc = await profileRef.get();
-          
-          if (profileDoc.exists) {
-            const profileData = profileDoc.data();
-            const communities = profileData?.communities || [];
-            await profileRef.update({
-              communities: [...communities, communityRef.id],
-              updatedAt: new Date(),
-            });
-          }
-
-          return res.status(201).json({
-            success: true,
-            message: "Community created successfully",
-            communityId: communityRef.id,
-          });
-        } catch (error: any) {
-          console.error("Error creating community:", error);
-          return res.status(500).json({
-            error: "Failed to create community",
-            details: error.message,
-          });
-        }
-      });
-
-      req.pipe(busboy);
-      return; // Ensure all code paths return
-    } else {
-      // Handle regular JSON request (no file uploads)
-      const validationResult = createCommunitySchema.safeParse(req.body);
-      if (!validationResult.success) {
-        return res.status(400).json({
-          error: "Invalid request data",
-          details: validationResult.error.errors,
-        });
-      }
-
-      const communityData = validationResult.data;
-
-      // Check if slug is unique
-      const existingSlug = await db
-        .collection("communities")
-        .where("slug", "==", communityData.slug)
-        .limit(1)
-        .get();
-
-      if (!existingSlug.empty) {
-        return res.status(400).json({ error: "Community slug already exists" });
-      }
-
-      // Create community
-      const communityRef = await db.collection("communities").add({
-        ...communityData,
-        logo: null,
-        banner: null,
-        createdBy: userId,
-        members: [userId],
-        memberCount: 1,
-        eventCount: 0,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-
-      // Update creator's profile
-      const profileRef = db.collection("profiles").doc(userId);
-      const profileDoc = await profileRef.get();
-      
-      if (profileDoc.exists) {
-        const profileData = profileDoc.data();
-        const communities = profileData?.communities || [];
-        await profileRef.update({
-          communities: [...communities, communityRef.id],
-          updatedAt: new Date(),
-        });
-      }
-
-      return res.status(201).json({
-        success: true,
-        message: "Community created successfully",
-        communityId: communityRef.id,
-      });
-    }
+    return res.status(201).json({
+      success: true,
+      message: "Community created successfully",
+      communityId,
+    });
   } catch (error: any) {
     console.error("Error creating community:", error);
+    
+    if (error.status) {
+      return res.status(error.status).json({
+        error: error.error,
+        details: error.details,
+      });
+    }
+    
     return res.status(500).json({
       error: "Failed to create community",
       details: error.message,

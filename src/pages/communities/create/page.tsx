@@ -3,11 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { getFirestore, collection, addDoc, serverTimestamp } from "firebase/firestore";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { getApp } from "firebase/app";
 import { toast } from "sonner";
 import { Users, Loader2, Upload, Image as ImageIcon } from "lucide-react";
+import { apiFetch } from "@/lib/fetch";
 import { Button } from "@/components/ui/button";
 import {
     Card,
@@ -94,59 +92,42 @@ export default function CreateCommunityPage() {
 
     const onSubmit = async (data: CommunityFormData) => {
         if (!user) {
-            toast.error("You must be signed in to create an community");
+            toast.error("You must be signed in to create a community");
             return;
         }
 
         setIsSubmitting(true);
 
         try {
-            const db = getFirestore(getApp());
-            const storage = getStorage(getApp());
+            // Build FormData for multipart/form-data request
+            const formData = new FormData();
             
-            // First, create the community document to get an ID
-            const communitiesRef = collection(db, "communities");
-            const docRef = await addDoc(communitiesRef, {
-                name: data.name,
-                slug: data.slug,
-                shortDescription: data.shortDescription,
-                description: data.description,
-                category: data.category,
-                memberCount: 1,
-                members: [user.uid],
-                createdBy: user.uid,
-                createdByName: user.displayName || user.email || "Unknown",
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp(),
-                status: "active",
+            // Append all text fields
+            formData.append("name", data.name);
+            formData.append("slug", data.slug);
+            formData.append("shortDescription", data.shortDescription);
+            formData.append("description", data.description);
+            formData.append("category", data.category);
+
+            // Append optional file fields
+            if (data.logo) {
+                formData.append("logo", data.logo);
+            }
+            if (data.banner) {
+                formData.append("banner", data.banner);
+            }
+
+            // Call API endpoint (always uses multipart/form-data)
+            const response = await apiFetch("/communities", {
+                method: "POST",
+                body: formData,
+                // Don't set Content-Type header - browser sets it with boundary
             });
 
-            const communityId = docRef.id;
-            let logoUrl = null;
-            let bannerUrl = null;
+            const result = await response.json();
 
-            // Upload logo if provided
-            if (data.logo) {
-                const logoRef = ref(storage, `communities/${communityId}/logo`);
-                await uploadBytes(logoRef, data.logo);
-                logoUrl = await getDownloadURL(logoRef);
-            }
-
-            // Upload banner if provided
-            if (data.banner) {
-                const bannerRef = ref(storage, `communities/${communityId}/banner`);
-                await uploadBytes(bannerRef, data.banner);
-                bannerUrl = await getDownloadURL(bannerRef);
-            }
-
-            // Update the document with image URLs
-            if (logoUrl || bannerUrl) {
-                const { updateDoc, doc } = await import("firebase/firestore");
-                await updateDoc(doc(db, "communities", communityId), {
-                    ...(logoUrl && { logoUrl }),
-                    ...(bannerUrl && { bannerUrl }),
-                    updatedAt: serverTimestamp(),
-                });
+            if (!response.ok) {
+                throw new Error(result.error || "Failed to create community");
             }
 
             toast.success("Community created successfully!", {

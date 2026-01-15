@@ -12,24 +12,204 @@ const createEventSchema = z.object({
   title: z.string().min(3).max(200),
   slug: z.string().min(3).max(200).regex(/^[a-z0-9-]+$/),
   description: z.string().min(10).max(5000),
-  datetime: z.string(), // ISO date string
-  location: z.string().min(1).max(500),
+  startDate: z.string().min(1),
+  startTime: z.string().min(1),
+  endDate: z.string().optional(),
+  endTime: z.string().optional(),
+  mode: z.enum(["Online", "In Person", "Hybrid"]),
+  location: z.string().optional(),
   capacity: z.number().int().positive().optional(),
   communityId: z.string().optional(),
   category: z.string().min(1),
   city: z.string().optional(),
+  isPaid: z.boolean().default(false),
+  registrationLink: z.string().url().optional().or(z.literal("")),
+  digitalLink: z.string().url().optional().or(z.literal("")),
   status: z.enum(["draft", "published", "cancelled"]).default("published"),
 });
+
+/**
+ * Helper: Upload images to Firebase Storage for events
+ * Returns public URLs for uploaded files
+ */
+const uploadEventImages = (
+  req: Request,
+  userId: string
+): Promise<{ fields: any; files: { [key: string]: string } }> => {
+  return new Promise((resolve, reject) => {
+    const busboy = Busboy({ headers: req.headers as any });
+    const fields: any = {};
+    const files: { [key: string]: string } = {};
+    const fileUploads: Promise<void>[] = [];
+
+    busboy.on("field", (fieldname, val) => {
+      // Parse numbers
+      if (fieldname === "capacity") {
+        fields[fieldname] = parseInt(val, 10);
+      } else if (fieldname === "isPaid") {
+        // Parse boolean from FormData string
+        fields[fieldname] = val === "true";
+      } else {
+        fields[fieldname] = val;
+      }
+    });
+
+    busboy.on("file", (fieldname, file, info) => {
+      const { filename, mimeType } = info;
+      
+      // Validate file type (images only)
+      if (!mimeType.startsWith("image/")) {
+        file.resume();
+        return;
+      }
+
+      const timestamp = Date.now();
+      const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, "_");
+      const filepath = `events/${userId}/${fieldname}-${timestamp}-${sanitizedFilename}`;
+      const blob = storage.bucket().file(filepath);
+      const blobStream = blob.createWriteStream({
+        metadata: {
+          contentType: mimeType,
+          metadata: {
+            uploadedBy: userId,
+            fieldname,
+          },
+        },
+      });
+
+      const uploadPromise = new Promise<void>((resolve, reject) => {
+        file.pipe(blobStream);
+        
+        blobStream.on("error", (err) => {
+          console.error(`Upload error for ${fieldname}:`, err);
+          reject(err);
+        });
+
+        blobStream.on("finish", async () => {
+          try {
+            // Store the file path for client-side Firebase SDK access
+            files[fieldname] = filepath;
+            resolve();
+          } catch (err) {
+            reject(err);
+          }
+        });
+      });
+
+      fileUploads.push(uploadPromise);
+    });
+
+    busboy.on("finish", async () => {
+      try {
+        await Promise.all(fileUploads);
+        resolve({ fields, files });
+      } catch (error) {
+        reject(error);
+      }
+    });
+
+    busboy.on("error", (error) => {
+      reject(error);
+    });
+
+    req.pipe(busboy);
+  });
+};
+
+/**
+ * Helper: Create event in database
+ * Handles validation, slug checking, community updates, and profile updates
+ */
+const createEventInDB = async (
+  eventData: any,
+  userId: string,
+  heroImageUrl: string | null = null
+): Promise<string> => {
+  // Validate required fields
+  const validationResult = createEventSchema.safeParse(eventData);
+  if (!validationResult.success) {
+    throw {
+      status: 400,
+      error: "Invalid request data",
+      details: validationResult.error.errors,
+    };
+  }
+
+  const validatedData = validationResult.data;
+
+  // Check if slug is unique
+  const existingSlug = await db
+    .collection("events")
+    .where("slug", "==", validatedData.slug)
+    .limit(1)
+    .get();
+
+  if (!existingSlug.empty) {
+    throw {
+      status: 400,
+      error: "Event slug already exists",
+    };
+  }
+
+  // If communityId is provided, verify it exists and increment event count
+  if (validatedData.communityId) {
+    const communityDoc = await db.collection("communities").doc(validatedData.communityId).get();
+    if (!communityDoc.exists) {
+      throw {
+        status: 400,
+        error: "Community not found",
+      };
+    }
+
+    // Increment community event count
+    await db.collection("communities").doc(validatedData.communityId).update({
+      eventCount: (communityDoc.data()?.eventCount || 0) + 1,
+      updatedAt: new Date(),
+    });
+  }
+
+  // Create event document
+  const eventRef = await db.collection("events").add({
+    ...validatedData,
+    heroImage: heroImageUrl,
+    createdBy: userId,
+    attendees: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  // Update creator's profile
+  const profileRef = db.collection("profiles").doc(userId);
+  const profileDoc = await profileRef.get();
+  
+  if (profileDoc.exists) {
+    const profileData = profileDoc.data();
+    const events = profileData?.events || [];
+    await profileRef.update({
+      events: [...events, eventRef.id],
+      updatedAt: new Date(),
+    });
+  }
+
+  return eventRef.id;
+};
 
 // Validation schema for event update
 const updateEventSchema = z.object({
   title: z.string().min(3).max(200).optional(),
   description: z.string().min(10).max(5000).optional(),
-  datetime: z.string().optional(),
+  startDate: z.string().optional(),
+  startTime: z.string().optional(),
+  endDate: z.string().optional(),
+  endTime: z.string().optional(),
+  mode: z.enum(["Online", "In Person", "Hybrid"]).optional(),
   location: z.string().min(1).max(500).optional(),
   capacity: z.number().int().positive().optional(),
   category: z.string().min(1).optional(),
   city: z.string().optional(),
+  isPaid: z.boolean().optional(),
+  registrationLink: z.string().url().optional().or(z.literal("")),
+  digitalLink: z.string().url().optional().or(z.literal("")),
   status: z.enum(["draft", "published", "cancelled"]).optional(),
 });
 
@@ -72,10 +252,10 @@ router.get("/", async (req: Request, res: Response) => {
 
     // Filter by upcoming/past events
     if (upcoming === "true") {
-      query = query.where("datetime", ">=", new Date());
-      query = query.orderBy("datetime", "asc");
+      query = query.where("startDate", ">=", new Date().toISOString().split('T')[0]);
+      query = query.orderBy("startDate", "asc");
     } else {
-      query = query.orderBy("datetime", "desc");
+      query = query.orderBy("startDate", "desc");
     }
 
     // Limit results
@@ -107,6 +287,7 @@ router.get("/", async (req: Request, res: Response) => {
 /**
  * GET /events/:identifier
  * Get a single event by ID or slug
+ * Includes populated community data if event is hosted by a community
  */
 router.get("/:identifier", async (req: Request, res: Response) => {
   try {
@@ -134,10 +315,26 @@ router.get("/:identifier", async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Event not found" });
     }
 
-    const eventData = {
+    const eventData: any = {
       id: eventDoc.id,
       ...eventDoc.data(),
     };
+
+    // Populate community data if event is hosted by a community
+    if (eventData.communityId) {
+      const communityDoc = await db.collection("communities").doc(eventData.communityId).get();
+      if (communityDoc.exists) {
+        const communityData = communityDoc.data();
+        eventData.community = {
+          id: communityDoc.id,
+          name: communityData?.name,
+          slug: communityData?.slug,
+          logo: communityData?.logo,
+          logoUrl: communityData?.logoUrl,
+          shortDescription: communityData?.shortDescription,
+        };
+      }
+    }
 
     return res.status(200).json({
       success: true,
@@ -154,7 +351,8 @@ router.get("/:identifier", async (req: Request, res: Response) => {
 
 /**
  * POST /events
- * Create a new event (with file upload support)
+ * Create a new event (with optional heroImage upload)
+ * Always uses multipart/form-data (files are optional)
  */
 router.post("/", async (req: Request, res: Response) => {
   try {
@@ -164,219 +362,31 @@ router.post("/", async (req: Request, res: Response) => {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const contentType = req.headers["content-type"] || "";
-    
-    // Handle multipart form data (with file uploads)
-    if (contentType.includes("multipart/form-data")) {
-      const busboy = Busboy({ headers: req.headers as any });
-      const fields: any = {};
-      const fileUploads: Promise<string>[] = [];
+    // Always process as multipart (files are optional)
+    const { fields, files } = await uploadEventImages(req, userId);
 
-      busboy.on("field", (fieldname, val) => {
-        // Parse numbers
-        if (fieldname === "capacity") {
-          fields[fieldname] = parseInt(val, 10);
-        } else {
-          fields[fieldname] = val;
-        }
-      });
+    // Create event with optional file URL
+    const eventId = await createEventInDB(
+      fields,
+      userId,
+      files.heroImage || null
+    );
 
-      busboy.on("file", (fieldname, file, info) => {
-        const { filename, mimeType } = info;
-        
-        // Validate file type (images only)
-        if (!mimeType.startsWith("image/")) {
-          file.resume();
-          return;
-        }
-
-        const timestamp = Date.now();
-        const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, "_");
-        const filepath = `events/${userId}/${fieldname}-${timestamp}-${sanitizedFilename}`;
-        const blob = storage.bucket().file(filepath);
-        const blobStream = blob.createWriteStream({
-          metadata: {
-            contentType: mimeType,
-            metadata: {
-              uploadedBy: userId,
-              fieldname,
-            },
-          },
-        });
-
-        const uploadPromise = new Promise<string>((resolve, reject) => {
-          file.pipe(blobStream);
-          
-          blobStream.on("error", (err) => {
-            console.error(`Upload error for ${fieldname}:`, err);
-            reject(err);
-          });
-
-          blobStream.on("finish", async () => {
-            try {
-              await blob.makePublic();
-              const publicUrl = `https://storage.googleapis.com/${storage.bucket().name}/${filepath}`;
-              fields[fieldname] = publicUrl;
-              resolve(publicUrl);
-            } catch (err) {
-              reject(err);
-            }
-          });
-        });
-
-        fileUploads.push(uploadPromise);
-      });
-
-      busboy.on("finish", async () => {
-        try {
-          // Wait for all file uploads to complete
-          await Promise.all(fileUploads);
-
-          // Validate required fields
-          const validationResult = createEventSchema.safeParse(fields);
-          if (!validationResult.success) {
-            return res.status(400).json({
-              error: "Invalid request data",
-              details: validationResult.error.errors,
-            });
-          }
-
-          const eventData = validationResult.data;
-
-          // Check if slug is unique
-          const existingSlug = await db
-            .collection("events")
-            .where("slug", "==", eventData.slug)
-            .limit(1)
-            .get();
-
-          if (!existingSlug.empty) {
-            return res.status(400).json({ error: "Event slug already exists" });
-          }
-
-          // If communityId is provided, verify it exists and increment event count
-          if (eventData.communityId) {
-            const communityDoc = await db.collection("communities").doc(eventData.communityId).get();
-            if (!communityDoc.exists) {
-              return res.status(400).json({ error: "Community not found" });
-            }
-
-            // Increment community event count
-            await db.collection("communities").doc(eventData.communityId).update({
-              eventCount: (communityDoc.data()?.eventCount || 0) + 1,
-              updatedAt: new Date(),
-            });
-          }
-
-          // Create event
-          const eventRef = await db.collection("events").add({
-            ...eventData,
-            datetime: new Date(eventData.datetime),
-            heroImage: fields.heroImage || null,
-            createdBy: userId,
-            attendees: 0,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          });
-
-          // Update creator's profile
-          const profileRef = db.collection("profiles").doc(userId);
-          const profileDoc = await profileRef.get();
-          
-          if (profileDoc.exists) {
-            const profileData = profileDoc.data();
-            const events = profileData?.events || [];
-            await profileRef.update({
-              events: [...events, eventRef.id],
-              updatedAt: new Date(),
-            });
-          }
-
-          return res.status(201).json({
-            success: true,
-            message: "Event created successfully",
-            eventId: eventRef.id,
-          });
-        } catch (error: any) {
-          console.error("Error creating event:", error);
-          return res.status(500).json({
-            error: "Failed to create event",
-            details: error.message,
-          });
-        }
-      });
-
-      req.pipe(busboy);
-      return; // Explicitly return to satisfy TypeScript
-    } else {
-      // Handle regular JSON request (no file uploads)
-      const validationResult = createEventSchema.safeParse(req.body);
-      if (!validationResult.success) {
-        return res.status(400).json({
-          error: "Invalid request data",
-          details: validationResult.error.errors,
-        });
-      }
-
-      const eventData = validationResult.data;
-
-      // Check if slug is unique
-      const existingSlug = await db
-        .collection("events")
-        .where("slug", "==", eventData.slug)
-        .limit(1)
-        .get();
-
-      if (!existingSlug.empty) {
-        return res.status(400).json({ error: "Event slug already exists" });
-      }
-
-      // If communityId is provided, verify it exists
-      if (eventData.communityId) {
-        const communityDoc = await db.collection("communities").doc(eventData.communityId).get();
-        if (!communityDoc.exists) {
-          return res.status(400).json({ error: "Community not found" });
-        }
-
-        // Increment community event count
-        await db.collection("communities").doc(eventData.communityId).update({
-          eventCount: (communityDoc.data()?.eventCount || 0) + 1,
-          updatedAt: new Date(),
-        });
-      }
-
-      // Create event
-      const eventRef = await db.collection("events").add({
-        ...eventData,
-        datetime: new Date(eventData.datetime),
-        heroImage: null,
-        createdBy: userId,
-        attendees: 0,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-
-      // Update creator's profile
-      const profileRef = db.collection("profiles").doc(userId);
-      const profileDoc = await profileRef.get();
-      
-      if (profileDoc.exists) {
-        const profileData = profileDoc.data();
-        const events = profileData?.events || [];
-        await profileRef.update({
-          events: [...events, eventRef.id],
-          updatedAt: new Date(),
-        });
-      }
-
-      return res.status(201).json({
-        success: true,
-        message: "Event created successfully",
-        eventId: eventRef.id,
-      });
-    }
+    return res.status(201).json({
+      success: true,
+      message: "Event created successfully",
+      eventId,
+    });
   } catch (error: any) {
     console.error("Error creating event:", error);
+    
+    if (error.status) {
+      return res.status(error.status).json({
+        error: error.error,
+        details: error.details,
+      });
+    }
+    
     return res.status(500).json({
       error: "Failed to create event",
       details: error.message,
@@ -438,11 +448,6 @@ router.patch("/:eventId", async (req: Request, res: Response) => {
       ...updates,
       updatedAt: new Date(),
     };
-
-    // Convert datetime string to Date if provided
-    if (updates.datetime) {
-      updateObj.datetime = new Date(updates.datetime);
-    }
 
     // Update event
     await db.collection("events").doc(eventId).update(updateObj);

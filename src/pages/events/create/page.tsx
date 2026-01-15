@@ -3,11 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { getFirestore, collection, addDoc, getDocs, Timestamp, serverTimestamp, updateDoc } from "firebase/firestore";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { getApp } from "firebase/app";
 import { toast } from "sonner";
 import { CalendarDays, MapPin, Users, Loader2, Upload, Link as LinkIcon } from "lucide-react";
+import { apiFetch } from "@/lib/fetch";
 import { Button } from "@/components/ui/button";
 import {
     Card,
@@ -34,21 +32,30 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { useAuth } from "@/hooks/use-auth";
 
 // Zod schema for event validation
 const eventSchema = z.object({
-    title: z.string().min(3, "Title must be at least 3 characters").max(100, "Title must be less than 100 characters"),
+    title: z.string().min(3, "Title must be at least 3 characters").max(200, "Title must be less than 200 characters"),
+    slug: z.string()
+        .min(3, "Slug must be at least 3 characters")
+        .max(200, "Slug must be less than 200 characters")
+        .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Slug must be lowercase letters, numbers, and hyphens only"),
     description: z.string().min(10, "Description must be at least 10 characters"),
-    datetime: z.string().min(1, "Date and time is required"),
+    startDate: z.string().min(1, "Start date is required"),
+    startTime: z.string().min(1, "Start time is required"),
+    endDate: z.string().optional(),
+    endTime: z.string().optional(),
     location: z.string().optional(),
     city: z.string().optional(),
     digitalLink: z.string().url("Must be a valid URL").optional().or(z.literal("")),
     mode: z.enum(["Online", "In Person", "Hybrid"], {
         required_error: "Please select event mode",
     }),
-    price: z.string().min(1, "Price is required (use 'Free' if no cost)"),
+    isPaid: z.boolean().default(false),
+    registrationLink: z.string().url("Must be a valid URL").optional().or(z.literal("")),
     category: z.string().min(1, "Category is required"),
     hostType: z.enum(["community", "custom"], {
         required_error: "Please select host type",
@@ -56,7 +63,7 @@ const eventSchema = z.object({
     communityId: z.string().optional(),
     customHostName: z.string().optional(),
     heroImage: z.instanceof(File).optional(),
-    maxAttendees: z.string().optional(),
+    capacity: z.string().optional(),
 }).refine((data) => {
     // If mode is In Person or Hybrid, location and city are required
     if ((data.mode === "In Person" || data.mode === "Hybrid") && (!data.location || !data.city)) {
@@ -145,36 +152,54 @@ export default function CreateEventPage() {
         resolver: zodResolver(eventSchema),
         defaultValues: {
             title: "",
+            slug: "",
             description: "",
-            datetime: "",
+            startDate: "",
+            startTime: "",
+            endDate: "",
+            endTime: "",
             location: "",
             city: "",
             digitalLink: "",
             mode: undefined,
-            price: "Free",
+            isPaid: false,
+            registrationLink: "",
             category: "",
             hostType: "custom",
             communityId: "",
             customHostName: user?.displayName || "",
-            maxAttendees: "",
+            capacity: "",
         },
     });
 
     const watchMode = form.watch("mode");
     const watchHostType = form.watch("hostType");
 
-    // Fetch communities/communities from Firestore
+    // Auto-generate slug from title
+    const generateSlug = (title: string) => {
+        return title
+            .toLowerCase()
+            .replace(/[^a-z0-9\s-]/g, '') // Remove special characters
+            .replace(/\s+/g, '-') // Replace spaces with hyphens
+            .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
+            .replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
+    };
+
+    // Fetch communities from API
     useEffect(() => {
         const fetchCommunities = async () => {
             try {
-                const db = getFirestore(getApp());
-                const communitiesRef = collection(db, "communities");
-                const snapshot = await getDocs(communitiesRef);
+                const response = await apiFetch("/communities?limit=100");
+                const result = await response.json();
                 
-                const fetchedCommunities: Community[] = snapshot.docs.map((doc) => ({
-                    id: doc.id,
-                    name: doc.data().name || "Unnamed Community",
-                    acronym: doc.data().acronym,
+                if (!response.ok) {
+                    throw new Error(result.error || "Failed to fetch communities");
+                }
+                
+                const fetchedCommunities: Community[] = result.communities.map((c: any) => ({
+                    id: c.id,
+                    name: c.name || "Unnamed Community",
+                    acronym: c.acronym,
                 }));
 
                 setCommunities(fetchedCommunities);
@@ -198,54 +223,58 @@ export default function CreateEventPage() {
         setIsSubmitting(true);
 
         try {
-            const db = getFirestore(getApp());
-            const eventsRef = collection(db, "events");
+            // Build FormData for multipart/form-data request
+            const formData = new FormData();
+            
+            // Append all text fields
+            formData.append("title", data.title);
+            formData.append("slug", data.slug);
+            formData.append("description", data.description);
+            formData.append("startDate", data.startDate);
+            formData.append("startTime", data.startTime);
+            formData.append("mode", data.mode);
+            formData.append("isPaid", String(data.isPaid));
+            formData.append("category", data.category);
+            
+            // Optional fields
+            if (data.endDate) formData.append("endDate", data.endDate);
+            if (data.endTime) formData.append("endTime", data.endTime);
+            if (data.location) formData.append("location", data.location);
+            if (data.city) formData.append("city", data.city);
+            if (data.digitalLink) formData.append("digitalLink", data.digitalLink);
+            if (data.registrationLink) formData.append("registrationLink", data.registrationLink);
+            if (data.capacity) formData.append("capacity", data.capacity);
+            
+            // Community or custom host
+            if (data.hostType === "community" && data.communityId) {
+                formData.append("communityId", data.communityId);
+            }
+            if (data.hostType === "custom" && data.customHostName) {
+                formData.append("customHostName", data.customHostName);
+            }
 
-            // Create event document first to get ID
-            const eventDocRef = await addDoc(eventsRef, {
-                title: data.title,
-                description: data.description,
-                datetime: Timestamp.fromDate(new Date(data.datetime)),
-                location: data.location || null,
-                city: data.city || null,
-                digitalLink: data.digitalLink || null,
-                mode: data.mode,
-                price: data.price,
-                category: data.category,
-                hostType: data.hostType,
-                communityId: data.hostType === "community" && data.communityId ? data.communityId : null,
-                communityName: data.hostType === "community" && data.communityId
-                    ? communities.find(c => c.id === data.communityId)?.name || null
-                    : null,
-                customHostName: data.hostType === "custom" ? data.customHostName : null,
-                heroImageUrl: null, // Will be updated after upload
-                maxAttendees: data.maxAttendees ? parseInt(data.maxAttendees) : null,
-                attendees: 0,
-                createdBy: user.uid,
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp(),
-                status: "published",
+            // Append optional hero image
+            if (data.heroImage) {
+                formData.append("heroImage", data.heroImage);
+            }
+
+            // Call API endpoint (always uses multipart/form-data)
+            const response = await apiFetch("/events", {
+                method: "POST",
+                body: formData,
+                // Don't set Content-Type header - browser sets it with boundary
             });
 
-            // Upload hero image if provided
-            if (data.heroImage) {
-                const storage = getStorage(getApp());
-                const heroImageRef = ref(storage, `events/${eventDocRef.id}/hero`);
-                await uploadBytes(heroImageRef, data.heroImage);
-                const heroImageUrl = await getDownloadURL(heroImageRef);
+            const result = await response.json();
 
-                // Update event with hero image URL
-                await updateDoc(eventDocRef, {
-                    heroImageUrl,
-                    updatedAt: serverTimestamp(),
-                });
+            if (!response.ok) {
+                throw new Error(result.error || "Failed to create event");
             }
 
             toast.success("Event created successfully!", {
                 description: "Your event has been published.",
             });
 
-            // Navigate back to events page
             navigate("/events");
         } catch (error) {
             console.error("Error creating event:", error);
@@ -311,8 +340,39 @@ export default function CreateEventPage() {
                                                 <Input
                                                     placeholder="NYC Tech Students Mixer"
                                                     {...field}
+                                                    onChange={(e) => {
+                                                        field.onChange(e);
+                                                        // Auto-generate slug if slug is empty
+                                                        if (!form.getValues("slug")) {
+                                                            form.setValue("slug", generateSlug(e.target.value));
+                                                        }
+                                                    }}
                                                 />
                                             </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+
+                                {/* Slug */}
+                                <FormField
+                                    control={form.control}
+                                    name="slug"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>URL Slug *</FormLabel>
+                                            <FormControl>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-sm text-slate-500">tailed.ca/events/</span>
+                                                    <Input
+                                                        placeholder="nyc-tech-students-mixer"
+                                                        {...field}
+                                                    />
+                                                </div>
+                                            </FormControl>
+                                            <FormDescription>
+                                                A unique URL-friendly identifier (lowercase letters, numbers, and hyphens only)
+                                            </FormDescription>
                                             <FormMessage />
                                         </FormItem>
                                     )}
@@ -340,27 +400,90 @@ export default function CreateEventPage() {
                                     )}
                                 />
 
-                                {/* Date and Time */}
-                                <FormField
-                                    control={form.control}
-                                    name="datetime"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel>Date & Time *</FormLabel>
-                                            <FormControl>
-                                                <div className="relative">
-                                                    <CalendarDays className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                                {/* Start Date & Time */}
+                                <div className="grid gap-6 sm:grid-cols-2">
+                                    <FormField
+                                        control={form.control}
+                                        name="startDate"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Start Date *</FormLabel>
+                                                <FormControl>
+                                                    <div className="relative">
+                                                        <CalendarDays className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                                                        <Input
+                                                            type="date"
+                                                            className="pl-10"
+                                                            {...field}
+                                                        />
+                                                    </div>
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+
+                                    <FormField
+                                        control={form.control}
+                                        name="startTime"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Start Time *</FormLabel>
+                                                <FormControl>
                                                     <Input
-                                                        type="datetime-local"
-                                                        className="pl-10"
+                                                        type="time"
                                                         {...field}
                                                     />
-                                                </div>
-                                            </FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                </div>
+
+                                {/* End Date & Time (Optional) */}
+                                <div className="grid gap-6 sm:grid-cols-2">
+                                    <FormField
+                                        control={form.control}
+                                        name="endDate"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>End Date (Optional)</FormLabel>
+                                                <FormControl>
+                                                    <div className="relative">
+                                                        <CalendarDays className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                                                        <Input
+                                                            type="date"
+                                                            className="pl-10"
+                                                            {...field}
+                                                        />
+                                                    </div>
+                                                </FormControl>
+                                                <FormDescription>
+                                                    Leave empty for single-day event
+                                                </FormDescription>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+
+                                    <FormField
+                                        control={form.control}
+                                        name="endTime"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>End Time (Optional)</FormLabel>
+                                                <FormControl>
+                                                    <Input
+                                                        type="time"
+                                                        {...field}
+                                                    />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                </div>
 
                                 {/* Mode & Category */}
                                 <div className="grid gap-6 sm:grid-cols-2">
@@ -496,28 +619,32 @@ export default function CreateEventPage() {
                                     />
                                 )}
 
-                                {/* Price & Max Attendees */}
+                                {/* Paid Event Toggle & Registration Link */}
                                 <div className="grid gap-6 sm:grid-cols-2">
                                     <FormField
                                         control={form.control}
-                                        name="price"
+                                        name="isPaid"
                                         render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>Price *</FormLabel>
+                                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                                                <div className="space-y-0.5">
+                                                    <FormLabel className="text-base">Paid Event</FormLabel>
+                                                    <FormDescription>
+                                                        Toggle if this is a paid event
+                                                    </FormDescription>
+                                                </div>
                                                 <FormControl>
-                                                    <Input
-                                                        placeholder="Free or $10"
-                                                        {...field}
+                                                    <Switch
+                                                        checked={field.value}
+                                                        onCheckedChange={field.onChange}
                                                     />
                                                 </FormControl>
-                                                <FormMessage />
                                             </FormItem>
                                         )}
                                     />
 
                                     <FormField
                                         control={form.control}
-                                        name="maxAttendees"
+                                        name="capacity"
                                         render={({ field }) => (
                                             <FormItem>
                                                 <FormLabel>Max Attendees</FormLabel>
@@ -540,6 +667,31 @@ export default function CreateEventPage() {
                                         )}
                                     />
                                 </div>
+
+                                {/* Registration Link */}
+                                <FormField
+                                    control={form.control}
+                                    name="registrationLink"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Registration Link (Optional)</FormLabel>
+                                            <FormControl>
+                                                <div className="relative">
+                                                    <LinkIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                                                    <Input
+                                                        placeholder="https://eventbrite.com/..."
+                                                        className="pl-10"
+                                                        {...field}
+                                                    />
+                                                </div>
+                                            </FormControl>
+                                            <FormDescription>
+                                                External registration or ticketing link
+                                            </FormDescription>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
 
                                 {/* Host Type Selection */}
                                 <FormField

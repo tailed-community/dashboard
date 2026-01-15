@@ -1,9 +1,8 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/use-auth";
-import { getFirestore, collection, query, where, doc, getDoc, getDocs, limit, Timestamp } from "firebase/firestore";
-import { getApp } from "firebase/app";
 import { ArrowLeft, Loader2, Settings, Users } from "lucide-react";
+import { apiFetch } from "@/lib/fetch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import CommunitySettingsTab from "./components/community-settings-tab.tsx";
@@ -23,8 +22,8 @@ type CommunityData = {
     members: string[];
     createdBy: string;
     createdByName: string;
-    createdAt: Timestamp;
-    updatedAt: Timestamp;
+    createdAt: Date;
+    updatedAt: Date;
     status: string;
 };
 
@@ -44,42 +43,39 @@ export default function CommunityAdminPage() {
 
         const fetchCommunity = async () => {
             try {
-                const db = getFirestore(getApp());
-                
-                // Try to find community by slug first
-                const communitiesRef = collection(db, "communities");
-                const slugQuery = query(communitiesRef, where("slug", "==", slug), limit(1));
-                const slugSnapshot = await getDocs(slugQuery);
+                // Fetch community via API (supports both slug and ID)
+                const response = await apiFetch(`/communities/${slug}`);
+                const result = await response.json();
 
-                let communityDoc;
-                if (!slugSnapshot.empty) {
-                    communityDoc = slugSnapshot.docs[0];
-                } else {
-                    // Fallback to document ID
-                    const docRef = doc(db, "communities", slug);
-                    communityDoc = await getDoc(docRef);
-                }
+                if (!response.ok) {
+                    // Handle 403 Forbidden - not creator
+                    if (response.status === 403) {
+                        toast.error("You don't have permission to access this page");
+                        navigate(`/communities/${slug}`);
+                        return;
+                    }
+                    
+                    // Handle 404 Not Found
+                    if (response.status === 404) {
+                        toast.error("Community not found");
+                        navigate("/communities");
+                        return;
+                    }
 
-                if (!communityDoc || !communityDoc.exists()) {
-                    toast.error("Community not found");
-                    navigate("/communities");
-                    return;
+                    throw new Error(result.error || "Failed to load community");
                 }
 
                 const communityData = {
-                    id: communityDoc.id,
-                    ...communityDoc.data(),
+                    ...result.community,
+                    createdAt: new Date(result.community.createdAt),
+                    updatedAt: new Date(result.community.updatedAt),
                 } as CommunityData;
 
                 setCommunity(communityData);
 
-                // Check if user is the creator
-                if (user && communityData.createdBy === user.uid) {
-                    setIsCreator(true);
-                } else {
-                    toast.error("You don't have permission to access this page");
-                    navigate(`/communities/${slug}`);
-                }
+                // Backend already validates creator access via authentication
+                // If we get here, user is authorized
+                setIsCreator(true);
             } catch (error) {
                 console.error("Error fetching community:", error);
                 toast.error("Failed to load community");

@@ -688,4 +688,129 @@ router.delete("/main-resume", async (req, res) => {
     }
 });
 
+/**
+ * POST /profile/organizations/:id/subscribe
+ * Subscribe (follow) a company/organization
+ */
+router.post("/organizations/:id/subscribe", async (req, res) => {
+    const userId = req.user?.uid;
+    if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    try {
+        const { id: organizationId } = req.params;
+        const { name, logo } = req.body;
+
+        if (!name) {
+            return res.status(400).json({
+                error: "Organization name is required",
+            });
+        }
+
+        const profileRef = db.collection("profiles").doc(userId);
+        const profileDoc = await profileRef.get();
+
+        if (!profileDoc.exists) {
+            return res.status(404).json({ error: "Profile not found" });
+        }
+
+        const profileData = profileDoc.data() || {};
+        const organizations = profileData.organizations || [];
+
+        // Check if already subscribed
+        const alreadySubscribed = organizations.some(
+            (org: any) => org.id === organizationId
+        );
+
+        if (alreadySubscribed) {
+            return res.status(200).json({
+                success: true,
+                message: "Already following this organization",
+            });
+        }
+
+        // Add subscription
+        organizations.push({
+            id: organizationId,
+            name: name,
+            logo: logo || null,
+            subscribedAt: new Date(),
+        });
+
+        await profileRef.update({
+            organizations,
+            updatedAt: new Date(),
+        });
+
+        logger.info(`User ${userId} subscribed to organization ${organizationId}`);
+
+        return res.status(200).json({
+            success: true,
+            message: `Now following ${name}`,
+        });
+    } catch (error) {
+        logger.error("Error subscribing to organization:", error);
+        return res.status(500).json({
+            error: "Failed to subscribe to organization",
+            details: error instanceof Error ? error.message : String(error),
+        });
+    }
+});
+
+/**
+ * POST /profile/organizations/:id/unsubscribe
+ * Unsubscribe (unfollow) a company/organization
+ */
+router.post("/organizations/:id/unsubscribe", async (req, res) => {
+    const userId = req.user?.uid;
+    if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    try {
+        const { id: organizationId } = req.params;
+
+        const profileRef = db.collection("profiles").doc(userId);
+        const profileDoc = await profileRef.get();
+
+        if (!profileDoc.exists) {
+            return res.status(404).json({ error: "Profile not found" });
+        }
+
+        const profileData = profileDoc.data() || {};
+        const organizations = profileData.organizations || [];
+
+        // Filter out the organization
+        const updatedOrganizations = organizations.filter(
+            (org: any) => org.id !== organizationId
+        );
+
+        if (updatedOrganizations.length === organizations.length) {
+            return res.status(200).json({
+                success: true,
+                message: "Not following this organization",
+            });
+        }
+
+        await profileRef.update({
+            organizations: updatedOrganizations,
+            updatedAt: new Date(),
+        });
+
+        logger.info(`User ${userId} unsubscribed from organization ${organizationId}`);
+
+        return res.status(200).json({
+            success: true,
+            message: "Unfollowed organization successfully",
+        });
+    } catch (error) {
+        logger.error("Error unsubscribing from organization:", error);
+        return res.status(500).json({
+            error: "Failed to unsubscribe from organization",
+            details: error instanceof Error ? error.message : String(error),
+        });
+    }
+});
+
 export default router;

@@ -1,6 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { getFirestore, collection, query, where, getDocs, orderBy, Timestamp } from "firebase/firestore";
-import { getApp } from "firebase/app";
 import { Loader2, Upload, FileText, CheckCircle, AlertCircle, Users as UsersIcon, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,7 +25,7 @@ import { apiFetch } from "@/lib/fetch";
 type Event = {
     id: string;
     title: string;
-    datetime: Timestamp;
+    datetime: Date;
     category: string;
     attendees: number;
 };
@@ -68,23 +66,20 @@ export default function EventAttendeesTab({ communityId }: EventAttendeesTabProp
         const fetchEvents = async () => {
             try {
                 setLoadingEvents(true);
-                const db = getFirestore(getApp());
                 
-                const eventsQuery = query(
-                    collection(db, "events"),
-                    where("communityId", "==", communityId),
-                    orderBy("datetime", "desc")
-                );
+                // Fetch events via API
+                const response = await apiFetch(`/communities/${communityId}/events`);
+                const result = await response.json();
                 
-                const eventsSnapshot = await getDocs(eventsQuery);
-                const eventsData: Event[] = [];
-                
-                eventsSnapshot.forEach((doc) => {
-                    eventsData.push({
-                        id: doc.id,
-                        ...doc.data(),
-                    } as Event);
-                });
+                if (!response.ok) {
+                    throw new Error(result.error || "Failed to load events");
+                }
+
+                // Convert datetime strings to Date objects
+                const eventsData: Event[] = result.events.map((event: any) => ({
+                    ...event,
+                    datetime: new Date(event.datetime),
+                }));
 
                 setEvents(eventsData);
             } catch (error) {
@@ -318,22 +313,21 @@ export default function EventAttendeesTab({ communityId }: EventAttendeesTabProp
             setPastedEmails("");
             setAttendeesPreview([]);
             
-            // Refresh events to update attendee count
-            const db = getFirestore(getApp());
-            const eventsQuery = query(
-                collection(db, "events"),
-                where("communityId", "==", communityId),
-                orderBy("datetime", "desc")
-            );
-            const eventsSnapshot = await getDocs(eventsQuery);
-            const eventsData: Event[] = [];
-            eventsSnapshot.forEach((doc) => {
-                eventsData.push({
-                    id: doc.id,
-                    ...doc.data(),
-                } as Event);
-            });
-            setEvents(eventsData);
+            // Refresh events to update attendee/member count
+            try {
+                const response = await apiFetch(`/communities/${communityId}/events`);
+                const result = await response.json();
+                
+                if (response.ok) {
+                    const eventsData: Event[] = result.events.map((event: any) => ({
+                        ...event,
+                        datetime: new Date(event.datetime),
+                    }));
+                    setEvents(eventsData);
+                }
+            } catch (error) {
+                console.error("Error refreshing events:", error);
+            }
 
         } catch (error: any) {
             console.error("Error importing attendees:", error);
