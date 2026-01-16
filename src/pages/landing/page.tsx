@@ -17,11 +17,13 @@ import { Header } from "@/components/landing/header";
 import { useEffect, useState } from "react";
 import { SiDiscord, SiGithub, SiInstagram, SiYoutube } from "react-icons/si";
 import { apiFetch } from "@/lib/fetch";
+import type { Job } from "@/types/jobs";
 
 interface Event {
   id: string;
   title: string;
-  datetime: Date;
+  startDate: string;
+  startTime?: string;
   location?: string;
   city?: string;
   heroImageUrl?: string;
@@ -33,7 +35,7 @@ interface Event {
 interface Community {
   id: string;
   name: string;
-  description: string;
+  shortDescription: string;
   category: string;
   memberCount: number;
   logoUrl?: string;
@@ -43,7 +45,8 @@ interface Community {
 const mockEvent: Event = {
   id: "mock",
   title: "NYC Tech Students Mixer",
-  datetime: new Date(),
+  startDate: new Date().toISOString().split('T')[0],
+  startTime: "18:00",
   location: "The Standard, High Line",
   city: "New York",
   heroImageUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuAZ3Ujh7h950aqQW1IFQk96kBbq8-Jw6RIG3ELoHJ3XQykj0P-NJQpldCcEbEDZo3wnLUpw5TjhLAxQSZCyrTUsT8_OwcFptbNiPM9afVLwf9dHJFyluseMx2dfrL4WOdJ7SQPOq-YISYLXhaPL02jsZgLeNrlSm2y7ySR4Q811M2dn_SW9iS5c84-FMIY_lki9RbUyvM7uoRuLyHbRSlmcKnzJpQXGvQlQf5sdCtmg6_ZEAeKL_fAa-FmtGTtBBYozzlAEl4tyiEgk)",
@@ -55,7 +58,7 @@ const mockEvent: Event = {
 const mockCommunity: Community = {
   id: "mock",
   name: "Design Guild",
-  description: "A community for student designers to share work, get feedback, and find mentorship.",
+  shortDescription: "A community for student designers to share work, get feedback, and find mentorship.",
   category: "Arts & Culture",
   memberCount: 2400,
   logoUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuB5Z-pwwrKkVf2i83sPKxgaGvmwFd292YucasHSDp_QeTRg4Ec6iOuDGYM2A1m03ROjBdO2CSnb7hQN9oqF2okj7LpaOQ524Ug1eKj9sRPKXh6n7UNN6pZQlm2pP4xk7eYLHzlnAGQFpokGqHl9-ZTWzOV4Km3ICb1MekAqWLgGJOxRRw34Kb1PqSrgSXzSiHHFPj5mGEYDojZncq6mf1gprJgw3h3qDIE85Eo-C9Liwq9tGBIACedsSvKnPxsPyrGeYM5h397OXeIJ",
@@ -65,6 +68,7 @@ const mockCommunity: Community = {
 export default function LandingPage() {
   const [featuredEvent, setFeaturedEvent] = useState<Event>(mockEvent);
   const [featuredCommunity, setFeaturedCommunity] = useState<Community>(mockCommunity);
+  const [featuredJob, setFeaturedJob] = useState<Job | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -79,7 +83,8 @@ export default function LandingPage() {
             setFeaturedEvent({
               id: evt.id,
               title: evt.title,
-              datetime: new Date(evt.datetime._seconds * 1000),
+              startDate: evt.startDate,
+              startTime: evt.startTime,
               location: evt.location,
               city: evt.city,
               heroImageUrl: evt.heroImage,
@@ -95,7 +100,7 @@ export default function LandingPage() {
             setFeaturedCommunity({
               id: comm.id,
               name: comm.name,
-              description: comm.description,
+              shortDescription: comm.shortDescription,
               category: comm.category,
               memberCount: comm.memberCount || 0,
               logoUrl: comm.logo,
@@ -106,21 +111,38 @@ export default function LandingPage() {
       } catch (error) {
         console.error("Error fetching data:", error);
       }
+
+      // Fetch jobs
+      try {
+        const jobsResponse = await apiFetch("/public/jobs", {}, true);
+        const jobsData = await jobsResponse.json();
+        
+        if (jobsData.jobs && jobsData.jobs.length > 0) {
+          setFeaturedJob(jobsData.jobs[0]);
+        }
+      } catch (error) {
+        console.error("Error fetching jobs:", error);
+      }
     };
 
     fetchData();
   }, []);
 
-  const formatEventDateTime = (date: Date) => {
+  const formatEventDateTime = (startDate: string, startTime?: string) => {
     const now = new Date();
-    const diffInHours = (date.getTime() - now.getTime()) / (1000 * 60 * 60);
+    const eventDate = new Date(startDate);
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
+    const diffInDays = Math.floor((eventDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
     
-    if (diffInHours < 24 && date.getDate() === now.getDate()) {
-      return `Today • ${date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
-    } else if (diffInHours < 48 && date.getDate() === now.getDate() + 1) {
-      return `Tomorrow • ${date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+    const timeStr = startTime ? ` • ${new Date(`2000-01-01T${startTime}`).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : '';
+    
+    if (diffInDays === 0) {
+      return `Today${timeStr}`;
+    } else if (diffInDays === 1) {
+      return `Tomorrow${timeStr}`;
     } else {
-      return `${date.toLocaleDateString("en-US", { month: "short", day: "numeric" })} • ${date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+      return `${eventDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}${timeStr}`;
     }
   };
 
@@ -172,7 +194,7 @@ export default function LandingPage() {
                   </div>
                   <div className="space-y-1 px-1">
                     <p className="text-xs font-bold text-[oklch(0.62_0.15_45)] uppercase tracking-wide">
-                      {formatEventDateTime(featuredEvent.datetime)}
+                      {formatEventDateTime(featuredEvent.startDate, featuredEvent.startTime)}
                     </p>
                     <h3 className="text-lg font-bold text-brand-cream-950 dark:text-brand-cream-50 leading-tight">
                       {featuredEvent.title}
@@ -204,22 +226,44 @@ export default function LandingPage() {
                 <div className="flex items-center gap-3 mb-2 px-1">
                   <h3 className="font-bold text-lg text-brand-cream-900 dark:text-brand-cream-50">Find Opportunities</h3>
                 </div>
-                <Link to="/jobs" className="block bg-brand-cream-50 dark:bg-brand-cream-950 p-5 rounded-3xl shadow-sm border border-brand-cream-100 dark:border-brand-cream-800 group-hover:border-[oklch(0.77_0.08_220)]/30 dark:group-hover:border-[oklch(0.77_0.08_220)]/30 group-hover:shadow-lg transition-all duration-300">
-                  <div className="flex items-start justify-between gap-4 mb-4">
-                    <div className="size-14 rounded-xl bg-brand-cream-50 border border-brand-cream-100 dark:border-brand-cream-800 bg-center bg-cover shadow-sm" style={{ backgroundImage: 'url("https://lh3.googleusercontent.com/aida-public/AB6AXuBWBYpefzD8NOWhQ_NcngMCplUELaIUd9oMWeVb5kOuXAZiYKP622HmRyJjgs4A33RQN_ptNeFfpUD0PFOwvgQYznWwfjBR29MtTGdzApW6mC2sMRWwkjuXg_8-mxh4Jm27Yoy118m6g6e4IwJdt-tYHqllQAkgk9WTJLfCAVzAmRDUZ7_xU4tPdvlfMrSTbB0zMbhEZyP19TjT0tFkN_FS3-Gv1C4wuEAsYGzFg2Lebx2haWtFRpKgkywNsHfLPPZ8OmV9E95gglg8")' }}></div>
-                    <span className="px-2.5 py-1 rounded-full bg-[oklch(0.77_0.08_220)]/10 dark:bg-[oklch(0.77_0.08_220)]/20 text-[oklch(0.77_0.08_220)] dark:text-[oklch(0.77_0.08_220)] text-xs font-bold border border-[oklch(0.77_0.08_220)]/20 dark:border-[oklch(0.77_0.08_220)]/30 uppercase tracking-wide">New</span>
-                  </div>
-                  <div className="space-y-1 mb-5">
-                    <h3 className="font-bold text-lg text-brand-cream-950 dark:text-brand-cream-50 leading-tight">Product Design Intern</h3>
-                    <p className="text-brand-cream-500 text-sm font-medium">Stripe • Remote</p>
-                  </div>
-                  <div className="flex gap-2 mb-5 flex-wrap">
-                    <span className="px-2.5 py-1 rounded-md bg-brand-cream-50 dark:bg-brand-cream-900 text-brand-cream-600 dark:text-brand-cream-400 text-xs font-semibold border border-brand-cream-100 dark:border-brand-cream-800">Internship</span>
-                    <span className="px-2.5 py-1 rounded-md bg-brand-cream-50 dark:bg-brand-cream-900 text-brand-cream-600 dark:text-brand-cream-400 text-xs font-semibold border border-brand-cream-100 dark:border-brand-cream-800">Design</span>
-                    <span className="px-2.5 py-1 rounded-md bg-brand-cream-50 dark:bg-brand-cream-900 text-brand-cream-600 dark:text-brand-cream-400 text-xs font-semibold border border-brand-cream-100 dark:border-brand-cream-800">5/hr</span>
-                  </div>
-                  <span className="block w-full py-2.5 text-sm font-bold bg-brand-blue hover:bg-brand-blue/90 text-brand-cream-50 rounded-xl transition-colors shadow-sm shadow-[oklch(0.77_0.08_220)]/30 dark:shadow-none text-center">View Details</span>
-                </Link>
+                {featuredJob ? (
+                  <Link to={`/jobs/${featuredJob.id}`} className="block bg-brand-cream-50 dark:bg-brand-cream-950 p-5 rounded-3xl shadow-sm border border-brand-cream-100 dark:border-brand-cream-800 group-hover:border-[oklch(0.77_0.08_220)]/30 dark:group-hover:border-[oklch(0.77_0.08_220)]/30 group-hover:shadow-lg transition-all duration-300">
+                    <div className="flex items-start justify-between gap-4 mb-4">
+                      {featuredJob.organization?.logo ? (
+                        <div className="size-14 rounded-xl bg-brand-cream-50 border border-brand-cream-100 dark:border-brand-cream-800 bg-center bg-cover shadow-sm" style={{ backgroundImage: `url("${featuredJob.organization.logo}")` }}></div>
+                      ) : (
+                        <div className="size-14 rounded-xl bg-brand-cream-50 border border-brand-cream-100 dark:border-brand-cream-800 flex items-center justify-center shadow-sm">
+                          <Briefcase className="w-6 h-6 text-brand-cream-400" />
+                        </div>
+                      )}
+                      {featuredJob.status === "Active" && (
+                        <span className="px-2.5 py-1 rounded-full bg-[oklch(0.77_0.08_220)]/10 dark:bg-[oklch(0.77_0.08_220)]/20 text-[oklch(0.77_0.08_220)] dark:text-[oklch(0.77_0.08_220)] text-xs font-bold border border-[oklch(0.77_0.08_220)]/20 dark:border-[oklch(0.77_0.08_220)]/30 uppercase tracking-wide">Active</span>
+                      )}
+                    </div>
+                    <div className="space-y-1 mb-5">
+                      <h3 className="font-bold text-lg text-brand-cream-950 dark:text-brand-cream-50 leading-tight">{featuredJob.title}</h3>
+                      <p className="text-brand-cream-500 text-sm font-medium">
+                        {featuredJob.organization?.name || "Company"} • {featuredJob.location}
+                      </p>
+                    </div>
+                    <div className="flex gap-2 mb-5 flex-wrap">
+                      <span className="px-2.5 py-1 rounded-md bg-brand-cream-50 dark:bg-brand-cream-900 text-brand-cream-600 dark:text-brand-cream-400 text-xs font-semibold border border-brand-cream-100 dark:border-brand-cream-800">{featuredJob.type}</span>
+                      {featuredJob.skills && featuredJob.skills.slice(0, 2).map((skill, idx) => (
+                        <span key={idx} className="px-2.5 py-1 rounded-md bg-brand-cream-50 dark:bg-brand-cream-900 text-brand-cream-600 dark:text-brand-cream-400 text-xs font-semibold border border-brand-cream-100 dark:border-brand-cream-800">{skill}</span>
+                      ))}
+                      {featuredJob.salary?.min && (
+                        <span className="px-2.5 py-1 rounded-md bg-brand-cream-50 dark:bg-brand-cream-900 text-brand-cream-600 dark:text-brand-cream-400 text-xs font-semibold border border-brand-cream-100 dark:border-brand-cream-800">${featuredJob.salary.min}/yr</span>
+                      )}
+                    </div>
+                    <span className="block w-full py-2.5 text-sm font-bold bg-brand-blue hover:bg-brand-blue/90 text-brand-cream-50 rounded-xl transition-colors shadow-sm shadow-[oklch(0.77_0.08_220)]/30 dark:shadow-none text-center">View Details</span>
+                  </Link>
+                ) : (
+                  <Link to="/jobs" className="block bg-brand-cream-50 dark:bg-brand-cream-950 p-5 rounded-3xl shadow-sm border border-brand-cream-100 dark:border-brand-cream-800 opacity-50">
+                    <div className="flex items-center justify-center h-48 text-brand-cream-400">
+                      <p className="text-sm font-medium">No opportunities available</p>
+                    </div>
+                  </Link>
+                )}
               </div>
               <div className="space-y-4 group">
                 <div className="flex items-center gap-3 mb-2 px-1">
@@ -256,7 +300,7 @@ export default function LandingPage() {
                       {featuredCommunity.name}
                     </h3>
                     <p className="text-sm text-brand-cream-500 line-clamp-2">
-                      {featuredCommunity.description}
+                      {featuredCommunity.shortDescription}
                     </p>
                   </div>
                   <div className="flex items-center justify-between pt-2 px-1">
