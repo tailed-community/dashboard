@@ -549,7 +549,7 @@ router.get("/:communityId/events", async (req: Request, res: Response) => {
     const eventsSnapshot = await db
       .collection("events")
       .where("communityId", "==", communityId)
-      .orderBy("datetime", "desc")
+      .orderBy("startDate", "desc")
       .get();
 
     const events = eventsSnapshot.docs.map((doc) => ({
