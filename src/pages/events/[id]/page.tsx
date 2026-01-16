@@ -65,6 +65,7 @@ export default function EventDetailPage() {
     const [event, setEvent] = useState<EventData | null>(null);
     const [community, setCommunity] = useState<CommunityData | null>(null);
     const [heroImageUrl, setHeroImageUrl] = useState<string | null>(null);
+    const [communityLogoUrl, setCommunityLogoUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [isRegistered, setIsRegistered] = useState(false);
 
@@ -104,6 +105,17 @@ export default function EventDetailPage() {
                 // Community data is already populated by backend
                 if (eventData.community) {
                     setCommunity(eventData.community);
+                    
+                    // Load community logo from Firebase Storage if available
+                    if (eventData.community.logo) {
+                        try {
+                            const logoUrl = await getFileUrl(eventData.community.logo);
+                            setCommunityLogoUrl(logoUrl);
+                        } catch (error) {
+                            console.error("Failed to load community logo:", error);
+                            setCommunityLogoUrl(null);
+                        }
+                    }
                 }
                 
                 // Load hero image from Firebase Storage if available
@@ -159,8 +171,8 @@ export default function EventDetailPage() {
     const formattedEndTime = endDateTime ? endDateTime.toFormat('h:mm a') : null;
     const isSameDay = endDateTime && eventDateTime.hasSame(endDateTime, 'day');
 
-    const hostName = event.hostType === "community" && event.communityName
-        ? event.communityName
+    const hostName = event.hostType === "community" && community?.name
+        ? community.name
         : event.customHostName || "Community Event";
 
     const handleShare = async () => {
@@ -329,7 +341,7 @@ export default function EventDetailPage() {
                                 }}
                             >
                                 <Avatar className="h-14 w-14">
-                                    <AvatarImage src={community?.logoUrl || ""} alt={hostName} />
+                                    <AvatarImage src={communityLogoUrl || ""} alt={hostName} />
                                     <AvatarFallback className="bg-slate-100 text-slate-700 text-base font-semibold">
                                         {hostName.substring(0, 2).toUpperCase()}
                                     </AvatarFallback>

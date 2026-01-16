@@ -235,7 +235,7 @@ function PopularEventCard({ event }: { event: EventCard }) {
             <CardFooter className="flex items-center justify-between border-t border-slate-100 pt-3 text-sm text-slate-600">
                 <div className="flex items-center gap-2">
                     <MapPin className="h-4 w-4" aria-hidden="true" />
-                    <span>{event.location}</span>
+                    <span>{event.city}</span>
                 </div>
                 <div className="flex items-center gap-2 text-slate-500">
                     {isOnline ? (
@@ -582,16 +582,13 @@ export default function EventsPage() {
                             </p>
                         </div>
                         <div className="flex gap-2">
-                            <Button variant="outline" size="sm" className="border-slate-200 text-slate-700">
-                                Get alerts
-                            </Button>
-                            <Button 
+                            {/* <Button 
                                 size="sm" 
                                 className="bg-slate-900 text-white hover:bg-slate-800"
                                 onClick={() => setShowAllEvents(!showAllEvents)}
                             >
                                 {showAllEvents ? 'Show less' : 'View all'}
-                            </Button>
+                            </Button> */}
                         </div>
                     </div>
 
@@ -678,7 +675,7 @@ export default function EventsPage() {
                                 <h3 className="text-xl font-semibold text-slate-900">Browse by category</h3>
                                 <p className="text-sm text-slate-500">Find events that match your interests</p>
                             </div>
-                            <span className="cursor-pointer text-xs font-medium uppercase tracking-[0.2em] text-slate-500 hover:text-slate-700">View all</span>
+                            {/* <span className="cursor-pointer text-xs font-medium uppercase tracking-[0.2em] text-slate-500 hover:text-slate-700">View all</span> */}
                         </div>
                         <div className="grid grid-cols-1 gap-4 px-8 py-8 sm:grid-cols-2 lg:grid-cols-4">
                             {categories.map((category) => (
