@@ -112,7 +112,12 @@ const uploadEventImages = (
       reject(error);
     });
 
-    req.pipe(busboy);
+    // Use req.rawBody for Firebase Functions (production), pipe for local dev
+    if (req.rawBody) {
+      busboy.end(req.rawBody);
+    } else {
+      req.pipe(busboy);
+    }
   });
 };
 

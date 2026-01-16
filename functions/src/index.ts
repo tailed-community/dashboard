@@ -19,6 +19,7 @@ declare global {
         uid: string;
         email?: string;
       };
+      rawBody?: Buffer; // For Firebase Functions multipart/form-data
     }
   }
 }
