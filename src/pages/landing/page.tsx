@@ -167,7 +167,7 @@ export default function LandingPage() {
             <Link to="/sign-in" className="w-full sm:w-auto px-8 py-4 rounded-full bg-brand-cream-950 text-brand-cream-50 dark:bg-brand-cream-50 dark:text-brand-cream-950 font-semibold text-lg hover:scale-105 transition-all shadow-lg hover:shadow-xl hover:shadow-blue-500/10 flex items-center justify-center">
               Join for free
             </Link>
-            <Link to="/community" className="w-full sm:w-auto px-8 py-4 rounded-full bg-brand-cream-50 dark:bg-brand-cream-950 border border-brand-cream-200 dark:border-brand-cream-800 text-brand-cream-900 dark:text-brand-cream-50 font-medium text-lg hover:border-blue-500/50 dark:hover:border-blue-500/50 hover:bg-brand-cream-50 dark:hover:bg-brand-cream-900 transition-all group flex items-center justify-center">
+            <Link to="/communities" className="w-full sm:w-auto px-8 py-4 rounded-full bg-brand-cream-50 dark:bg-brand-cream-950 border border-brand-cream-200 dark:border-brand-cream-800 text-brand-cream-900 dark:text-brand-cream-50 font-medium text-lg hover:border-blue-500/50 dark:hover:border-blue-500/50 hover:bg-brand-cream-50 dark:hover:bg-brand-cream-900 transition-all group flex items-center justify-center">
               Explore communities <span className="inline-block transition-transform group-hover:translate-x-1 ml-1">→</span>
             </Link>
           </div>
