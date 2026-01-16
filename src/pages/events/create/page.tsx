@@ -235,6 +235,7 @@ export default function CreateEventPage() {
             formData.append("mode", data.mode);
             formData.append("isPaid", String(data.isPaid));
             formData.append("category", data.category);
+            formData.append("hostType", data.hostType);
             
             // Optional fields
             if (data.endDate) formData.append("endDate", data.endDate);

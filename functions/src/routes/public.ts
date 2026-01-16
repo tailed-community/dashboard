@@ -236,6 +236,7 @@ router.get("/events", async (req: Request, res: Response) => {
       query = query.where("startDate", ">=", DateTime.now().toISODate());
       query = query.orderBy("startDate", "asc");
     } else {
+      query = query.where("startDate", "<", DateTime.now().toISODate());
       query = query.orderBy("startDate", "desc");
     }
 

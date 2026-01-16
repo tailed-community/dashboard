@@ -9,7 +9,6 @@ import {
     MapPin,
     ArrowLeft,
     Share2,
-    Bookmark,
     Loader2,
     Calendar,
     UserPlus,
@@ -34,6 +33,7 @@ type CommunityData = {
     bannerUrl?: string;
     memberCount: number;
     members: string[];
+    admins: string[];
     createdBy: string;
     createdByName: string;
     createdAt: Date;
@@ -44,7 +44,8 @@ type CommunityData = {
 type Event = {
     id: string;
     title: string;
-    datetime: Date;
+    startDate: string;
+    startTime?: string;
     location?: string;
     mode: "Online" | "In Person" | "Hybrid";
     category: string;
@@ -140,9 +141,6 @@ export default function CommunityDetailPage() {
                 const upcoming: Event[] = upcomingData.success && upcomingData.events
                     ? upcomingData.events.map((evt: any) => ({
                         ...evt,
-                        datetime: evt.datetime?._seconds 
-                            ? DateTime.fromSeconds(evt.datetime._seconds).toJSDate()
-                            : DateTime.now().toJSDate(),
                     }))
                     : [];
 
@@ -155,9 +153,6 @@ export default function CommunityDetailPage() {
                 const past: Event[] = pastData.success && pastData.events
                     ? pastData.events.map((evt: any) => ({
                         ...evt,
-                        datetime: evt.datetime?._seconds 
-                            ? DateTime.fromSeconds(evt.datetime._seconds).toJSDate()
-                            : DateTime.now().toJSDate(),
                     }))
                     : [];
 
@@ -282,8 +277,8 @@ export default function CommunityDetailPage() {
                         Back to Communities
                     </button>
 
-                    {/* Admin Button - Only visible to creator */}
-                    {user && community.createdBy === user.uid && (
+                    {/* Admin Button - Only visible to admins */}
+                    {user && community.admins?.includes(user.uid) && (
                         <Button
                             variant="outline"
                             size="sm"
@@ -352,19 +347,6 @@ export default function CommunityDetailPage() {
 
                         {/* Community Details */}
                         <div className="space-y-6">
-                            {/* Created By */}
-                            <div className="flex gap-4">
-                                <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
-                                    <Users className="h-5 w-5 text-slate-600" />
-                                </div>
-                                <div className="flex-1">
-                                    <p className="text-sm font-medium text-slate-900">Created by</p>
-                                    <p className="text-sm text-slate-600">{community.createdByName}</p>
-                                    <p className="text-xs text-slate-500 mt-1">
-                                        {DateTime.fromJSDate(community.createdAt).toFormat('MMMM d, yyyy')}
-                                    </p>
-                                </div>
-                            </div>
                         </div>
                     </div>
 
@@ -480,7 +462,7 @@ export default function CommunityDetailPage() {
                                                     </div>
                                                     <div className="flex items-center gap-2 text-sm text-slate-600">
                                                         <Calendar className="h-4 w-4" />
-                                                        <span>{DateTime.fromJSDate(event.datetime).toFormat('MMM d, yyyy')}</span>
+                                                        <span>{DateTime.fromISO(event.startDate).toFormat('MMM d, yyyy')}</span>
                                                     </div>
                                                     {event.location && (
                                                         <div className="flex items-center gap-2 text-sm text-slate-600">
@@ -544,7 +526,7 @@ export default function CommunityDetailPage() {
                                                     </div>
                                                     <div className="flex items-center gap-2 text-sm text-slate-600">
                                                         <Calendar className="h-4 w-4" />
-                                                        <span>{DateTime.fromJSDate(event.datetime).toFormat('MMM d, yyyy')}</span>
+                                                        <span>{DateTime.fromISO(event.startDate).toFormat('MMM d, yyyy')}</span>
                                                     </div>
                                                     {event.location && (
                                                         <div className="flex items-center gap-2 text-sm text-slate-600">
