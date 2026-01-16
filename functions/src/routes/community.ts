@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { db, storage } from "../lib/firebase";
+import { sendCommunityWelcomeEmail } from "../lib/email-service";
 import { upsertStudentUser } from "../lib/user-management";
 import { z } from "zod";
 import Busboy from "busboy";
@@ -259,6 +260,7 @@ const createCommunityInDB = async (
     logo: logoUrl,
     banner: bannerUrl,
     createdBy: userId,
+    admins: [userId],
     members: [userId],
     memberCount: 1,
     eventCount: 0,
@@ -411,10 +413,11 @@ router.post("/:communityId/leave", async (req: Request, res: Response) => {
 
     const communityData = communityDoc.data();
     const members = communityData?.members || [];
+    const admins = communityData?.admins || [];
 
-    // Check if user is the creator
-    if (communityData?.createdBy === userId) {
-      return res.status(400).json({ error: "Community creators cannot leave their own community" });
+    // Check if user is an admin
+    if (admins.includes(userId)) {
+      return res.status(400).json({ error: "Community admins cannot leave the community. Please transfer admin role first." });
     }
 
     // Check if user is a member
@@ -491,9 +494,10 @@ router.patch("/:communityId", async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Community data not found" });
     }
 
-    // Verify user is the community creator
-    if (communityData.createdBy !== userId) {
-      return res.status(403).json({ error: "Only community creators can update community details" });
+    // Verify user is a community admin
+    const admins = communityData.admins || [];
+    if (!admins.includes(userId)) {
+      return res.status(403).json({ error: "Only community admins can update community details" });
     }
 
     // Update community
@@ -540,9 +544,10 @@ router.get("/:communityId/events", async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Community data not found" });
     }
 
-    // Verify user is the community creator
-    if (communityData.createdBy !== userId) {
-      return res.status(403).json({ error: "Only community creators can view all community events" });
+    // Verify user is a community admin
+    const admins = communityData.admins || [];
+    if (!admins.includes(userId)) {
+      return res.status(403).json({ error: "Only community admins can view all community events" });
     }
 
     // Get events
@@ -596,9 +601,10 @@ router.get("/:communityId/members", async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Community data not found" });
     }
 
-    // Verify user is the community creator
-    if (communityData.createdBy !== userId) {
-      return res.status(403).json({ error: "Only community creators can view members" });
+    // Verify user is a community admin
+    const admins = communityData.admins || [];
+    if (!admins.includes(userId)) {
+      return res.status(403).json({ error: "Only community admins can view members" });
     }
 
     const memberIds = communityData.members || [];
@@ -699,9 +705,10 @@ router.post("/:communityId/import-members", async (req: Request, res: Response) 
       return res.status(404).json({ error: "Community data not found" });
     }
 
-    // Verify user is the community creator
-    if (communityData.createdBy !== userId) {
-      return res.status(403).json({ error: "Only community creators can import members" });
+    // Verify user is a community admin
+    const admins = communityData.admins || [];
+    if (!admins.includes(userId)) {
+      return res.status(403).json({ error: "Only community admins can import members" });
     }
 
     const results = {
@@ -736,6 +743,21 @@ router.post("/:communityId/import-members", async (req: Request, res: Response) 
         
         if (upsertResult.wasCreated) {
           results.created.push(emailLower);
+          
+          // Send welcome email to new users
+          try {
+            const loginLink = `${process.env.WEB_APP_URL || 'https://community.tailed.ca'}/login`;
+            await sendCommunityWelcomeEmail(
+              emailLower,
+              member.firstName || emailLower.split("@")[0],
+              communityData.name || 'Community',
+              'the community', // No specific event
+              loginLink
+            );
+          } catch (emailError) {
+            console.error(`Failed to send welcome email to ${emailLower}:`, emailError);
+            // Don't fail the import if email fails
+          }
         } else {
           results.existing.push(emailLower);
         }
@@ -795,6 +817,219 @@ router.post("/:communityId/import-members", async (req: Request, res: Response) 
     console.error("Error importing members:", error);
     return res.status(500).json({
       error: "Failed to import members",
+      details: error.message,
+    });
+  }
+});
+
+/**
+ * POST /communities/:communityId/admins
+ * Add a new admin to the community (admin only)
+ */
+router.post("/:communityId/admins", async (req: Request, res: Response) => {
+  try {
+    const { communityId } = req.params;
+    const userId = req.user?.uid;
+
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    // Validate request body
+    const addAdminSchema = z.object({
+      userId: z.string().min(1),
+    });
+
+    const validationResult = addAdminSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({
+        error: "Invalid request data",
+        details: validationResult.error.errors,
+      });
+    }
+
+    const { userId: newAdminId } = validationResult.data;
+
+    // Get community and verify user is an admin
+    const communityDoc = await db.collection("communities").doc(communityId).get();
+    if (!communityDoc.exists) {
+      return res.status(404).json({ error: "Community not found" });
+    }
+
+    const communityData = communityDoc.data();
+    if (!communityData) {
+      return res.status(404).json({ error: "Community data not found" });
+    }
+
+    const admins = communityData.admins || [];
+    const members = communityData.members || [];
+
+    // Verify requester is a community admin
+    if (!admins.includes(userId)) {
+      return res.status(403).json({ error: "Only community admins can add new admins" });
+    }
+
+    // Check if target user is a member
+    if (!members.includes(newAdminId)) {
+      return res.status(400).json({ error: "User must be a community member to become an admin" });
+    }
+
+    // Check if already an admin
+    if (admins.includes(newAdminId)) {
+      return res.status(400).json({ error: "User is already an admin" });
+    }
+
+    // Add to admins array
+    await db.collection("communities").doc(communityId).update({
+      admins: [...admins, newAdminId],
+      updatedAt: new Date(),
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Admin added successfully",
+    });
+
+  } catch (error: any) {
+    console.error("Error adding admin:", error);
+    return res.status(500).json({
+      error: "Failed to add admin",
+      details: error.message,
+    });
+  }
+});
+
+/**
+ * DELETE /communities/:communityId/admins/:adminId
+ * Remove an admin from the community (admin only)
+ * Ensures at least one admin remains
+ */
+router.delete("/:communityId/admins/:adminId", async (req: Request, res: Response) => {
+  try {
+    const { communityId, adminId } = req.params;
+    const userId = req.user?.uid;
+
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    // Get community and verify user is an admin
+    const communityDoc = await db.collection("communities").doc(communityId).get();
+    if (!communityDoc.exists) {
+      return res.status(404).json({ error: "Community not found" });
+    }
+
+    const communityData = communityDoc.data();
+    if (!communityData) {
+      return res.status(404).json({ error: "Community data not found" });
+    }
+
+    const admins = communityData.admins || [];
+
+    // Verify requester is a community admin
+    if (!admins.includes(userId)) {
+      return res.status(403).json({ error: "Only community admins can remove admins" });
+    }
+
+    // Check if target is an admin
+    if (!admins.includes(adminId)) {
+      return res.status(400).json({ error: "User is not an admin" });
+    }
+
+    // Ensure at least one admin remains
+    if (admins.length <= 1) {
+      return res.status(400).json({ error: "Cannot remove the last admin. At least one admin must remain." });
+    }
+
+    // Remove from admins array
+    const updatedAdmins = admins.filter((id: string) => id !== adminId);
+    await db.collection("communities").doc(communityId).update({
+      admins: updatedAdmins,
+      updatedAt: new Date(),
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Admin removed successfully",
+    });
+
+  } catch (error: any) {
+    console.error("Error removing admin:", error);
+    return res.status(500).json({
+      error: "Failed to remove admin",
+      details: error.message,
+    });
+  }
+});
+
+/**
+ * GET /communities/:communityId/admins
+ * Get list of community admins with their profile info (admin only)
+ */
+router.get("/:communityId/admins", async (req: Request, res: Response) => {
+  try {
+    const { communityId } = req.params;
+    const userId = req.user?.uid;
+
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    // Get community and verify user is an admin
+    const communityDoc = await db.collection("communities").doc(communityId).get();
+    if (!communityDoc.exists) {
+      return res.status(404).json({ error: "Community not found" });
+    }
+
+    const communityData = communityDoc.data();
+    if (!communityData) {
+      return res.status(404).json({ error: "Community data not found" });
+    }
+
+    const admins = communityData.admins || [];
+
+    // Verify user is a community admin
+    if (!admins.includes(userId)) {
+      return res.status(403).json({ error: "Only community admins can view admin list" });
+    }
+
+    if (admins.length === 0) {
+      return res.status(200).json({ success: true, admins: [], count: 0 });
+    }
+
+    // Fetch admin profiles in batches (Firestore 'in' limit is 10)
+    const batchSize = 10;
+    const adminProfiles: any[] = [];
+
+    for (let i = 0; i < admins.length; i += batchSize) {
+      const batch = admins.slice(i, i + batchSize);
+      const profilesSnapshot = await db
+        .collection("profiles")
+        .where("userId", "in", batch)
+        .get();
+
+      profilesSnapshot.forEach((doc) => {
+        const data = doc.data();
+        adminProfiles.push({
+          userId: doc.id,
+          firstName: data.firstName || "",
+          lastName: data.lastName || "",
+          email: data.email || "",
+          initials: data.initials || "",
+        });
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      admins: adminProfiles,
+      count: adminProfiles.length,
+    });
+
+  } catch (error: any) {
+    console.error("Error fetching admins:", error);
+    return res.status(500).json({
+      error: "Failed to fetch admins",
       details: error.message,
     });
   }

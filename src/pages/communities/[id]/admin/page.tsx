@@ -1,13 +1,14 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/use-auth";
-import { ArrowLeft, Loader2, Settings, Users } from "lucide-react";
+import { ArrowLeft, Loader2, Settings, Users, UserCog } from "lucide-react";
 import { apiFetch } from "@/lib/fetch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import CommunitySettingsTab from "./components/community-settings-tab.tsx";
 import EventAttendeesTab from "./components/event-attendees-tab.tsx";
 import CommunityMembersTab from "./components/community-members-tab.tsx";
+import CommunityAdminsTab from "./components/community-admins-tab.tsx";
 
 type CommunityData = {
     id: string;
@@ -130,10 +131,14 @@ export default function CommunityAdminPage() {
 
                 {/* Tabbed Interface */}
                 <Tabs defaultValue="settings" className="w-full">
-                    <TabsList className="grid w-full max-w-2xl grid-cols-3 mb-8">
+                    <TabsList className="grid w-full max-w-3xl grid-cols-4 mb-8">
                         <TabsTrigger value="settings" className="flex items-center gap-2">
                             <Settings className="h-4 w-4" />
                             Settings
+                        </TabsTrigger>
+                        <TabsTrigger value="admins" className="flex items-center gap-2">
+                            <UserCog className="h-4 w-4" />
+                            Admins
                         </TabsTrigger>
                         <TabsTrigger value="members" className="flex items-center gap-2">
                             <Users className="h-4 w-4" />
@@ -147,6 +152,12 @@ export default function CommunityAdminPage() {
 
                     <TabsContent value="settings">
                         <CommunitySettingsTab community={community} onUpdate={setCommunity} />
+                    </TabsContent>
+
+                    <TabsContent value="admins">
+                        <CommunityAdminsTab 
+                            communityId={community.id}
+                        />
                     </TabsContent>
 
                     <TabsContent value="members">

@@ -300,7 +300,7 @@ export const sendCommunityWelcomeEmail = async (
   email: string,
   firstName: string,
   communityName: string,
-  eventTitle: string,
+  eventTitle: string | null | undefined,
   loginLink: string
 ) => {
   if (process.env.NODE_ENV === "development") {
@@ -314,6 +314,15 @@ export const sendCommunityWelcomeEmail = async (
     );
     return Promise.resolve();
   }
+
+  // Dynamic message based on whether event is provided
+  const welcomeMessage = eventTitle
+    ? `Great news! You've been registered for <strong style="color: #EB7A24;">${eventTitle}</strong> through <strong style="color: #EB7A24;">${communityName}</strong> on Tail'ed Community.`
+    : `Great news! You've been added to <strong style="color: #EB7A24;">${communityName}</strong> on Tail'ed Community.`;
+
+  const welcomeMessageText = eventTitle
+    ? `Great news! You've been registered for ${eventTitle} through ${communityName} on Tail'ed Community.`
+    : `Great news! You've been added to ${communityName} on Tail'ed Community.`;
 
   const mailOptions = {
     from: process.env.EMAIL_FROM || "Tail'ed <no-reply@tailed.ca>",
@@ -362,7 +371,7 @@ export const sendCommunityWelcomeEmail = async (
             line-height: 1.6;
             margin: 0 0 20px 0;
           ">
-            Great news! You've been registered for <strong style="color: #EB7A24;">${eventTitle}</strong> through <strong style="color: #EB7A24;">${communityName}</strong> on Tail'ed Community.
+            ${welcomeMessage}
           </p>
 
           <p style="
@@ -460,7 +469,7 @@ Welcome to Tail'ed Community! 🎉
 
 Hi ${firstName || 'there'},
 
-Great news! You've been registered for ${eventTitle} through ${communityName} on Tail'ed Community.
+${welcomeMessageText}
 
 We've created an account for you to help you connect with opportunities, events, and fellow community members.
 
@@ -472,7 +481,7 @@ What you can do with Tail'ed:
 • Explore job opportunities tailored for students
 • Build your profile and showcase your skills
 
-Need help getting started? Visit our help center at <a href="mailto:support@community.tailed.ca" style="color: #667eea; text-decoration: none;">support@community.tailed.ca</a> or reply to this email.
+Need help getting started? Visit our help center at support@community.tailed.ca or reply to this email.
 
 © ${new Date().getFullYear()} Tail'ed Community. All rights reserved.
 Questions? Contact us at community@tailed.ca

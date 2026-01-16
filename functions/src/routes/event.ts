@@ -441,15 +441,16 @@ router.patch("/:eventId", async (req: Request, res: Response) => {
     // Check if user is event creator
     let isAuthorized = eventData.createdBy === userId;
 
-    // If event has a community, check if user is community creator
+    // If event has a community, check if user is community admin
     if (!isAuthorized && eventData.communityId) {
       const communityDoc = await db.collection("communities").doc(eventData.communityId).get();
       const communityData = communityDoc.data();
-      isAuthorized = communityData?.createdBy === userId;
+      const admins = communityData?.admins || [];
+      isAuthorized = admins.includes(userId);
     }
 
     if (!isAuthorized) {
-      return res.status(403).json({ error: "Only event or community creators can update event details" });
+      return res.status(403).json({ error: "Only event creators or community admins can update event details" });
     }
 
     // Prepare update object
@@ -502,15 +503,16 @@ router.delete("/:eventId", async (req: Request, res: Response) => {
     // Check if user is event creator
     let isAuthorized = eventData.createdBy === userId;
 
-    // If event has a community, check if user is community creator
+    // If event has a community, check if user is community admin
     if (!isAuthorized && eventData.communityId) {
       const communityDoc = await db.collection("communities").doc(eventData.communityId).get();
       const communityData = communityDoc.data();
-      isAuthorized = communityData?.createdBy === userId;
+      const admins = communityData?.admins || [];
+      isAuthorized = admins.includes(userId);
     }
 
     if (!isAuthorized) {
-      return res.status(403).json({ error: "Only event or community creators can delete events" });
+      return res.status(403).json({ error: "Only event creators or community admins can delete events" });
     }
 
     // Soft delete by setting status to cancelled
@@ -596,9 +598,10 @@ router.post("/:eventId/import-attendees", async (req: Request, res: Response) =>
       return res.status(404).json({ error: "Community data not found" });
     }
 
-    // Verify user is the community creator
-    if (communityData.createdBy !== userId) {
-      return res.status(403).json({ error: "Only community creators can import attendees" });
+    // Verify user is a community admin
+    const admins = communityData.admins || [];
+    if (!admins.includes(userId)) {
+      return res.status(403).json({ error: "Only community admins can import attendees" });
     }
 
     const results = {
@@ -783,11 +786,12 @@ router.get("/:eventId/attendees", async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Event data not found" });
     }
 
-    // Verify user has access (community creator or event creator)
+    // Verify user has access (community admin or event creator)
     if (eventData.communityId) {
       const communityDoc = await db.collection("communities").doc(eventData.communityId).get();
       const communityData = communityDoc.data();
-      if (communityData && communityData.createdBy !== userId && eventData.createdBy !== userId) {
+      const admins = communityData?.admins || [];
+      if (communityData && !admins.includes(userId) && eventData.createdBy !== userId) {
         return res.status(403).json({ error: "Access denied" });
       }
     } else if (eventData.createdBy !== userId) {
