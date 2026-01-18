@@ -36,6 +36,7 @@ const AppliedJobsPage = lazy(
     () => import("./pages/(dashboard)/jobs/applied/page")
 );
 const JobsPage = lazy(() => import("./pages/(dashboard)/jobs/page"));
+// New pages from main
 const CompaniesPage = lazy(() => import("./pages/companies/page"));
 const CompanyDetailPage = lazy(() => import("./pages/companies/[id]/page"));
 const EventsPage = lazy(() => import("./pages/events/page"));
@@ -50,6 +51,8 @@ const CreateCommunityPage = lazy(
 const SpotlightPage = lazy(() => import("./pages/spotlight/page"));
 const ExplorePage = lazy(() => import("./pages/explore/page"));
 const AboutPage = lazy(() => import("./pages/about/page"));
+// Booking page from feature branch
+const BookingPage = lazy(() => import("./pages/(dashboard)/book/[code]/page"));
 
 function App() {
     return (
@@ -140,6 +143,9 @@ function App() {
                             />
                             <Route path="/explore" element={<ExplorePage />} />
                             <Route path="/about" element={<AboutPage />} />
+                            
+                            {/* PUBLIC BOOKING PAGE */}
+                            <Route path="/book/:code" element={<BookingPage />} />
                         </Route>
 
                         {/* DASHBOARD ROUTES - With sidebar for authenticated users */}
