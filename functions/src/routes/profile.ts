@@ -7,6 +7,101 @@ import { FieldValue } from "firebase-admin/firestore";
 
 const router = express.Router();
 
+/**
+ * Generates a valid download URL for a document from student storage
+ * Uses signed URLs in production (24h expiration) or download tokens in development
+ * @param userId - Student user ID
+ * @param documentId - Document ID
+ * @param documentType - Type of document (resume, cover, grades)
+ * @returns Download URL or original URL if generation fails
+ */
+async function generateDocumentUrl(
+    userId: string,
+    documentId: string,
+    documentType: "resume" | "cover" | "grades"
+): Promise<string | null> {
+    if (!storage) {
+        logger.error("Student storage is not initialized");
+        return null;
+    }
+
+    try {
+        let storagePath: string;
+
+        switch (documentType) {
+            case "resume":
+                storagePath = `profiles/${userId}/resumes/main_resume/${documentId}.pdf`;
+                break;
+            case "cover":
+                storagePath = `profiles/${userId}/documents/cover_letters/${documentId}.pdf`;
+                break;
+            case "grades":
+                storagePath = `profiles/${userId}/documents/grades/${documentId}.pdf`;
+                break;
+            default:
+                return null;
+        }
+
+        const file = storage.bucket().file(storagePath);
+
+        // Check if file exists
+        const [exists] = await file.exists();
+        if (!exists) {
+            logger.warn(`Document not found: ${storagePath}`);
+            return null;
+        }
+
+        // Use different URL generation strategy based on environment
+        const isProduction = process.env.NODE_ENV === "production";
+
+        if (isProduction) {
+            // Production: Use signed URLs with 24-hour expiration
+            try {
+                const expirationDate = new Date();
+                expirationDate.setDate(expirationDate.getDate() + 1); // 24 hours from now
+
+                const [url] = await file.getSignedUrl({
+                    version: "v4",
+                    action: "read",
+                    expires: expirationDate,
+                });
+
+                return url;
+            } catch (signError) {
+                logger.error(
+                    `Failed to generate signed URL, falling back to token method:`,
+                    signError
+                );
+                // Fall through to token method if signing fails
+            }
+        }
+
+        // Development: Use Firebase download tokens (works with gcloud auth)
+        const [metadata] = await file.getMetadata();
+        let token = metadata.metadata?.firebaseStorageDownloadTokens;
+
+        if (!token) {
+            // Generate a new token
+            token = crypto.randomUUID();
+            await file.setMetadata({
+                metadata: {
+                    firebaseStorageDownloadTokens: token,
+                },
+            });
+        }
+
+        // Construct public URL with token
+        const bucketName = storage.bucket().name;
+        const encodedPath = encodeURIComponent(storagePath);
+        const url = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodedPath}?alt=media&token=${token}`;
+
+        return url;
+    } catch (error) {
+        logger.error(`Error generating document URL for ${documentType}:`, error);
+        return null;
+    }
+}
+
 // Function to calculate profile completeness
 export const calculateProfileScore = (profileData: any) => {
     const checks = {
@@ -82,6 +177,40 @@ router.get("/", async (req, res) => {
         }
 
         const profileData = profileDoc.data()!;
+
+        // Generate URLs for documents if they exist
+        if (profileData.resume?.id) {
+            const resumeUrl = await generateDocumentUrl(
+                req.user!.uid,
+                profileData.resume.id,
+                "resume"
+            );
+            if (resumeUrl) {
+                profileData.resume.url = resumeUrl;
+            }
+        }
+
+        if (profileData.coverLetter?.id) {
+            const coverUrl = await generateDocumentUrl(
+                req.user!.uid,
+                profileData.coverLetter.id,
+                "cover"
+            );
+            if (coverUrl) {
+                profileData.coverLetter.url = coverUrl;
+            }
+        }
+
+        if (profileData.grades?.id) {
+            const gradesUrl = await generateDocumentUrl(
+                req.user!.uid,
+                profileData.grades.id,
+                "grades"
+            );
+            if (gradesUrl) {
+                profileData.grades.url = gradesUrl;
+            }
+        }
 
         // Return the profile data
         return res.status(200).json(profileData);
@@ -283,9 +412,16 @@ router.patch("/main-resume/", async (req, res): Promise<void> => {
 
                 logger.info(`File uploaded to storage: ${filePath}`);
 
-                // Construct a Firebase public download URL
-                const encodedPath = encodeURIComponent(filePath);
-                const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${storage.bucket().name}/o/${encodedPath}?alt=media`;
+                // Generate download URL
+                const downloadUrl = await generateDocumentUrl(
+                    userId,
+                    resumeId,
+                    "resume"
+                );
+
+                if (!downloadUrl) {
+                    throw new Error("Failed to generate download URL");
+                }
 
                 // Save resume metadata to the user's profile
                 await db
@@ -296,7 +432,7 @@ router.patch("/main-resume/", async (req, res): Promise<void> => {
                             resume: {
                                 id: resumeId,
                                 name: originalName,
-                                url: publicUrl,
+                                url: downloadUrl,
                                 uploadedAt: new Date(),
                             },
                             updatedAt: new Date(),
@@ -312,7 +448,7 @@ router.patch("/main-resume/", async (req, res): Promise<void> => {
                     resume: {
                         id: resumeId,
                         name: originalName,
-                        url: publicUrl,
+                        url: downloadUrl,
                     },
                 });
             } catch (error) {
@@ -683,6 +819,550 @@ router.delete("/main-resume", async (req, res) => {
         logger.error("Error deleting resume:", error);
         return res.status(500).json({
             error: "Failed to delete resume",
+            details: error instanceof Error ? error.message : String(error),
+        });
+    }
+});
+
+/**
+ * PATCH /cover-letter
+ * - Accepts a PDF cover letter upload using Busboy
+ * - Validates the file type and name
+ * - Generates a unique cover letter ID
+ * - Uploads to Firebase Storage under /profiles/{userId}/documents/cover_letters/{coverId}.pdf
+ * - Stores { id, name, url } under the user's profile
+ */
+router.patch("/cover-letter/", async (req, res): Promise<void> => {
+    try {
+        const userId = req.user?.uid;
+        if (!userId) {
+            res.status(401).json({ error: "Unauthorized" });
+            return;
+        }
+
+        const contentType = req.headers["content-type"];
+        if (!contentType || !contentType.includes("multipart/form-data")) {
+            logger.error("Invalid content type:", contentType);
+            res.status(400).json({
+                error: "Invalid content type. Expected multipart/form-data",
+                received: contentType,
+            });
+            return;
+        }
+
+        const busboy = Busboy({
+            headers: req.headers,
+            limits: {
+                fileSize: 5 * 1024 * 1024, // 5MB max
+                files: 1,
+                fields: 0,
+            },
+        });
+
+        let fileBuffer: Buffer | null = null;
+        let fileName: string | null = null;
+        let fileSizeExceeded = false;
+        let fileProcessed = false;
+        let responseHandled = false;
+
+        busboy.on(
+            "file",
+            (
+                fieldname: string,
+                file: any,
+                info: { filename: any; mimeType: any }
+            ) => {
+                const { filename, mimeType: mime } = info;
+
+                if (fieldname !== "coverLetter") {
+                    logger.warn(`Invalid field name: ${fieldname}`);
+                    file.resume();
+                    return;
+                }
+
+                if (mime !== "application/pdf") {
+                    logger.warn(`Invalid mime type: ${mime}`);
+                    file.resume();
+                    if (!fileProcessed && !responseHandled) {
+                        fileProcessed = true;
+                        responseHandled = true;
+                        res.status(400).json({
+                            error: "Only PDF files are allowed",
+                        });
+                    }
+                    return;
+                }
+
+                fileName = filename;
+                const chunks: Buffer[] = [];
+
+                file.on("data", (data: Buffer) => {
+                    chunks.push(data);
+                });
+
+                file.on("limit", () => {
+                    fileSizeExceeded = true;
+                    file.resume();
+                });
+
+                file.on("end", () => {
+                    if (!fileSizeExceeded) {
+                        fileBuffer = Buffer.concat(chunks);
+                    }
+                });
+            }
+        );
+
+        busboy.on("finish", async () => {
+            if (fileProcessed || responseHandled) {
+                return;
+            }
+
+            try {
+                if (fileSizeExceeded) {
+                    responseHandled = true;
+                    res.status(400).json({
+                        error: "File size exceeds 5MB limit",
+                    });
+                    return;
+                }
+
+                if (!fileBuffer || !fileName) {
+                    responseHandled = true;
+                    res.status(400).json({
+                        error: "No file uploaded",
+                    });
+                    return;
+                }
+
+                let originalName = fileName.replace(/\.[^/.]+$/, "");
+                originalName = originalName.replace(/[^a-zA-Z\s]/g, "").trim();
+                if (!originalName) originalName = "Cover Letter";
+
+                // Delete any existing cover letters in this folder
+                const folderPath = `profiles/${userId}/documents/cover_letters/`;
+                const [existingFiles] = await storage.bucket().getFiles({
+                    prefix: folderPath,
+                });
+                if (existingFiles.length > 0) {
+                    await Promise.all(existingFiles.map((f) => f.delete()));
+                }
+
+                const coverId = crypto.randomBytes(16).toString("hex");
+                const filePath = `profiles/${userId}/documents/cover_letters/${coverId}.pdf`;
+                const storageFile = storage.bucket().file(filePath);
+
+                await storageFile.save(fileBuffer, {
+                    contentType: "application/pdf",
+                    resumable: false,
+                });
+
+                const downloadUrl = await generateDocumentUrl(
+                    userId,
+                    coverId,
+                    "cover"
+                );
+
+                if (!downloadUrl) {
+                    throw new Error("Failed to generate download URL");
+                }
+
+                await db
+                    .collection("profiles")
+                    .doc(userId)
+                    .set(
+                        {
+                            coverLetter: {
+                                id: coverId,
+                                name: originalName,
+                                url: downloadUrl,
+                                uploadedAt: new Date(),
+                            },
+                            updatedAt: new Date(),
+                        },
+                        { merge: true }
+                    );
+
+                logger.info(`Cover letter saved for user ${userId}`);
+
+                responseHandled = true;
+                res.status(200).json({
+                    success: true,
+                    coverLetter: {
+                        id: coverId,
+                        name: originalName,
+                        url: downloadUrl,
+                    },
+                });
+            } catch (error) {
+                logger.error("Error processing cover letter upload:", error);
+                if (!responseHandled) {
+                    responseHandled = true;
+                    res.status(500).json({
+                        error: "Failed to upload cover letter",
+                        details:
+                            error instanceof Error
+                                ? error.message
+                                : String(error),
+                    });
+                }
+            }
+        });
+
+        busboy.on("error", (error: { message: any }) => {
+            if (!fileProcessed && !responseHandled) {
+                fileProcessed = true;
+                responseHandled = true;
+                res.status(500).json({
+                    error: "Error processing file upload",
+                    details:
+                        error instanceof Error ? error.message : String(error),
+                });
+            }
+        });
+
+        if ((req as any).rawBody) {
+            busboy.end((req as any).rawBody);
+        } else {
+            req.pipe(busboy);
+        }
+    } catch (error) {
+        logger.error("Error in cover letter upload handler:", error);
+        res.status(500).json({
+            error: "Failed to upload cover letter",
+            details: error instanceof Error ? error.message : String(error),
+        });
+    }
+});
+
+/**
+ * DELETE /cover-letter
+ * - Deletes the cover letter file from Firebase Storage
+ * - Removes the cover letter metadata from the user's profile
+ */
+router.delete("/cover-letter", async (req, res) => {
+    const userId = req.user?.uid;
+    if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    try {
+        const profileDoc = await db.collection("profiles").doc(userId).get();
+
+        if (!profileDoc.exists) {
+            return res.status(404).json({
+                error: "Profile not found",
+            });
+        }
+
+        const profileData = profileDoc.data();
+        const coverLetter = profileData?.coverLetter;
+
+        if (!coverLetter || !coverLetter.id) {
+            return res.status(404).json({
+                error: "No cover letter found to delete",
+            });
+        }
+
+        const filePath = `profiles/${userId}/documents/cover_letters/${coverLetter.id}.pdf`;
+        try {
+            const storageFile = storage.bucket().file(filePath);
+            await storageFile.delete();
+            logger.info(`Deleted cover letter file: ${filePath}`);
+        } catch (storageError) {
+            logger.warn(
+                `Could not delete storage file: ${filePath}`,
+                storageError
+            );
+        }
+
+        await db.collection("profiles").doc(userId).update({
+            coverLetter: FieldValue.delete(),
+            updatedAt: new Date(),
+        });
+
+        logger.info(`Cover letter metadata removed for user ${userId}`);
+
+        return res.status(200).json({
+            success: true,
+            message: "Cover letter deleted successfully",
+        });
+    } catch (error) {
+        logger.error("Error deleting cover letter:", error);
+        return res.status(500).json({
+            error: "Failed to delete cover letter",
+            details: error instanceof Error ? error.message : String(error),
+        });
+    }
+});
+
+/**
+ * PATCH /grades
+ * - Accepts a PDF grades document upload using Busboy
+ * - Validates the file type and name
+ * - Generates a unique grades ID
+ * - Uploads to Firebase Storage under /profiles/{userId}/documents/grades/{gradesId}.pdf
+ * - Stores { id, name, url } under the user's profile
+ */
+router.patch("/grades/", async (req, res): Promise<void> => {
+    try {
+        const userId = req.user?.uid;
+        if (!userId) {
+            res.status(401).json({ error: "Unauthorized" });
+            return;
+        }
+
+        const contentType = req.headers["content-type"];
+        if (!contentType || !contentType.includes("multipart/form-data")) {
+            logger.error("Invalid content type:", contentType);
+            res.status(400).json({
+                error: "Invalid content type. Expected multipart/form-data",
+                received: contentType,
+            });
+            return;
+        }
+
+        const busboy = Busboy({
+            headers: req.headers,
+            limits: {
+                fileSize: 5 * 1024 * 1024, // 5MB max
+                files: 1,
+                fields: 0,
+            },
+        });
+
+        let fileBuffer: Buffer | null = null;
+        let fileName: string | null = null;
+        let fileSizeExceeded = false;
+        let fileProcessed = false;
+        let responseHandled = false;
+
+        busboy.on(
+            "file",
+            (
+                fieldname: string,
+                file: any,
+                info: { filename: any; mimeType: any }
+            ) => {
+                const { filename, mimeType: mime } = info;
+
+                if (fieldname !== "grades") {
+                    logger.warn(`Invalid field name: ${fieldname}`);
+                    file.resume();
+                    return;
+                }
+
+                if (mime !== "application/pdf") {
+                    logger.warn(`Invalid mime type: ${mime}`);
+                    file.resume();
+                    if (!fileProcessed && !responseHandled) {
+                        fileProcessed = true;
+                        responseHandled = true;
+                        res.status(400).json({
+                            error: "Only PDF files are allowed",
+                        });
+                    }
+                    return;
+                }
+
+                fileName = filename;
+                const chunks: Buffer[] = [];
+
+                file.on("data", (data: Buffer) => {
+                    chunks.push(data);
+                });
+
+                file.on("limit", () => {
+                    fileSizeExceeded = true;
+                    file.resume();
+                });
+
+                file.on("end", () => {
+                    if (!fileSizeExceeded) {
+                        fileBuffer = Buffer.concat(chunks);
+                    }
+                });
+            }
+        );
+
+        busboy.on("finish", async () => {
+            if (fileProcessed || responseHandled) {
+                return;
+            }
+
+            try {
+                if (fileSizeExceeded) {
+                    responseHandled = true;
+                    res.status(400).json({
+                        error: "File size exceeds 5MB limit",
+                    });
+                    return;
+                }
+
+                if (!fileBuffer || !fileName) {
+                    responseHandled = true;
+                    res.status(400).json({
+                        error: "No file uploaded",
+                    });
+                    return;
+                }
+
+                let originalName = fileName.replace(/\.[^/.]+$/, "");
+                originalName = originalName.replace(/[^a-zA-Z\s]/g, "").trim();
+                if (!originalName) originalName = "Grades";
+
+                // Delete any existing grades documents in this folder
+                const folderPath = `profiles/${userId}/documents/grades/`;
+                const [existingFiles] = await storage.bucket().getFiles({
+                    prefix: folderPath,
+                });
+                if (existingFiles.length > 0) {
+                    await Promise.all(existingFiles.map((f) => f.delete()));
+                }
+
+                const gradesId = crypto.randomBytes(16).toString("hex");
+                const filePath = `profiles/${userId}/documents/grades/${gradesId}.pdf`;
+                const storageFile = storage.bucket().file(filePath);
+
+                await storageFile.save(fileBuffer, {
+                    contentType: "application/pdf",
+                    resumable: false,
+                });
+
+                const downloadUrl = await generateDocumentUrl(
+                    userId,
+                    gradesId,
+                    "grades"
+                );
+
+                if (!downloadUrl) {
+                    throw new Error("Failed to generate download URL");
+                }
+
+                await db
+                    .collection("profiles")
+                    .doc(userId)
+                    .set(
+                        {
+                            grades: {
+                                id: gradesId,
+                                name: originalName,
+                                url: downloadUrl,
+                                uploadedAt: new Date(),
+                            },
+                            updatedAt: new Date(),
+                        },
+                        { merge: true }
+                    );
+
+                logger.info(`Grades document saved for user ${userId}`);
+
+                responseHandled = true;
+                res.status(200).json({
+                    success: true,
+                    grades: {
+                        id: gradesId,
+                        name: originalName,
+                        url: downloadUrl,
+                    },
+                });
+            } catch (error) {
+                logger.error("Error processing grades upload:", error);
+                if (!responseHandled) {
+                    responseHandled = true;
+                    res.status(500).json({
+                        error: "Failed to upload grades document",
+                        details:
+                            error instanceof Error
+                                ? error.message
+                                : String(error),
+                    });
+                }
+            }
+        });
+
+        busboy.on("error", (error: { message: any }) => {
+            if (!fileProcessed && !responseHandled) {
+                fileProcessed = true;
+                responseHandled = true;
+                res.status(500).json({
+                    error: "Error processing file upload",
+                    details:
+                        error instanceof Error ? error.message : String(error),
+                });
+            }
+        });
+
+        if ((req as any).rawBody) {
+            busboy.end((req as any).rawBody);
+        } else {
+            req.pipe(busboy);
+        }
+    } catch (error) {
+        logger.error("Error in grades upload handler:", error);
+        res.status(500).json({
+            error: "Failed to upload grades document",
+            details: error instanceof Error ? error.message : String(error),
+        });
+    }
+});
+
+/**
+ * DELETE /grades
+ * - Deletes the grades document file from Firebase Storage
+ * - Removes the grades metadata from the user's profile
+ */
+router.delete("/grades", async (req, res) => {
+    const userId = req.user?.uid;
+    if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    try {
+        const profileDoc = await db.collection("profiles").doc(userId).get();
+
+        if (!profileDoc.exists) {
+            return res.status(404).json({
+                error: "Profile not found",
+            });
+        }
+
+        const profileData = profileDoc.data();
+        const grades = profileData?.grades;
+
+        if (!grades || !grades.id) {
+            return res.status(404).json({
+                error: "No grades document found to delete",
+            });
+        }
+
+        const filePath = `profiles/${userId}/documents/grades/${grades.id}.pdf`;
+        try {
+            const storageFile = storage.bucket().file(filePath);
+            await storageFile.delete();
+            logger.info(`Deleted grades file: ${filePath}`);
+        } catch (storageError) {
+            logger.warn(
+                `Could not delete storage file: ${filePath}`,
+                storageError
+            );
+        }
+
+        await db.collection("profiles").doc(userId).update({
+            grades: FieldValue.delete(),
+            updatedAt: new Date(),
+        });
+
+        logger.info(`Grades metadata removed for user ${userId}`);
+
+        return res.status(200).json({
+            success: true,
+            message: "Grades document deleted successfully",
+        });
+    } catch (error) {
+        logger.error("Error deleting grades document:", error);
+        return res.status(500).json({
+            error: "Failed to delete grades document",
             details: error instanceof Error ? error.message : String(error),
         });
     }
