@@ -45,7 +45,6 @@ export default function BookingPage() {
   const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
   const [booking, setBooking] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [bookingId, setBookingId] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
 
@@ -80,7 +79,6 @@ export default function BookingPage() {
       // Check if there's already a booking for this application
       if (data.existingBooking) {
         setSuccess(true);
-        setBookingId(data.existingBooking.bookingId);
         // Reconstruct the selected slot from existing booking
         setSelectedSlot({
           start: new Date(data.existingBooking.scheduledStart._seconds * 1000),
@@ -187,8 +185,7 @@ export default function BookingPage() {
         throw new Error(errorData.error || "Failed to book interview");
       }
 
-      const result = await response.json();
-      setBookingId(result.bookingId);
+      await response.json();
       setSuccess(true);
     } catch (err: any) {
       toast.error("Failed to book interview. Please try again.");
@@ -215,12 +212,10 @@ export default function BookingPage() {
   };
 
   const handleCancelBooking = async () => {
-    if (!bookingId) return;
-
     try {
       setCancelling(true);
       const apiUrl = import.meta.env.VITE_COMPANIES_API_URL || "";
-      const response = await fetch(`${apiUrl}/bookings/${bookingId}/cancel`, {
+      const response = await fetch(`${apiUrl}/bookings/${code}/cancel`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
@@ -233,7 +228,6 @@ export default function BookingPage() {
       // Reset to initial state to allow rebooking
       setSuccess(false);
       setSelectedSlot(null);
-      setBookingId(null);
       await loadBookingData(); // Refresh availability
     } catch (err: any) {
       toast.error("Failed to cancel booking. Please try again.");
@@ -247,7 +241,6 @@ export default function BookingPage() {
     // will handle deleting the old booking when a new time is selected
     setSuccess(false);
     setSelectedSlot(null);
-    setBookingId(null);
 
     // Clear existing booking from state so we don't get redirected back if logic re-runs
     if (bookingData) {
