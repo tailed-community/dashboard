@@ -52,6 +52,24 @@ type StudentProps = {
             _nanoseconds: number;
         };
     };
+    coverLetter?: {
+        id: string;
+        name: string;
+        url: string;
+        uploadedAt: {
+            _seconds: number;
+            _nanoseconds: number;
+        };
+    };
+    grades?: {
+        id: string;
+        name: string;
+        url: string;
+        uploadedAt: {
+            _seconds: number;
+            _nanoseconds: number;
+        };
+    };
     appliedJobs: [];
     organizations: string[];
 };
@@ -145,6 +163,12 @@ export default function AccountPage() {
 
     const [resumeFile, setResumeFile] = useState<File | null>(null);
     const [isUploadingResume, setIsUploadingResume] = useState(false);
+
+    const [coverLetterFile, setCoverLetterFile] = useState<File | null>(null);
+    const [isUploadingCoverLetter, setIsUploadingCoverLetter] = useState(false);
+
+    const [gradesFile, setGradesFile] = useState<File | null>(null);
+    const [isUploadingGrades, setIsUploadingGrades] = useState(false);
 
     // Devpost verification state
     const [isLoadingDevpost, setIsLoadingDevpost] = useState(false);
@@ -868,6 +892,19 @@ export default function AccountPage() {
 
             if (!response.ok) throw new Error("Failed to upload resume");
 
+            const data = await response.json();
+            
+            // Update the student state with the new resume data
+            setStudent((prev) => ({
+                ...prev,
+                resume: data.resume,
+            }));
+            
+            // Also update the original student to prevent "unsaved changes" prompt
+            setOriginalStudent((prev) =>
+                prev ? { ...prev, resume: data.resume } : null
+            );
+
             toast.success("Resume uploaded successfully!");
             setResumeFile(null);
         } catch (error) {
@@ -878,6 +915,259 @@ export default function AccountPage() {
         } finally {
             setIsUploadingResume(false);
         }
+    };
+
+    const handleCoverLetterUpload = async () => {
+        if (!coverLetterFile) return;
+
+        setIsUploadingCoverLetter(true);
+        try {
+            const formData = new FormData();
+            formData.append("coverLetter", coverLetterFile);
+
+            const response = await apiFetch("/profile/cover-letter", {
+                method: "PATCH",
+                body: formData,
+            });
+
+            if (!response.ok) throw new Error("Failed to upload cover letter");
+
+            const data = await response.json();
+            
+            // Update the student state with the new cover letter data
+            setStudent((prev) => ({
+                ...prev,
+                coverLetter: data.coverLetter,
+            }));
+            
+            // Also update the original student to prevent "unsaved changes" prompt
+            setOriginalStudent((prev) =>
+                prev ? { ...prev, coverLetter: data.coverLetter } : null
+            );
+
+            toast.success("Cover letter uploaded successfully!");
+            setCoverLetterFile(null);
+        } catch (error) {
+            console.error("Error uploading cover letter:", error);
+            toast.error("Error uploading cover letter", {
+                description: "Please try again later.",
+            });
+        } finally {
+            setIsUploadingCoverLetter(false);
+        }
+    };
+
+    const handleGradesUpload = async () => {
+        if (!gradesFile) return;
+
+        setIsUploadingGrades(true);
+        try {
+            const formData = new FormData();
+            formData.append("grades", gradesFile);
+
+            const response = await apiFetch("/profile/grades", {
+                method: "PATCH",
+                body: formData,
+            });
+
+            if (!response.ok) throw new Error("Failed to upload grades");
+
+            const data = await response.json();
+            
+            // Update the student state with the new grades data
+            setStudent((prev) => ({
+                ...prev,
+                grades: data.grades,
+            }));
+            
+            // Also update the original student to prevent "unsaved changes" prompt
+            setOriginalStudent((prev) =>
+                prev ? { ...prev, grades: data.grades } : null
+            );
+
+            toast.success("Grades uploaded successfully!");
+            setGradesFile(null);
+        } catch (error) {
+            console.error("Error uploading grades:", error);
+            toast.error("Error uploading grades", {
+                description: "Please try again later.",
+            });
+        } finally {
+            setIsUploadingGrades(false);
+        }
+    };
+
+    const handleDeleteResume = async () => {
+        try {
+            const response = await apiFetch("/profile/main-resume", {
+                method: "DELETE",
+            });
+
+            if (!response.ok) throw new Error("Failed to delete resume");
+
+            // Update the student state to remove the resume
+            setStudent((prev) => ({
+                ...prev,
+                resume: {
+                    id: "",
+                    name: "",
+                    url: "",
+                    uploadedAt: { _seconds: 0, _nanoseconds: 0 },
+                },
+            }));
+
+            // Also update the original student
+            setOriginalStudent((prev) =>
+                prev
+                    ? {
+                          ...prev,
+                          resume: {
+                              id: "",
+                              name: "",
+                              url: "",
+                              uploadedAt: { _seconds: 0, _nanoseconds: 0 },
+                          },
+                      }
+                    : null
+            );
+
+            toast.success("Resume deleted successfully!");
+        } catch (error) {
+            console.error("Error deleting resume:", error);
+            toast.error("Error deleting resume", {
+                description: "Please try again later.",
+            });
+        }
+    };
+
+    const handleDeleteCoverLetter = async () => {
+        try {
+            const response = await apiFetch("/profile/cover-letter", {
+                method: "DELETE",
+            });
+
+            if (!response.ok) throw new Error("Failed to delete cover letter");
+
+            // Update the student state to remove the cover letter
+            setStudent((prev) => ({
+                ...prev,
+                coverLetter: undefined,
+            }));
+
+            // Also update the original student
+            setOriginalStudent((prev) =>
+                prev
+                    ? {
+                          ...prev,
+                          coverLetter: undefined,
+                      }
+                    : null
+            );
+
+            toast.success("Cover letter deleted successfully!");
+        } catch (error) {
+            console.error("Error deleting cover letter:", error);
+            toast.error("Error deleting cover letter", {
+                description: "Please try again later.",
+            });
+        }
+    };
+
+    const handleDeleteGrades = async () => {
+        try {
+            const response = await apiFetch("/profile/grades", {
+                method: "DELETE",
+            });
+
+            if (!response.ok) throw new Error("Failed to delete grades");
+
+            // Update the student state to remove the grades
+            setStudent((prev) => ({
+                ...prev,
+                grades: undefined,
+            }));
+
+            // Also update the original student
+            setOriginalStudent((prev) =>
+                prev
+                    ? {
+                          ...prev,
+                          grades: undefined,
+                      }
+                    : null
+            );
+
+            toast.success("Grades deleted successfully!");
+        } catch (error) {
+            console.error("Error deleting grades:", error);
+            toast.error("Error deleting grades", {
+                description: "Please try again later.",
+            });
+        }
+    };
+
+    const handleCoverLetterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        if (file.type !== "application/pdf") {
+            toast.error("Invalid file type", {
+                description: "Please upload a PDF document.",
+            });
+            e.target.value = "";
+            return;
+        }
+
+        const sanitizedFileName = file.name
+            .replace(/\.[^/.]+$/, "")
+            .replace(/[^A-Za-z\s]/g, "")
+            .trim();
+
+        if (sanitizedFileName.length === 0) {
+            toast.error("Invalid file name", {
+                description: "Name must only contain letters or spaces.",
+            });
+            e.target.value = "";
+            return;
+        }
+
+        const cleanFile = new File([file], `${sanitizedFileName}.pdf`, {
+            type: file.type,
+        });
+
+        setCoverLetterFile(cleanFile);
+    };
+
+    const handleGradesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        if (file.type !== "application/pdf") {
+            toast.error("Invalid file type", {
+                description: "Please upload a PDF document.",
+            });
+            e.target.value = "";
+            return;
+        }
+
+        const sanitizedFileName = file.name
+            .replace(/\.[^/.]+$/, "")
+            .replace(/[^A-Za-z\s]/g, "")
+            .trim();
+
+        if (sanitizedFileName.length === 0) {
+            toast.error("Invalid file name", {
+                description: "Name must only contain letters or spaces.",
+            });
+            e.target.value = "";
+            return;
+        }
+
+        const cleanFile = new File([file], `${sanitizedFileName}.pdf`, {
+            type: file.type,
+        });
+
+        setGradesFile(cleanFile);
     };
 
     // Skills management functions
@@ -2194,6 +2484,220 @@ export default function AccountPage() {
                                             {resumeFile.name}
                                         </span>
                                     </p>
+                                )}
+
+                                {student.resume?.name && (
+                                    <div className="flex items-center gap-2 mt-3">
+                                        <Button
+                                            variant="destructive"
+                                            size="sm"
+                                            onClick={handleDeleteResume}
+                                        >
+                                            Delete Resume
+                                        </Button>
+                                    </div>
+                                )}
+                            </AccordionContent>
+                        </AccordionItem>
+
+                        <AccordionItem
+                            value="coverLetter"
+                            className="border-2 border-gray-200 rounded-lg px-4 !border-b-2"
+                        >
+                            <AccordionTrigger className="text-lg font-semibold hover:no-underline cursor-pointer py-4">
+                                Cover Letter
+                            </AccordionTrigger>
+                            <AccordionContent className="pb-6 pt-0">
+                                <div className="block text-sm font-medium text-gray-700 mb-2">
+                                    Cover Letter (PDF)
+                                </div>
+                                {student.coverLetter?.name ? (
+                                    <div className="mb-3 p-4 bg-green-50 border border-green-200 rounded-lg">
+                                        <div className="flex items-start justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className="bg-green-100 p-2 rounded-lg">
+                                                    <Upload className="h-5 w-5 text-green-600" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-semibold text-gray-900">
+                                                        {student.coverLetter.name}
+                                                        .pdf
+                                                    </p>
+                                                    <p className="text-xs text-gray-500 mt-0.5">
+                                                        Uploaded on{" "}
+                                                        {new Date(
+                                                            student.coverLetter
+                                                                .uploadedAt
+                                                                ._seconds * 1000
+                                                        ).toLocaleDateString()}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            {student.coverLetter.url && (
+                                                <a
+                                                    href={student.coverLetter.url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-xs font-medium text-green-700 hover:text-green-800 underline"
+                                                >
+                                                    View
+                                                </a>
+                                            )}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="mb-3 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                                        <p className="text-sm text-gray-500">
+                                            No cover letter uploaded yet.
+                                        </p>
+                                    </div>
+                                )}
+
+                                <div className="flex items-center gap-2 mt-2">
+                                    <Input
+                                        id="coverLetter"
+                                        type="file"
+                                        accept="application/pdf"
+                                        onChange={handleCoverLetterChange}
+                                        className="w-full cursor-pointer"
+                                    />
+                                    <Button
+                                        className="bg-black text-white"
+                                        disabled={
+                                            !coverLetterFile || isUploadingCoverLetter
+                                        }
+                                        onClick={async () => {
+                                            await handleCoverLetterUpload();
+                                        }}
+                                    >
+                                        {isUploadingCoverLetter ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                            "Upload"
+                                        )}
+                                    </Button>
+                                </div>
+
+                                {coverLetterFile && (
+                                    <p className="mt-1 text-sm text-gray-500">
+                                        Ready to upload:{" "}
+                                        <span className="font-medium">
+                                            {coverLetterFile.name}
+                                        </span>
+                                    </p>
+                                )}
+
+                                {student.coverLetter?.name && (
+                                    <div className="flex items-center gap-2 mt-3">
+                                        <Button
+                                            variant="destructive"
+                                            size="sm"
+                                            onClick={handleDeleteCoverLetter}
+                                        >
+                                            Delete Cover Letter
+                                        </Button>
+                                    </div>
+                                )}
+                            </AccordionContent>
+                        </AccordionItem>
+
+                        <AccordionItem
+                            value="grades"
+                            className="border-2 border-gray-200 rounded-lg px-4 !border-b-2"
+                        >
+                            <AccordionTrigger className="text-lg font-semibold hover:no-underline cursor-pointer py-4">
+                                Grades/Transcript
+                            </AccordionTrigger>
+                            <AccordionContent className="pb-6 pt-0">
+                                <div className="block text-sm font-medium text-gray-700 mb-2">
+                                    Grades/Transcript (PDF)
+                                </div>
+                                {student.grades?.name ? (
+                                    <div className="mb-3 p-4 bg-green-50 border border-green-200 rounded-lg">
+                                        <div className="flex items-start justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className="bg-green-100 p-2 rounded-lg">
+                                                    <Upload className="h-5 w-5 text-green-600" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-semibold text-gray-900">
+                                                        {student.grades.name}
+                                                        .pdf
+                                                    </p>
+                                                    <p className="text-xs text-gray-500 mt-0.5">
+                                                        Uploaded on{" "}
+                                                        {new Date(
+                                                            student.grades
+                                                                .uploadedAt
+                                                                ._seconds * 1000
+                                                        ).toLocaleDateString()}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            {student.grades.url && (
+                                                <a
+                                                    href={student.grades.url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-xs font-medium text-green-700 hover:text-green-800 underline"
+                                                >
+                                                    View
+                                                </a>
+                                            )}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="mb-3 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                                        <p className="text-sm text-gray-500">
+                                            No grades document uploaded yet.
+                                        </p>
+                                    </div>
+                                )}
+
+                                <div className="flex items-center gap-2 mt-2">
+                                    <Input
+                                        id="grades"
+                                        type="file"
+                                        accept="application/pdf"
+                                        onChange={handleGradesChange}
+                                        className="w-full cursor-pointer"
+                                    />
+                                    <Button
+                                        className="bg-black text-white"
+                                        disabled={
+                                            !gradesFile || isUploadingGrades
+                                        }
+                                        onClick={async () => {
+                                            await handleGradesUpload();
+                                        }}
+                                    >
+                                        {isUploadingGrades ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                            "Upload"
+                                        )}
+                                    </Button>
+                                </div>
+
+                                {gradesFile && (
+                                    <p className="mt-1 text-sm text-gray-500">
+                                        Ready to upload:{" "}
+                                        <span className="font-medium">
+                                            {gradesFile.name}
+                                        </span>
+                                    </p>
+                                )}
+
+                                {student.grades?.name && (
+                                    <div className="flex items-center gap-2 mt-3">
+                                        <Button
+                                            variant="destructive"
+                                            size="sm"
+                                            onClick={handleDeleteGrades}
+                                        >
+                                            Delete Grades
+                                        </Button>
+                                    </div>
                                 )}
                             </AccordionContent>
                         </AccordionItem>

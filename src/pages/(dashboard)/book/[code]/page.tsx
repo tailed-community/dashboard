@@ -5,13 +5,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Calendar } from "@/components/ui/calendar";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, MapPin, Building2, CalendarIcon, Clock, CheckCircle2, AlertCircle } from "lucide-react";
+import { toast } from "sonner";
 
 interface TimeBlock {
   id: string;
-  day: number; // 0-6 (Sunday-Saturday)
-  startTime: string; // "HH:MM"
-  endTime: string; // "HH:MM"
-  weekStart: string; // YYYY-MM-DD format (start of week this block belongs to)
+  startTime: string; // ISO string
+  endTime: string; // ISO string
 }
 
 interface BookingData {
@@ -20,14 +19,17 @@ interface BookingData {
   jobLocation: string;
   organizationName: string;
   availabilityBlocks: TimeBlock[];
+  availabilityMeta?: any; // contains config.duration
   existingBookings: {
     scheduledStart: any;
     scheduledEnd: any;
   }[];
-  expiresAt: any;
+  existingBooking?: any | null;
+  expiresAt?: any;
 }
 
 interface TimeSlot {
+  id?: string;
   start: Date;
   end: Date;
   available: boolean;
@@ -43,7 +45,6 @@ export default function BookingPage() {
   const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
   const [booking, setBooking] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [bookingId, setBookingId] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
 
@@ -61,7 +62,10 @@ export default function BookingPage() {
       // Use plain fetch for public booking link (no auth required)
       // Use companies API for booking endpoints
       const apiUrl = import.meta.env.VITE_COMPANIES_API_URL || "";
-      const response = await fetch(`${apiUrl}/bookings/link/${code}`);
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const response = await fetch(`${apiUrl}/bookings/link/${code}`, {
+        headers: { "x-timezone": timezone },
+      });
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -75,7 +79,6 @@ export default function BookingPage() {
       // Check if there's already a booking for this application
       if (data.existingBooking) {
         setSuccess(true);
-        setBookingId(data.existingBooking.bookingId);
         // Reconstruct the selected slot from existing booking
         setSelectedSlot({
           start: new Date(data.existingBooking.scheduledStart._seconds * 1000),
@@ -83,10 +86,15 @@ export default function BookingPage() {
           available: true,
         });
       } else {
-        // Set default selected date to today or next available date
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        setSelectedDate(today);
+        // Set default selected date to the first available date (if any)
+        const first = getFirstAvailableDate(data);
+        if (first) {
+          setSelectedDate(first);
+        } else {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          setSelectedDate(today);
+        }
       }
     } catch (err: any) {
       setError(err.message);
@@ -95,113 +103,58 @@ export default function BookingPage() {
     }
   };
 
+  const getFirstAvailableDate = (data: BookingData | null): Date | undefined => {
+    if (!data || !data.availabilityBlocks || data.availabilityBlocks.length === 0) return undefined;
+    const now = new Date();
+    const candidates = data.availabilityBlocks
+      .map(b => new Date(b.startTime))
+      .filter(d => d > now)
+      .sort((a, b) => a.getTime() - b.getTime());
+
+    if (candidates.length === 0) return undefined;
+    const first = new Date(candidates[0]);
+    first.setHours(0, 0, 0, 0);
+    return first;
+  };
+
   const generateTimeSlots = (): TimeSlot[] => {
     if (!bookingData || !selectedDate || !bookingData.availabilityBlocks) return [];
 
     const slots: TimeSlot[] = [];
-    const dayOfWeek = selectedDate.getDay();
+    const selectedYear = selectedDate.getFullYear();
+    const selectedMonth = selectedDate.getMonth();
+    const selectedDay = selectedDate.getDate();
 
-    // Calculate which week the selected date belongs to (Sunday = start of week)
-    const selectedWeekStart = new Date(selectedDate);
-    selectedWeekStart.setDate(selectedDate.getDate() - selectedDate.getDay());
-    selectedWeekStart.setHours(0, 0, 0, 0);
-    const selectedWeekId = selectedWeekStart.toISOString().split('T')[0]; // YYYY-MM-DD
+    // Determine slot duration from availabilityMeta, fallback to 30
+    const duration = bookingData.availabilityMeta?.config?.duration ?? 30;
 
-    // Find availability blocks for selected day AND week
-    const dayBlocks = (bookingData.availabilityBlocks || []).filter(
-      block => {
-        if (!block || !block.startTime || !block.endTime) return false;
-        // Must match both day of week AND the specific week
-        return block.day === dayOfWeek && block.weekStart === selectedWeekId;
-      }
-    );
+    (bookingData.availabilityBlocks || []).forEach(block => {
+      if (!block || !block.startTime || !block.endTime) return;
+      const start = new Date(block.startTime);
+      const end = new Date(block.endTime);
 
-    if (dayBlocks.length === 0) return [];
+      if (
+        start.getFullYear() !== selectedYear ||
+        start.getMonth() !== selectedMonth ||
+        start.getDate() !== selectedDay
+      ) return;
 
-    // Generate 30-minute slots for each availability block
-    dayBlocks.forEach(block => {
-      // Safeguard: ensure startTime and endTime exist and are strings
-      if (!block || typeof block.startTime !== 'string' || typeof block.endTime !== 'string') {
-        return;
-      }
+      // Build one or more slots inside this block depending on duration
+      let cursor = new Date(start);
+      while (cursor.getTime() + duration * 60 * 1000 <= end.getTime()) {
+        const slotStart = new Date(cursor);
+        const slotEnd = new Date(cursor.getTime() + duration * 60 * 1000);
 
-      // Additional check for valid time format
-      if (!block.startTime.includes(':') || !block.endTime.includes(':')) {
-        return;
-      }
-
-      const [startHour, startMinute] = block.startTime.split(":").map(Number);
-      const [endHour, endMinute] = block.endTime.split(":").map(Number);
-
-      // Validate parsed numbers
-      if (isNaN(startHour) || isNaN(startMinute) || isNaN(endHour) || isNaN(endMinute)) {
-        return;
-      }
-
-      // Round start time UP to next :00 or :30
-      let slotStartHour = startHour;
-      let slotStartMinute = 0;
-      if (startMinute > 0 && startMinute <= 30) {
-        slotStartMinute = 30;
-      } else if (startMinute > 30) {
-        slotStartHour += 1;
-        slotStartMinute = 0;
-      }
-
-      // Round end time DOWN to previous :00 or :30
-      let slotEndHour = endHour;
-      let slotEndMinute = 0;
-      if (endMinute >= 30) {
-        slotEndMinute = 30;
-      } else if (endMinute > 0) {
-        slotEndHour -= 1;
-        slotEndMinute = 30;
-      }
-
-      let currentTime = new Date(selectedDate);
-      currentTime.setHours(slotStartHour, slotStartMinute, 0, 0);
-
-      const blockEnd = new Date(selectedDate);
-      blockEnd.setHours(slotEndHour, slotEndMinute, 0, 0);
-
-      // Skip if the block doesn't allow at least one 30-min slot
-      if (currentTime >= blockEnd) return;
-
-      while (currentTime < blockEnd) {
-        const slotStart = new Date(currentTime);
-        const slotEnd = new Date(currentTime);
-        slotEnd.setMinutes(slotEnd.getMinutes() + 30);
-
-        // Stop if this slot would exceed the block's end time
-        if (slotEnd > blockEnd) break;
-
-        // Check if slot is in the past
         const isPast = slotEnd <= new Date();
 
-        // Check if slot conflicts with existing bookings
-        // Note: Calendar event conflicts are already handled by the backend
-        // which splits availability blocks around calendar events before sending them
-        const hasConflict = (bookingData.existingBookings || []).some(booking => {
-          if (!booking || !booking.scheduledStart || !booking.scheduledEnd) return false;
-          const existingStart = new Date(booking.scheduledStart._seconds * 1000);
-          const existingEnd = new Date(booking.scheduledEnd._seconds * 1000);
-
-          return (
-            (slotStart >= existingStart && slotStart < existingEnd) ||
-            (slotEnd > existingStart && slotEnd <= existingEnd) ||
-            (slotStart <= existingStart && slotEnd >= existingEnd)
-          );
+        slots.push({
+          id: block.id,
+          start: slotStart,
+          end: slotEnd,
+          available: !isPast,
         });
 
-        if (slotEnd <= blockEnd) {
-          slots.push({
-            start: slotStart,
-            end: slotEnd,
-            available: !isPast && !hasConflict,
-          });
-        }
-
-        currentTime.setMinutes(currentTime.getMinutes() + 30);
+        cursor = new Date(cursor.getTime() + duration * 60 * 1000);
       }
     });
 
@@ -217,9 +170,10 @@ export default function BookingPage() {
       // Use plain fetch for public booking link (no auth required)
       // Use companies API for booking endpoints
       const apiUrl = import.meta.env.VITE_COMPANIES_API_URL || "";
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const response = await fetch(`${apiUrl}/bookings/link/${code}/book`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-timezone": timezone },
         body: JSON.stringify({
           scheduledStart: selectedSlot.start.toISOString(),
           scheduledEnd: selectedSlot.end.toISOString(),
@@ -231,11 +185,10 @@ export default function BookingPage() {
         throw new Error(errorData.error || "Failed to book interview");
       }
 
-      const result = await response.json();
-      setBookingId(result.bookingId);
+      await response.json();
       setSuccess(true);
     } catch (err: any) {
-      alert(err.message || "Failed to book interview. Please try again.");
+      toast.error("Failed to book interview. Please try again.");
     } finally {
       setBooking(false);
     }
@@ -259,12 +212,10 @@ export default function BookingPage() {
   };
 
   const handleCancelBooking = async () => {
-    if (!bookingId) return;
-
     try {
       setCancelling(true);
       const apiUrl = import.meta.env.VITE_COMPANIES_API_URL || "";
-      const response = await fetch(`${apiUrl}/bookings/${bookingId}/cancel`, {
+      const response = await fetch(`${apiUrl}/bookings/${code}/cancel`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
@@ -277,10 +228,9 @@ export default function BookingPage() {
       // Reset to initial state to allow rebooking
       setSuccess(false);
       setSelectedSlot(null);
-      setBookingId(null);
       await loadBookingData(); // Refresh availability
     } catch (err: any) {
-      alert(err.message || "Failed to cancel booking. Please try again.");
+      toast.error("Failed to cancel booking. Please try again.");
     } finally {
       setCancelling(false);
     }
@@ -291,7 +241,6 @@ export default function BookingPage() {
     // will handle deleting the old booking when a new time is selected
     setSuccess(false);
     setSelectedSlot(null);
-    setBookingId(null);
 
     // Clear existing booking from state so we don't get redirected back if logic re-runs
     if (bookingData) {
@@ -398,6 +347,7 @@ export default function BookingPage() {
   if (!bookingData) return null;
 
   const availableSlots = generateTimeSlots();
+  const slotDuration = bookingData?.availabilityMeta?.config?.duration ?? 30;
 
   return (
     <div className="container mx-auto py-12 max-w-6xl">
@@ -445,16 +395,18 @@ export default function BookingPage() {
                 twoWeeksOut.setDate(twoWeeksOut.getDate() + 14);
                 if (date > twoWeeksOut) return true;
 
-                // Disable days with no availability for THIS specific week
-                const dayOfWeek = date.getDay();
-                const weekStart = new Date(date);
-                weekStart.setDate(date.getDate() - date.getDay());
-                weekStart.setHours(0, 0, 0, 0);
-                const weekId = weekStart.toISOString().split('T')[0];
+                // Disable dates that have no availability blocks
+                if (!bookingData || !bookingData.availabilityBlocks) return true;
 
-                const hasAvailability = (bookingData.availabilityBlocks || []).some(
-                  block => block && block.day === dayOfWeek && block.weekStart === weekId
-                );
+                const hasAvailability = (bookingData.availabilityBlocks || []).some(block => {
+                  if (!block || !block.startTime) return false;
+                  const start = new Date(block.startTime);
+                  return (
+                    start.getFullYear() === date.getFullYear() &&
+                    start.getMonth() === date.getMonth() &&
+                    start.getDate() === date.getDate()
+                  );
+                });
 
                 return !hasAvailability;
               }}
@@ -469,7 +421,7 @@ export default function BookingPage() {
             <CardTitle>Available Time Slots</CardTitle>
             <CardDescription>
               {selectedDate
-                ? `${formatDate(selectedDate)} - Select a 30-minute slot`
+                ? `${formatDate(selectedDate)} - Select a ${slotDuration}-minute slot`
                 : "Select a date to see available times"}
             </CardDescription>
           </CardHeader>
@@ -532,7 +484,7 @@ export default function BookingPage() {
               <div className="flex items-center gap-2">
                 <Clock className="h-4 w-4" />
                 <span>
-                  {formatTime(selectedSlot.start)} - {formatTime(selectedSlot.end)} (30 minutes)
+                  {formatTime(selectedSlot.start)} - {formatTime(selectedSlot.end)} ({slotDuration} minutes)
                 </span>
               </div>
             </div>
