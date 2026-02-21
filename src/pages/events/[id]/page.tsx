@@ -11,6 +11,7 @@ import {
     Bookmark,
     ExternalLink,
     Loader2,
+    Pencil,
 } from "lucide-react";
 import { apiFetch } from "@/lib/fetch";
 import { getFileUrl } from "@/lib/firebase-client";
@@ -48,6 +49,7 @@ type EventData = {
     createdAt: Date;
     updatedAt: Date;
     status: string;
+    canEdit?: boolean;
     community?: CommunityData; // Populated by backend
 };
 
@@ -375,7 +377,7 @@ export default function EventDetailPage() {
                             <div className="space-y-3 text-sm">
                                 <div className="flex items-center gap-3">
                                     <CalendarDays className="h-4 w-4 text-slate-500 flex-shrink-0" />
-                                    <span className="text-slate-700">{formattedDate.split(',')[0]}</span>
+                                    <span className="text-slate-700">{formattedDate}</span>
                                 </div>
                                 <div className="flex items-center gap-3">
                                     <Clock className="h-4 w-4 text-slate-500 flex-shrink-0" />
@@ -397,6 +399,17 @@ export default function EventDetailPage() {
 
                             {/* Action Buttons */}
                             <div className="space-y-3">
+                                {event.canEdit && (
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => navigate(`/events/${id}/edit`)}
+                                        className="w-full rounded-lg"
+                                        size="sm"
+                                    >
+                                        <Pencil className="h-4 w-4 mr-2" />
+                                        Edit Event
+                                    </Button>
+                                )}
                                 {!isPastEvent ? (
                                     event.registrationLink ? (
                                         <Button
