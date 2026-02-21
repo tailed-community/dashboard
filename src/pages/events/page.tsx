@@ -268,7 +268,7 @@ function HighlightedEventCard({ event }: { event: HighlightedEvent }) {
             </div>
 
             <div className="relative flex h-full flex-col gap-5 p-6">
-                <div className="flex items-start justify-between text-sm font-semibold text-rose-300">
+                <div className="flex items-start justify-between text-sm font-semibold text-white">
                     <span className="flex items-center gap-2 tracking-wide">
                         <CalendarDays className="h-4 w-4" aria-hidden="true" />
                         {event.datetime}
