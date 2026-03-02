@@ -127,7 +127,7 @@ export function LoginForm({
                             <Mail className="mr-2 h-4 w-4" />
                             Continue with Email
                         </Button>
-
+                        {/*
                         <Button variant="outline" className="w-full" disabled>
                             {authLoading ? (
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -145,6 +145,7 @@ export function LoginForm({
                             )}
                             Continue with Apple
                         </Button>
+                        */}
                     </div>
                     <div className="text-center text-sm mt-4">
                         Don't have an account?{" "}

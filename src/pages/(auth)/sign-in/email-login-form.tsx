@@ -197,7 +197,7 @@ export function EmailLoginForm({
                             <div className="text-center text-sm">
                                 Don't have an account?{" "}
                                 <Link
-                                    to="/sign-up"
+                                    to={redirectUrl ? `/sign-up?redirectUrl=${encodeURIComponent(redirectUrl)}` : "/sign-up"}
                                     className="underline underline-offset-4"
                                 >
                                     Sign up
