@@ -14,7 +14,7 @@ import { apiFetch } from "@/lib/fetch";
 import { cn } from "@/lib/utils";
 import { m } from "@/paraglide/messages.js";
 import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -63,6 +63,8 @@ interface SignUpFormProps extends React.ComponentProps<"div"> {}
 export function SignUpForm({ className, ...props }: SignUpFormProps) {
     const [isLoading, setIsLoading] = useState(false);
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const redirectUrl = searchParams.get("redirectUrl") || undefined;
 
     // React Hook Form setup with Zod validation
     const form = useForm<SignUpData>({
@@ -138,7 +140,7 @@ export function SignUpForm({ className, ...props }: SignUpFormProps) {
             }
 
             // Send login link after successful account creation
-            await sendLoginLink(data.email, TENANT_IDS.STUDENTS);
+            await sendLoginLink(data.email, TENANT_IDS.STUDENTS, redirectUrl);
 
             toast.success("Account created successfully!", {
                 description:
@@ -374,7 +376,7 @@ export function SignUpForm({ className, ...props }: SignUpFormProps) {
                             <div className="text-center text-sm">
                                 Already have an account?{" "}
                                 <Link
-                                    to="/sign-in"
+                                    to={redirectUrl ? `/sign-in?redirectUrl=${encodeURIComponent(redirectUrl)}` : "/sign-in"}
                                     className="underline underline-offset-4"
                                 >
                                     Sign in

@@ -430,7 +430,7 @@ export default function ApplyJobPage() {
                             )}
 
                             <div className="space-y-2">
-                                <Button
+                                {/* <Button
                                     variant="outline"
                                     className="w-full"
                                     onClick={handleGoogleSignIn}
@@ -442,7 +442,7 @@ export default function ApplyJobPage() {
                                         <FcGoogle className="mr-2 h-4 w-4" />
                                     )}
                                     Continue with Google
-                                </Button>
+                                </Button> */}
 
                                 <Button
                                     variant="outline"
@@ -453,7 +453,7 @@ export default function ApplyJobPage() {
                                     Continue with Email
                                 </Button>
 
-                                <Button
+                                {/* <Button
                                     variant="outline"
                                     className="w-full"
                                     disabled
@@ -469,7 +469,7 @@ export default function ApplyJobPage() {
                                 >
                                     <SiApple className="mr-2 h-4 w-4" />
                                     Continue with Apple
-                                </Button>
+                                </Button> */}
                             </div>
                         </CardContent>
                         <CardFooter>
@@ -497,7 +497,7 @@ export default function ApplyJobPage() {
             <EmailLoginForm
                 className={"w-full h-full justify-center max-w-md m-auto"}
                 onChangeLoginType={() => setShowEmailLogin(false)}
-                redirectUrl={window.location.pathname} // Pass current URL pathname as redirectUrl
+                redirectUrl={window.location.pathname + window.location.search} // Pass current URL pathname + query params (token/sharedId) as redirectUrl
                 // {...props}
             />
         );

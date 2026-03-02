@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
+import { Timestamp } from "firebase/firestore";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Loader2, Save } from "lucide-react";
+import { Loader2, Save, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +26,7 @@ import {
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/fetch";
+import { getFileUrl } from "@/lib/firebase-client";
 
 type CommunityData = {
     id: string;
@@ -33,6 +35,8 @@ type CommunityData = {
     shortDescription?: string;
     description: string;
     category: string;
+    logo?: string;
+    banner?: string;
     logoUrl?: string;
     bannerUrl?: string;
     memberCount: number;
@@ -69,8 +73,56 @@ interface CommunitySettingsTabProps {
     onUpdate: (community: CommunityData) => void;
 }
 
-export default function CommunitySettingsTab({ community, onUpdate }: CommunitySettingsTabProps) {
+export default function CommunitySettingsTab({ community, onUpdate }: Readonly<CommunitySettingsTabProps>) {
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Logo state
+    const [logoFile, setLogoFile] = useState<File | null>(null);
+    const [logoPreview, setLogoPreview] = useState<string | null>(community.logoUrl ?? null);
+    const logoInputRef = useRef<HTMLInputElement>(null);
+
+    // Banner state
+    const [bannerFile, setBannerFile] = useState<File | null>(null);
+    const [bannerPreview, setBannerPreview] = useState<string | null>(community.bannerUrl ?? null);
+    const bannerInputRef = useRef<HTMLInputElement>(null);
+
+    // Revoke object URLs on unmount to avoid memory leaks
+    useEffect(() => {
+        return () => {
+            if (logoFile && logoPreview) URL.revokeObjectURL(logoPreview);
+            if (bannerFile && bannerPreview) URL.revokeObjectURL(bannerPreview);
+        };
+    }, []);
+
+    const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (logoFile && logoPreview) URL.revokeObjectURL(logoPreview);
+        setLogoFile(file);
+        setLogoPreview(URL.createObjectURL(file));
+    };
+
+    const handleBannerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (bannerFile && bannerPreview) URL.revokeObjectURL(bannerPreview);
+        setBannerFile(file);
+        setBannerPreview(URL.createObjectURL(file));
+    };
+
+    const clearLogo = () => {
+        if (logoFile && logoPreview) URL.revokeObjectURL(logoPreview);
+        setLogoFile(null);
+        setLogoPreview(community.logoUrl ?? null);
+        if (logoInputRef.current) logoInputRef.current.value = "";
+    };
+
+    const clearBanner = () => {
+        if (bannerFile && bannerPreview) URL.revokeObjectURL(bannerPreview);
+        setBannerFile(null);
+        setBannerPreview(community.bannerUrl ?? null);
+        if (bannerInputRef.current) bannerInputRef.current.value = "";
+    };
 
     const form = useForm<CommunityFormData>({
         resolver: zodResolver(communitySchema),
@@ -86,22 +138,54 @@ export default function CommunitySettingsTab({ community, onUpdate }: CommunityS
         try {
             setIsSubmitting(true);
 
+            // Always use FormData so we can attach optional image files
+            const formData = new FormData();
+            formData.append("name", data.name);
+            formData.append("category", data.category);
+            if (data.shortDescription) formData.append("shortDescription", data.shortDescription);
+            formData.append("description", data.description);
+            if (logoFile) formData.append("logo", logoFile);
+            if (bannerFile) formData.append("banner", bannerFile);
+
             const response = await apiFetch(`/communities/${community.id}`, {
                 method: "PATCH",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify(data),
+                body: formData,
             });
 
+            const result = await response.json();
+
             if (!response.ok) {
-                throw new Error("Failed to update community");
+                throw new Error(result.error || "Failed to update community");
             }
 
-            // Update local state
+            // Resolve new storage paths → download URLs if the backend returned them
+            let newLogoUrl = community.logoUrl;
+            let newBannerUrl = community.bannerUrl;
+            let newLogo = community.logo;
+            let newBanner = community.banner;
+
+            if (result.logo) {
+                newLogo = result.logo;
+                try { newLogoUrl = await getFileUrl(result.logo); } catch { /* keep old */ }
+            }
+            if (result.banner) {
+                newBanner = result.banner;
+                try { newBannerUrl = await getFileUrl(result.banner); } catch { /* keep old */ }
+            }
+
+            // Clear pending file selections now that they're saved
+            setLogoFile(null);
+            setBannerFile(null);
+            if (logoInputRef.current) logoInputRef.current.value = "";
+            if (bannerInputRef.current) bannerInputRef.current.value = "";
+
             onUpdate({
                 ...community,
                 ...data,
+                logo: newLogo,
+                banner: newBanner,
+                logoUrl: newLogoUrl,
+                bannerUrl: newBannerUrl,
                 updatedAt: Timestamp.now(),
             });
 
@@ -125,6 +209,143 @@ export default function CommunitySettingsTab({ community, onUpdate }: CommunityS
             <CardContent>
                 <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+
+                        {/* ── Images ── */}
+                        <div className="space-y-4">
+                            {/* Banner */}
+                            <div className="space-y-2">
+                                <label
+                                    htmlFor="banner-input"
+                                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                                >
+                                    Banner Image
+                                </label>
+                                <p className="text-sm text-muted-foreground">
+                                    Recommended size: 1200 × 300 px (wide, landscape)
+                                </p>
+                                <button
+                                    type="button"
+                                    aria-label="Upload banner image"
+                                    className="relative w-full h-36 rounded-lg border-2 border-dashed border-muted-foreground/30 overflow-hidden cursor-pointer bg-muted/30 hover:bg-muted/50 transition-colors text-left"
+                                    onClick={() => bannerInputRef.current?.click()}
+                                >
+                                    {bannerPreview ? (
+                                        <img
+                                            src={bannerPreview}
+                                            alt="Banner preview"
+                                            className="w-full h-full object-cover"
+                                        />
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center h-full gap-2 text-muted-foreground">
+                                            <Upload className="h-6 w-6" />
+                                            <span className="text-sm">Click to upload banner</span>
+                                        </div>
+                                    )}
+                                    {bannerPreview && (
+                                        <div className="absolute inset-0 bg-black/0 hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 hover:opacity-100">
+                                            <span className="text-white text-sm font-medium">Change banner</span>
+                                        </div>
+                                    )}
+                                </button>
+                                {bannerFile && (
+                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                        <span className="truncate">{bannerFile.name}</span>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-6 w-6 p-0 shrink-0"
+                                            onClick={clearBanner}
+                                        >
+                                            <X className="h-3 w-3" />
+                                        </Button>
+                                    </div>
+                                )}
+                                <input
+                                    ref={bannerInputRef}
+                                    id="banner-input"
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={handleBannerChange}
+                                />
+                            </div>
+
+                            {/* Logo */}
+                            <div className="space-y-2">
+                                <label
+                                    htmlFor="logo-input"
+                                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                                >
+                                    Community Logo
+                                </label>
+                                <p className="text-sm text-muted-foreground">
+                                    Recommended size: 200 × 200 px (square)
+                                </p>
+                                <div className="flex items-center gap-4">
+                                    <button
+                                        type="button"
+                                        aria-label="Upload logo image"
+                                        className="relative h-20 w-20 rounded-lg border-2 border-dashed border-muted-foreground/30 overflow-hidden cursor-pointer bg-muted/30 hover:bg-muted/50 transition-colors shrink-0"
+                                        onClick={() => logoInputRef.current?.click()}
+                                    >
+                                        {logoPreview ? (
+                                            <img
+                                                src={logoPreview}
+                                                alt="Logo preview"
+                                                className="w-full h-full object-cover"
+                                            />
+                                        ) : (
+                                            <div className="flex flex-col items-center justify-center h-full gap-1 text-muted-foreground">
+                                                <Upload className="h-4 w-4" />
+                                                <span className="text-xs text-center leading-tight">Upload logo</span>
+                                            </div>
+                                        )}
+                                        {logoPreview && (
+                                            <div className="absolute inset-0 bg-black/0 hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 hover:opacity-100">
+                                                <Upload className="h-4 w-4 text-white" />
+                                            </div>
+                                        )}
+                                    </button>
+                                    <div className="flex flex-col gap-1 min-w-0">
+                                        {logoFile ? (
+                                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                <span className="truncate">{logoFile.name}</span>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-6 w-6 p-0 shrink-0"
+                                                    onClick={clearLogo}
+                                                >
+                                                    <X className="h-3 w-3" />
+                                                </Button>
+                                            </div>
+                                        ) : (
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => logoInputRef.current?.click()}
+                                            >
+                                                <Upload className="mr-2 h-3 w-3" />
+                                                {logoPreview ? "Change logo" : "Upload logo"}
+                                            </Button>
+                                        )}
+                                        <p className="text-xs text-muted-foreground">PNG, JPG, GIF, WebP</p>
+                                    </div>
+                                </div>
+                                <input
+                                    ref={logoInputRef}
+                                    id="logo-input"
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={handleLogoChange}
+                                />
+                            </div>
+                        </div>
+
                         {/* Name */}
                         <FormField
                             control={form.control}
@@ -226,7 +447,7 @@ export default function CommunitySettingsTab({ community, onUpdate }: CommunityS
                             <Button
                                 type="button"
                                 variant="outline"
-                                onClick={() => form.reset()}
+                                onClick={() => { form.reset(); clearLogo(); clearBanner(); }}
                                 disabled={isSubmitting}
                             >
                                 Reset

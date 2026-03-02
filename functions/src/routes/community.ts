@@ -461,7 +461,9 @@ router.post("/:communityId/leave", async (req: Request, res: Response) => {
 
 /**
  * PATCH /communities/:communityId
- * Update community information (creator only)
+ * Update community information (admin only)
+ * Supports both application/json (text fields only) and
+ * multipart/form-data (optional logo / banner image uploads)
  */
 router.patch("/:communityId", async (req: Request, res: Response) => {
   try {
@@ -472,8 +474,35 @@ router.patch("/:communityId", async (req: Request, res: Response) => {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    // Validate request body
-    const validationResult = updateCommunitySchema.safeParse(req.body);
+    // Get community and verify user is an admin before doing any expensive work
+    const communityDoc = await db.collection("communities").doc(communityId).get();
+    const communityData = communityDoc.data();
+    if (!communityDoc.exists || !communityData) {
+      return res.status(404).json({ error: "Community not found" });
+    }
+
+    const admins = communityData.admins || [];
+    if (!admins.includes(userId)) {
+      return res.status(403).json({ error: "Only community admins can update community details" });
+    }
+
+    // Parse request — multipart/form-data (with optional images) or plain JSON
+    let fields: any;
+    let newLogoPatch: string | null = null;
+    let newBannerPath: string | null = null;
+    const contentType = req.headers["content-type"] || "";
+
+    if (contentType.includes("multipart/form-data")) {
+      const result = await uploadImages(req, userId);
+      fields = result.fields;
+      if (result.files.logo) newLogoPatch = result.files.logo;
+      if (result.files.banner) newBannerPath = result.files.banner;
+    } else {
+      fields = req.body;
+    }
+
+    // Validate text fields
+    const validationResult = updateCommunitySchema.safeParse(fields);
     if (!validationResult.success) {
       return res.status(400).json({
         error: "Invalid request data",
@@ -483,32 +512,18 @@ router.patch("/:communityId", async (req: Request, res: Response) => {
 
     const updates = validationResult.data;
 
-    // Get community and verify user is the creator
-    const communityDoc = await db.collection("communities").doc(communityId).get();
-    if (!communityDoc.exists) {
-      return res.status(404).json({ error: "Community not found" });
-    }
-
-    const communityData = communityDoc.data();
-    if (!communityData) {
-      return res.status(404).json({ error: "Community data not found" });
-    }
-
-    // Verify user is a community admin
-    const admins = communityData.admins || [];
-    if (!admins.includes(userId)) {
-      return res.status(403).json({ error: "Only community admins can update community details" });
-    }
-
-    // Update community
     await db.collection("communities").doc(communityId).update({
       ...updates,
+      ...(newLogoPatch && { logo: newLogoPatch }),
+      ...(newBannerPath && { banner: newBannerPath }),
       updatedAt: new Date(),
     });
 
     return res.status(200).json({
       success: true,
       message: "Community updated successfully",
+      ...(newLogoPatch && { logo: newLogoPatch }),
+      ...(newBannerPath && { banner: newBannerPath }),
     });
 
   } catch (error: any) {
