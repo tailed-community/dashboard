@@ -58,6 +58,19 @@ export interface ExternalJob {
   date_posted: number;
   url: string;
   locations: string[];
+  normalized_locations?: {
+    raw: string;
+    normalized: {
+      city: string | null;
+      region: string | null;
+      region_code: string | null;
+      country: string | null;
+      country_code: string | null;
+    };
+    type: "onsite" | "remote" | "hybrid";
+    unresolved: boolean;
+    confidence: number;
+  }[];
   degrees: string[];
   type: "internship" | "new-grad";
 }
