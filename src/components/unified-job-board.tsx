@@ -12,6 +12,14 @@ import {
 } from "@/components/ui/select";
 import { apiFetch } from "@/lib/fetch";
 import { type ExternalJob } from "@/types/jobs";
+import {
+    buildFilterIndex,
+    formatLocationForDisplay,
+    matchLocationFilters,
+    normalizeLocations,
+    normalizeSearchText,
+    type NormalizedJobLocation,
+} from "@/lib/location-normalization";
 import { Building2, MapPin, Calendar, ExternalLink, Star } from "lucide-react";
 
 const INTERNSHIPS_URL =
@@ -42,24 +50,6 @@ interface UnifiedJobBoardProps {
     variant?: "full" | "preview";
 }
 
-type ParsedLocation = {
-    city?: string;
-    state?: string;
-    country: string;
-};
-
-function parseLocation(location: string): ParsedLocation {
-    const parts = location.split(",").map((p) => p.trim());
-    if (parts.length === 3) {
-        return { city: parts[0], state: parts[1], country: parts[2] };
-    } else if (parts.length === 2) {
-        // If only one comma, assume city, state and country is USA
-        return { city: parts[0], state: parts[1], country: "USA" };
-    } else {
-        return { state: parts[0], country: "USA" };
-    }
-}
-
 export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProps) {
     const isPreview = variant === "preview";
     const [featuredJobs, setFeaturedJobs] = useState<FeaturedJob[]>([]);
@@ -73,9 +63,6 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
     const [selectedCity, setSelectedCity] = useState<string>("all");
     const [selectedType, setSelectedType] = useState<string>("all");
     const [categories, setCategories] = useState<string[]>([]);
-    const [parsedLocations, setParsedLocations] = useState<ParsedLocation[]>(
-        []
-    );
     const [visibleCount, setVisibleCount] = useState(20);
     const observerRef = useRef<IntersectionObserver | null>(null);
     const currentObservedRef = useRef<Element | null>(null);
@@ -190,34 +177,15 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
             setExternalJobs(externalJobsData);
 
             // Precompute categories and locations
-            const allJobsTemp = [
-                ...featuredJobsData,
-                ...externalJobsData.map((job) => ({
-                    ...job,
-                    featured: false as const,
-                })),
-            ];
+            const allJobsTemp = [...featuredJobsData, ...externalJobsData];
             const cats = new Set<string>();
-            const locs = new Set<ParsedLocation>();
             allJobsTemp.forEach((job) => {
                 if ("category" in job && job.category) cats.add(job.category);
-                if ("locations" in job) {
-                    job.locations.forEach((loc) => {
-                        if (loc.trim() !== "") locs.add(parseLocation(loc));
-                    });
-                } else if ("location" in job && job.location.trim() !== "") {
-                    locs.add(parseLocation(job.location));
-                }
             });
             setCategories(
                 Array.from(cats)
                     .filter((cat) => cat.trim() !== "")
                     .sort()
-            );
-            setParsedLocations(
-                Array.from(locs)
-                    .filter((loc) => loc.country.trim() !== "")
-                    .sort((a, b) => a.country.localeCompare(b.country))
             );
         } catch (e) {
             console.log("Unexpected error in fetchData:", e);
@@ -256,52 +224,53 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
 
     const types = ["internship", "new-grad", "featured"];
 
+    const normalizedLocationsByJob = useMemo(() => {
+        const output = new Map<string, NormalizedJobLocation[]>();
+        allJobs.forEach((job) => {
+            if ("locations" in job) {
+                output.set(
+                    job.id,
+                    job.normalized_locations?.length
+                        ? (job.normalized_locations as NormalizedJobLocation[])
+                        : normalizeLocations(job.locations || [])
+                );
+            } else {
+                output.set(job.id, normalizeLocations(job.location ? [job.location] : []));
+            }
+        });
+        return output;
+    }, [allJobs]);
+
+    const filterIndex = useMemo(() => {
+        const allLocations = Array.from(normalizedLocationsByJob.values()).flat();
+        return buildFilterIndex(allLocations);
+    }, [normalizedLocationsByJob]);
+
     const availableCountries = useMemo(() => {
-        const countries = new Set<string>();
-        parsedLocations.forEach((loc) => countries.add(loc.country));
-        return Array.from(countries).sort();
-    }, [parsedLocations]);
+        return filterIndex.countries;
+    }, [filterIndex]);
 
     const availableStates = useMemo(() => {
         if (selectedCountry === "all") return [];
-        const states = new Set<string>();
-        parsedLocations
-            .filter(
-                (loc) =>
-                    loc.country === selectedCountry &&
-                    loc.state &&
-                    loc.state.trim() !== ""
-            )
-            .forEach((loc) => states.add(loc.state!));
-        return Array.from(states).sort();
-    }, [parsedLocations, selectedCountry]);
+        return filterIndex.statesByCountry[selectedCountry] || [];
+    }, [filterIndex, selectedCountry]);
 
     const availableCities = useMemo(() => {
         if (selectedCountry === "all") return [];
-        const cities = new Set<string>();
-        parsedLocations
-            .filter((loc) => {
-                if (loc.country !== selectedCountry) return false;
-                if (selectedState !== "all" && loc.state !== selectedState)
-                    return false;
-                return loc.city && loc.city.trim() !== "";
-            })
-            .forEach((loc) => cities.add(loc.city!));
-        return Array.from(cities).sort();
-    }, [parsedLocations, selectedCountry, selectedState]);
+        if (selectedState === "all") {
+            return filterIndex.citiesByCountry[selectedCountry] || [];
+        }
+        return (
+            filterIndex.citiesByCountryState[`${selectedCountry}::${selectedState}`] || []
+        );
+    }, [filterIndex, selectedCountry, selectedState]);
 
     const matchesLocation = (job: UnifiedJob): boolean => {
-        if (selectedCountry === "all") return true;
-        const jobLocations =
-            "locations" in job ? job.locations : [job.location];
-        return jobLocations.some((locStr) => {
-            const parsed = parseLocation(locStr);
-            if (parsed.country !== selectedCountry) return false;
-            if (selectedState !== "all" && parsed.state !== selectedState)
-                return false;
-            if (selectedCity !== "all" && parsed.city !== selectedCity)
-                return false;
-            return true;
+        const normalized = normalizedLocationsByJob.get(job.id) || [];
+        return matchLocationFilters(normalized, {
+            countryCode: selectedCountry,
+            regionKey: selectedState,
+            cityKey: selectedCity,
         });
     };
 
@@ -319,14 +288,28 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
             if (job.terms) fields.push(...job.terms);
             if (job.degrees) fields.push(...job.degrees);
         }
-        return fields.join(" ").toLowerCase();
+        const normalizedLocations = normalizedLocationsByJob.get(job.id) || [];
+        fields.push(
+            ...normalizedLocations.map((loc) =>
+                [
+                    loc.normalized.city,
+                    loc.normalized.region,
+                    loc.normalized.country,
+                    loc.raw,
+                ]
+                    .filter(Boolean)
+                    .join(" ")
+            )
+        );
+        return normalizeSearchText(fields.join(" "));
     };
 
     const filteredJobs = useMemo(() => {
         let filtered = allJobs.filter((job) => {
             const searchableText = getSearchableText(job);
-            const regex = searchTerm ? new RegExp(searchTerm, "i") : null;
-            const matchesSearch = !regex || regex.test(searchableText);
+            const normalizedSearch = normalizeSearchText(searchTerm);
+            const matchesSearch =
+                normalizedSearch.length === 0 || searchableText.includes(normalizedSearch);
             const matchesCategory =
                 selectedCategory === "all" ||
                 ("category" in job && job.category === selectedCategory);
@@ -352,7 +335,29 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
         selectedCity,
         selectedType,
         limit,
+        normalizedLocationsByJob,
     ]);
+
+    useEffect(() => {
+        if (selectedCountry !== "all" && !availableCountries.some((c) => c.value === selectedCountry)) {
+            setSelectedCountry("all");
+            setSelectedState("all");
+            setSelectedCity("all");
+        }
+    }, [selectedCountry, availableCountries]);
+
+    useEffect(() => {
+        if (selectedState !== "all" && !availableStates.some((s) => s.value === selectedState)) {
+            setSelectedState("all");
+            setSelectedCity("all");
+        }
+    }, [selectedState, availableStates]);
+
+    useEffect(() => {
+        if (selectedCity !== "all" && !availableCities.some((c) => c.value === selectedCity)) {
+            setSelectedCity("all");
+        }
+    }, [selectedCity, availableCities]);
 
     useEffect(() => {
         setVisibleCount(20);
@@ -446,8 +451,8 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
                             <SelectContent>
                                 <SelectItem value="all">All Countries</SelectItem>
                                 {availableCountries.map((country) => (
-                                    <SelectItem key={country} value={country}>
-                                        {country}
+                                    <SelectItem key={country.value} value={country.value}>
+                                        {country.label}
                                     </SelectItem>
                                 ))}
                             </SelectContent>
@@ -469,8 +474,8 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
                                         All States
                                     </SelectItem>
                                     {availableStates.map((state) => (
-                                        <SelectItem key={state} value={state}>
-                                            {state}
+                                        <SelectItem key={state.value} value={state.value}>
+                                            {state.label}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
@@ -487,8 +492,8 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
                                 <SelectContent>
                                     <SelectItem value="all">All Cities</SelectItem>
                                     {availableCities.map((city) => (
-                                        <SelectItem key={city} value={city}>
-                                            {city}
+                                        <SelectItem key={city.value} value={city.value}>
+                                            {city.label}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
@@ -573,8 +578,12 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
                                     <MapPin className="h-4 w-4" />
                                     <span>
                                         {"locations" in job
-                                            ? job.locations.join(", ")
-                                            : job.location}
+                                            ? formatLocationForDisplay(
+                                                  normalizedLocationsByJob.get(job.id) || []
+                                              )
+                                            : formatLocationForDisplay(
+                                                  normalizedLocationsByJob.get(job.id) || []
+                                              )}
                                     </span>
                                 </div>
                                 {"terms" in job &&
