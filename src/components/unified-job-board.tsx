@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import {
     Select,
     SelectContent,
@@ -10,6 +11,13 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import {
+    DropdownMenu,
+    DropdownMenuCheckboxItem,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { apiFetch } from "@/lib/fetch";
 import { type ExternalJob } from "@/types/jobs";
 import {
@@ -60,7 +68,7 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
     const [selectedCategory, setSelectedCategory] = useState<string>("all");
     const [selectedCountry, setSelectedCountry] = useState<string>("all");
     const [selectedState, setSelectedState] = useState<string>("all");
-    const [selectedCity, setSelectedCity] = useState<string>("all");
+    const [selectedCities, setSelectedCities] = useState<string[]>([]);
     const [selectedType, setSelectedType] = useState<string>("all");
     const [categories, setCategories] = useState<string[]>([]);
     const [visibleCount, setVisibleCount] = useState(20);
@@ -265,12 +273,21 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
         );
     }, [filterIndex, selectedCountry, selectedState]);
 
+    const cityToKey = (city: string): string =>
+        normalizeSearchText(city).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
     const matchesLocation = (job: UnifiedJob): boolean => {
         const normalized = normalizedLocationsByJob.get(job.id) || [];
-        return matchLocationFilters(normalized, {
+        const baseMatch = matchLocationFilters(normalized, {
             countryCode: selectedCountry,
             regionKey: selectedState,
-            cityKey: selectedCity,
+            cityKey: "all",
+        });
+        if (!baseMatch) return false;
+        if (selectedCities.length === 0) return true;
+        return normalized.some((location) => {
+            const cityKey = location.normalized.city ? cityToKey(location.normalized.city) : "";
+            return selectedCities.includes(cityKey);
         });
     };
 
@@ -332,7 +349,7 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
         selectedCategory,
         selectedCountry,
         selectedState,
-        selectedCity,
+        selectedCities,
         selectedType,
         limit,
         normalizedLocationsByJob,
@@ -342,22 +359,21 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
         if (selectedCountry !== "all" && !availableCountries.some((c) => c.value === selectedCountry)) {
             setSelectedCountry("all");
             setSelectedState("all");
-            setSelectedCity("all");
+            setSelectedCities([]);
         }
     }, [selectedCountry, availableCountries]);
 
     useEffect(() => {
         if (selectedState !== "all" && !availableStates.some((s) => s.value === selectedState)) {
             setSelectedState("all");
-            setSelectedCity("all");
+            setSelectedCities([]);
         }
     }, [selectedState, availableStates]);
 
     useEffect(() => {
-        if (selectedCity !== "all" && !availableCities.some((c) => c.value === selectedCity)) {
-            setSelectedCity("all");
-        }
-    }, [selectedCity, availableCities]);
+        const citySet = new Set(availableCities.map((c) => c.value));
+        setSelectedCities((prev) => prev.filter((city) => citySet.has(city)));
+    }, [availableCities]);
 
     useEffect(() => {
         setVisibleCount(20);
@@ -442,7 +458,7 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
                             onValueChange={(value) => {
                                 setSelectedCountry(value);
                                 setSelectedState("all");
-                                setSelectedCity("all");
+                                setSelectedCities([]);
                             }}
                         >
                             <SelectTrigger className="w-full sm:w-32">
@@ -463,7 +479,7 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
                                     value={selectedState}
                                     onValueChange={(value) => {
                                         setSelectedState(value);
-                                        setSelectedCity("all");
+                                        setSelectedCities([]);
                                     }}
                                 >
                                 <SelectTrigger className="w-full sm:w-32">
@@ -482,22 +498,40 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
                             </Select>
                         )}
                         {selectedState !== "all" && availableCities.length > 0 && (
-                            <Select
-                                value={selectedCity}
-                                onValueChange={setSelectedCity}
-                            >
-                                <SelectTrigger className="w-full sm:w-32">
-                                    <SelectValue placeholder="City" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Cities</SelectItem>
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button
+                                        variant="outline"
+                                        className="w-full sm:w-48 justify-start font-normal"
+                                    >
+                                        {selectedCities.length === 0
+                                            ? "All Cities"
+                                            : selectedCities.length === 1
+                                              ? "1 city selected"
+                                              : `${selectedCities.length} cities selected`}
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent className="w-56 max-h-72 overflow-y-auto">
+                                    <DropdownMenuItem onClick={() => setSelectedCities([])}>
+                                        Clear city filters
+                                    </DropdownMenuItem>
                                     {availableCities.map((city) => (
-                                        <SelectItem key={city.value} value={city.value}>
+                                        <DropdownMenuCheckboxItem
+                                            key={city.value}
+                                            checked={selectedCities.includes(city.value)}
+                                            onCheckedChange={(checked) => {
+                                                setSelectedCities((prev) =>
+                                                    checked
+                                                        ? [...prev, city.value]
+                                                        : prev.filter((value) => value !== city.value)
+                                                );
+                                            }}
+                                        >
                                             {city.label}
-                                        </SelectItem>
+                                        </DropdownMenuCheckboxItem>
                                     ))}
-                                </SelectContent>
-                            </Select>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
                         )}
                     </div>
                 </div>
