@@ -562,6 +562,7 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
         allJobs,
         activeFilters,
         limit,
+        normalizedLocationsByJob,
     ]);
 
     useEffect(() => {
