@@ -249,12 +249,8 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
         const output = new Map<string, NormalizedJobLocation[]>();
         allJobs.forEach((job) => {
             if ("locations" in job) {
-                output.set(
-                    job.id,
-                    job.normalized_locations?.length
-                        ? (job.normalized_locations as NormalizedJobLocation[])
-                        : normalizeLocations(job.locations || [])
-                );
+                // Recompute from raw locations to avoid stale/incorrect upstream normalized payloads.
+                output.set(job.id, normalizeLocations(job.locations || []));
             } else {
                 output.set(job.id, normalizeLocations(job.location ? [job.location] : []));
             }
@@ -411,6 +407,32 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
         }
 
         return true;
+    };
+
+    const getDisplayLocationsForJob = (job: UnifiedJob): NormalizedJobLocation[] => {
+        const normalized = normalizedLocationsByJob.get(job.id) || [];
+        if (selectedCountry === "all") return normalized;
+        const matchingLocations = normalized.filter((location) => {
+            if (location.normalized.country_code !== selectedCountry) return false;
+            if (
+                selectedState !== "all" &&
+                (location.normalized.region_code ||
+                    (location.normalized.region
+                        ? normalizeSearchText(location.normalized.region)
+                              .replace(/[^a-z0-9]+/g, "-")
+                              .replace(/^-|-$/g, "")
+                        : "")) !== selectedState
+            ) {
+                return false;
+            }
+            if (selectedCities.length > 0) {
+                if (!location.normalized.city) return false;
+                const cityKey = cityToKey(location.normalized.city);
+                if (!selectedCities.includes(cityKey)) return false;
+            }
+            return true;
+        });
+        return matchingLocations.length > 0 ? matchingLocations : normalized;
     };
 
     const computeFacetCounts = (
@@ -913,10 +935,10 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
                                     <span>
                                         {"locations" in job
                                             ? formatLocationForDisplay(
-                                                  normalizedLocationsByJob.get(job.id) || []
+                                                  getDisplayLocationsForJob(job)
                                               )
                                             : formatLocationForDisplay(
-                                                  normalizedLocationsByJob.get(job.id) || []
+                                                  getDisplayLocationsForJob(job)
                                               )}
                                     </span>
                                 </div>
