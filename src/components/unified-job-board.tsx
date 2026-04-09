@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import {
     Select,
     SelectContent,
@@ -10,6 +11,13 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import {
+    DropdownMenu,
+    DropdownMenuCheckboxItem,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { apiFetch } from "@/lib/fetch";
 import { type ExternalJob } from "@/types/jobs";
 import {
@@ -57,11 +65,12 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
     const [loading, setLoading] = useState(true);
     const [appliedJobIds, setAppliedJobIds] = useState<Set<string>>(new Set());
     const [searchTerm, setSearchTerm] = useState("");
-    const [selectedCategory, setSelectedCategory] = useState<string>("all");
+    const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
     const [selectedCountry, setSelectedCountry] = useState<string>("all");
     const [selectedState, setSelectedState] = useState<string>("all");
-    const [selectedCity, setSelectedCity] = useState<string>("all");
-    const [selectedType, setSelectedType] = useState<string>("all");
+    const [selectedCities, setSelectedCities] = useState<string[]>([]);
+    const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
+    const [selectedWorkModes, setSelectedWorkModes] = useState<Array<"onsite" | "hybrid" | "remote">>([]);
     const [categories, setCategories] = useState<string[]>([]);
     const [visibleCount, setVisibleCount] = useState(20);
     const observerRef = useRef<IntersectionObserver | null>(null);
@@ -222,7 +231,19 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
         });
     }, [featuredJobs, externalJobs]);
 
-    const types = ["internship", "new-grad", "featured"];
+    const types = ["internship", "new-grad", "featured"] as const;
+    const workModes = ["onsite", "hybrid", "remote"] as const;
+    type WorkModeValue = (typeof workModes)[number];
+    const typeLabel: Record<(typeof types)[number], string> = {
+        internship: "Internship",
+        "new-grad": "New Grad",
+        featured: "Featured",
+    };
+    const workModeLabel: Record<(typeof workModes)[number], string> = {
+        onsite: "Onsite",
+        hybrid: "Hybrid",
+        remote: "Remote",
+    };
 
     const normalizedLocationsByJob = useMemo(() => {
         const output = new Map<string, NormalizedJobLocation[]>();
@@ -246,33 +267,43 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
         return buildFilterIndex(allLocations);
     }, [normalizedLocationsByJob]);
 
-    const availableCountries = useMemo(() => {
-        return filterIndex.countries;
-    }, [filterIndex]);
+    const cityToKey = (city: string): string =>
+        normalizeSearchText(city).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const normalizedSearch = useMemo(() => normalizeSearchText(searchTerm), [searchTerm]);
 
-    const availableStates = useMemo(() => {
-        if (selectedCountry === "all") return [];
-        return filterIndex.statesByCountry[selectedCountry] || [];
-    }, [filterIndex, selectedCountry]);
-
-    const availableCities = useMemo(() => {
-        if (selectedCountry === "all") return [];
-        if (selectedState === "all") {
-            return filterIndex.citiesByCountry[selectedCountry] || [];
-        }
-        return (
-            filterIndex.citiesByCountryState[`${selectedCountry}::${selectedState}`] || []
-        );
-    }, [filterIndex, selectedCountry, selectedState]);
-
-    const matchesLocation = (job: UnifiedJob): boolean => {
-        const normalized = normalizedLocationsByJob.get(job.id) || [];
-        return matchLocationFilters(normalized, {
-            countryCode: selectedCountry,
-            regionKey: selectedState,
-            cityKey: selectedCity,
-        });
+    type ActiveFilters = {
+        types: string[];
+        categories: string[];
+        workModes: Array<"onsite" | "hybrid" | "remote">;
+        country: string;
+        state: string;
+        cities: string[];
+        search: string;
     };
+
+    const activeFilters: ActiveFilters = useMemo(
+        () => ({
+            types: selectedTypes,
+            categories: selectedCategories,
+            workModes: selectedWorkModes,
+            country: selectedCountry,
+            state: selectedState,
+            cities: selectedCities,
+            search: normalizedSearch,
+        }),
+        [
+            selectedTypes,
+            selectedCategories,
+            selectedWorkModes,
+            selectedCountry,
+            selectedState,
+            selectedCities,
+            normalizedSearch,
+        ]
+    );
+
+    const getJobTypeValue = (job: UnifiedJob): string =>
+        job.featured ? "featured" : job.type;
 
     const getSearchableText = (job: UnifiedJob): string => {
         const fields: string[] = [];
@@ -304,36 +335,232 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
         return normalizeSearchText(fields.join(" "));
     };
 
-    const filteredJobs = useMemo(() => {
-        let filtered = allJobs.filter((job) => {
-            const searchableText = getSearchableText(job);
-            const normalizedSearch = normalizeSearchText(searchTerm);
-            const matchesSearch =
-                normalizedSearch.length === 0 || searchableText.includes(normalizedSearch);
-            const matchesCategory =
-                selectedCategory === "all" ||
-                ("category" in job && job.category === selectedCategory);
-            const matchesLocationFilter = matchesLocation(job);
-            const jobType = job.featured ? "featured" : job.type;
-            const matchesType =
-                selectedType === "all" || jobType === selectedType;
-            return (
-                matchesSearch &&
-                matchesCategory &&
-                matchesLocationFilter &&
-                matchesType
-            );
+    const matchJobWithFilters = (
+        job: UnifiedJob,
+        filters: ActiveFilters,
+        ignoreFacet?: "types" | "categories" | "workModes" | "countries" | "states" | "cities"
+    ): boolean => {
+        const searchableText = getSearchableText(job);
+        const matchesSearch = filters.search.length === 0 || searchableText.includes(filters.search);
+        if (!matchesSearch) return false;
+
+        const jobType = getJobTypeValue(job);
+        if (ignoreFacet !== "types" && filters.types.length > 0 && !filters.types.includes(jobType)) {
+            return false;
+        }
+
+        const category = "category" in job ? job.category : null;
+        if (
+            ignoreFacet !== "categories" &&
+            filters.categories.length > 0 &&
+            (!category || !filters.categories.includes(category))
+        ) {
+            return false;
+        }
+
+        const normalized = normalizedLocationsByJob.get(job.id) || [];
+        if (
+            ignoreFacet !== "workModes" &&
+            filters.workModes.length > 0 &&
+            !normalized.some((loc) => filters.workModes.includes(loc.type))
+        ) {
+            return false;
+        }
+
+        if (
+            ignoreFacet !== "countries" &&
+            !matchLocationFilters(normalized, {
+                countryCode: filters.country,
+                regionKey: "all",
+                cityKey: "all",
+            })
+        ) {
+            return false;
+        }
+
+        if (
+            ignoreFacet !== "states" &&
+            !matchLocationFilters(normalized, {
+                countryCode: filters.country,
+                regionKey: filters.state,
+                cityKey: "all",
+            })
+        ) {
+            return false;
+        }
+
+        if (ignoreFacet !== "cities" && filters.cities.length > 0) {
+            const cityMatch = normalized.some((location) => {
+                if (!location.normalized.city) return false;
+                const cityKey = cityToKey(location.normalized.city);
+                if (filters.country !== "all" && location.normalized.country_code !== filters.country) return false;
+                if (
+                    filters.state !== "all" &&
+                    (location.normalized.region_code ||
+                        (location.normalized.region
+                            ? normalizeSearchText(location.normalized.region)
+                                  .replace(/[^a-z0-9]+/g, "-")
+                                  .replace(/^-|-$/g, "")
+                            : "")) !== filters.state
+                ) {
+                    return false;
+                }
+                return filters.cities.includes(cityKey);
+            });
+            if (!cityMatch) return false;
+        }
+
+        return true;
+    };
+
+    const computeFacetCounts = (
+        facet: "types" | "categories" | "workModes" | "countries" | "states" | "cities"
+    ): Map<string, number> => {
+        const counts = new Map<string, number>();
+        allJobs.forEach((job) => {
+            if (!matchJobWithFilters(job, activeFilters, facet)) return;
+            const normalized = normalizedLocationsByJob.get(job.id) || [];
+            const values = new Set<string>();
+            if (facet === "types") {
+                values.add(getJobTypeValue(job));
+            } else if (facet === "categories") {
+                if ("category" in job && job.category) values.add(job.category);
+            } else if (facet === "workModes") {
+                normalized.forEach((loc) => values.add(loc.type));
+            } else if (facet === "countries") {
+                normalized.forEach((loc) => {
+                    if (loc.normalized.country_code) values.add(loc.normalized.country_code);
+                });
+            } else if (facet === "states" && selectedCountry !== "all") {
+                normalized.forEach((loc) => {
+                    if (loc.normalized.country_code !== selectedCountry) return;
+                    const stateKey =
+                        loc.normalized.region_code ||
+                        (loc.normalized.region
+                            ? normalizeSearchText(loc.normalized.region)
+                                  .replace(/[^a-z0-9]+/g, "-")
+                                  .replace(/^-|-$/g, "")
+                            : "");
+                    if (stateKey) values.add(stateKey);
+                });
+            } else if (facet === "cities" && selectedCountry !== "all") {
+                normalized.forEach((loc) => {
+                    if (loc.normalized.country_code !== selectedCountry) return;
+                    const stateKey =
+                        loc.normalized.region_code ||
+                        (loc.normalized.region
+                            ? normalizeSearchText(loc.normalized.region)
+                                  .replace(/[^a-z0-9]+/g, "-")
+                                  .replace(/^-|-$/g, "")
+                            : "");
+                    if (selectedState !== "all" && stateKey !== selectedState) return;
+                    if (loc.normalized.city) values.add(cityToKey(loc.normalized.city));
+                });
+            }
+            values.forEach((value) => {
+                counts.set(value, (counts.get(value) || 0) + 1);
+            });
         });
+        return counts;
+    };
+
+    const typeCounts = useMemo(() => computeFacetCounts("types"), [allJobs, activeFilters, normalizedLocationsByJob]);
+    const categoryCounts = useMemo(() => computeFacetCounts("categories"), [allJobs, activeFilters, normalizedLocationsByJob]);
+    const workModeCounts = useMemo(() => computeFacetCounts("workModes"), [allJobs, activeFilters, normalizedLocationsByJob]);
+    const countryCounts = useMemo(() => computeFacetCounts("countries"), [allJobs, activeFilters, normalizedLocationsByJob]);
+    const stateCounts = useMemo(() => computeFacetCounts("states"), [allJobs, activeFilters, normalizedLocationsByJob, selectedCountry]);
+    const cityCounts = useMemo(() => computeFacetCounts("cities"), [allJobs, activeFilters, normalizedLocationsByJob, selectedCountry, selectedState]);
+
+    const sortByCountThenLabel = (
+        items: Array<{ value: string; label: string; count: number }>
+    ) =>
+        items.sort((a, b) => {
+            if (b.count !== a.count) return b.count - a.count;
+            return a.label.localeCompare(b.label);
+        });
+
+    const availableTypeOptions = useMemo(
+        () =>
+            sortByCountThenLabel(
+                types.map((type) => ({
+                    value: type,
+                    label: typeLabel[type],
+                    count: typeCounts.get(type) || 0,
+                }))
+            ).filter((opt) => opt.count > 0 || selectedTypes.includes(opt.value)),
+        [typeCounts, selectedTypes]
+    );
+
+    const availableCategoryOptions = useMemo(
+        () =>
+            sortByCountThenLabel(
+                categories.map((category) => ({
+                    value: category,
+                    label: category,
+                    count: categoryCounts.get(category) || 0,
+                }))
+            ).filter((opt) => opt.count > 0 || selectedCategories.includes(opt.value)),
+        [categories, categoryCounts, selectedCategories]
+    );
+
+    const availableWorkModeOptions = useMemo(
+        () =>
+            sortByCountThenLabel(
+            workModes.map((mode) => ({
+                    value: mode,
+                    label: workModeLabel[mode],
+                    count: workModeCounts.get(mode) || 0,
+                }))
+            ).filter((opt) => opt.count > 0 || selectedWorkModes.includes(opt.value)),
+        [workModeCounts, selectedWorkModes]
+    );
+
+    const availableCountries = useMemo(
+        () =>
+            sortByCountThenLabel(
+                filterIndex.countries.map((country) => ({
+                    value: country.value,
+                    label: country.label,
+                    count: countryCounts.get(country.value) || 0,
+                }))
+            ).filter((opt) => opt.count > 0 || selectedCountry === opt.value),
+        [filterIndex, countryCounts, selectedCountry]
+    );
+
+    const availableStates = useMemo(() => {
+        if (selectedCountry === "all") return [];
+        const states = filterIndex.statesByCountry[selectedCountry] || [];
+        return sortByCountThenLabel(
+            states.map((state) => ({
+                value: state.value,
+                label: state.label,
+                count: stateCounts.get(state.value) || 0,
+            }))
+        ).filter((opt) => opt.count > 0 || selectedState === opt.value);
+    }, [filterIndex, selectedCountry, stateCounts, selectedState]);
+
+    const availableCities = useMemo(() => {
+        if (selectedCountry === "all") return [];
+        const cities =
+            selectedState === "all"
+                ? filterIndex.citiesByCountry[selectedCountry] || []
+                : filterIndex.citiesByCountryState[`${selectedCountry}::${selectedState}`] || [];
+        return sortByCountThenLabel(
+            cities.map((city) => ({
+                value: city.value,
+                label: city.label,
+                count: cityCounts.get(city.value) || 0,
+            }))
+        ).filter((opt) => opt.count > 0 || selectedCities.includes(opt.value));
+    }, [filterIndex, selectedCountry, selectedState, cityCounts, selectedCities]);
+
+    const filteredJobs = useMemo(() => {
+        let filtered = allJobs.filter((job) => matchJobWithFilters(job, activeFilters));
         if (limit) filtered = filtered.slice(0, limit);
         return filtered;
     }, [
         allJobs,
-        searchTerm,
-        selectedCategory,
-        selectedCountry,
-        selectedState,
-        selectedCity,
-        selectedType,
+        activeFilters,
         limit,
         normalizedLocationsByJob,
     ]);
@@ -342,22 +569,38 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
         if (selectedCountry !== "all" && !availableCountries.some((c) => c.value === selectedCountry)) {
             setSelectedCountry("all");
             setSelectedState("all");
-            setSelectedCity("all");
+            setSelectedCities([]);
         }
     }, [selectedCountry, availableCountries]);
 
     useEffect(() => {
         if (selectedState !== "all" && !availableStates.some((s) => s.value === selectedState)) {
             setSelectedState("all");
-            setSelectedCity("all");
+            setSelectedCities([]);
         }
     }, [selectedState, availableStates]);
 
     useEffect(() => {
-        if (selectedCity !== "all" && !availableCities.some((c) => c.value === selectedCity)) {
-            setSelectedCity("all");
-        }
-    }, [selectedCity, availableCities]);
+        const citySet = new Set(availableCities.map((c) => c.value));
+        setSelectedCities((prev) => prev.filter((city) => citySet.has(city)));
+    }, [availableCities]);
+
+    useEffect(() => {
+        const typeSet = new Set(availableTypeOptions.map((opt) => opt.value));
+        setSelectedTypes((prev) => prev.filter((type) => typeSet.has(type)));
+    }, [availableTypeOptions]);
+
+    useEffect(() => {
+        const categorySet = new Set(availableCategoryOptions.map((opt) => opt.value));
+        setSelectedCategories((prev) => prev.filter((category) => categorySet.has(category)));
+    }, [availableCategoryOptions]);
+
+    useEffect(() => {
+        const modeSet = new Set(availableWorkModeOptions.map((opt) => opt.value));
+        setSelectedWorkModes((prev) =>
+            prev.filter((mode) => modeSet.has(mode))
+        );
+    }, [availableWorkModeOptions]);
 
     useEffect(() => {
         setVisibleCount(20);
@@ -402,47 +645,105 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="w-64"
                         />
-                        <Select
-                            value={selectedType}
-                            onValueChange={setSelectedType}
-                        >
-                            <SelectTrigger className="w-full sm:w-32">
-                                <SelectValue placeholder="Type" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">All Types</SelectItem>
-                                {types.map((type) => (
-                                    <SelectItem key={type} value={type}>
-                                        {type === "new-grad"
-                                            ? "New Grad"
-                                            : type.charAt(0).toUpperCase() +
-                                              type.slice(1)}
-                                    </SelectItem>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" className="w-full sm:w-40 justify-start font-normal">
+                                    {selectedTypes.length === 0
+                                        ? "All Types"
+                                        : selectedTypes.length === 1
+                                          ? "1 type selected"
+                                          : `${selectedTypes.length} types selected`}
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent className="w-64 max-h-72 overflow-y-auto">
+                                <DropdownMenuItem onClick={() => setSelectedTypes([])}>
+                                    Clear type filters
+                                </DropdownMenuItem>
+                                {availableTypeOptions.map((type) => (
+                                    <DropdownMenuCheckboxItem
+                                        key={type.value}
+                                        checked={selectedTypes.includes(type.value)}
+                                        onCheckedChange={(checked) => {
+                                            setSelectedTypes((prev) =>
+                                                checked
+                                                    ? [...prev, type.value]
+                                                    : prev.filter((value) => value !== type.value)
+                                            );
+                                        }}
+                                    >
+                                        {type.label} ({type.count})
+                                    </DropdownMenuCheckboxItem>
                                 ))}
-                            </SelectContent>
-                        </Select>
-                        <Select
-                            value={selectedCategory}
-                            onValueChange={setSelectedCategory}
-                        >
-                            <SelectTrigger className="w-full sm:w-48">
-                                <SelectValue placeholder="Category" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">All Categories</SelectItem>
-                                {categories.map((cat) => (
-                                    <SelectItem key={cat} value={cat}>
-                                        {cat}
-                                    </SelectItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" className="w-full sm:w-52 justify-start font-normal">
+                                    {selectedCategories.length === 0
+                                        ? "All Categories"
+                                        : selectedCategories.length === 1
+                                          ? "1 category selected"
+                                          : `${selectedCategories.length} categories selected`}
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent className="w-72 max-h-72 overflow-y-auto">
+                                <DropdownMenuItem onClick={() => setSelectedCategories([])}>
+                                    Clear category filters
+                                </DropdownMenuItem>
+                                {availableCategoryOptions.map((category) => (
+                                    <DropdownMenuCheckboxItem
+                                        key={category.value}
+                                        checked={selectedCategories.includes(category.value)}
+                                        onCheckedChange={(checked) => {
+                                            setSelectedCategories((prev) =>
+                                                checked
+                                                    ? [...prev, category.value]
+                                                    : prev.filter((value) => value !== category.value)
+                                            );
+                                        }}
+                                    >
+                                        {category.label} ({category.count})
+                                    </DropdownMenuCheckboxItem>
                                 ))}
-                            </SelectContent>
-                        </Select>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" className="w-full sm:w-44 justify-start font-normal">
+                                    {selectedWorkModes.length === 0
+                                        ? "All Work Modes"
+                                        : selectedWorkModes.length === 1
+                                          ? "1 mode selected"
+                                          : `${selectedWorkModes.length} modes selected`}
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent className="w-56 max-h-72 overflow-y-auto">
+                                <DropdownMenuItem onClick={() => setSelectedWorkModes([])}>
+                                    Clear work mode filters
+                                </DropdownMenuItem>
+                                {availableWorkModeOptions.map((mode) => (
+                                    <DropdownMenuCheckboxItem
+                                        key={mode.value}
+                                        checked={selectedWorkModes.includes(mode.value as WorkModeValue)}
+                                        onCheckedChange={(checked) => {
+                                            setSelectedWorkModes((prev) =>
+                                                checked
+                                                    ? [...prev, mode.value as WorkModeValue]
+                                                    : prev.filter((value) => value !== mode.value)
+                                            );
+                                        }}
+                                    >
+                                        {mode.label} ({mode.count})
+                                    </DropdownMenuCheckboxItem>
+                                ))}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                         <Select
                             value={selectedCountry}
                             onValueChange={(value) => {
                                 setSelectedCountry(value);
                                 setSelectedState("all");
-                                setSelectedCity("all");
+                                setSelectedCities([]);
                             }}
                         >
                             <SelectTrigger className="w-full sm:w-32">
@@ -452,7 +753,7 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
                                 <SelectItem value="all">All Countries</SelectItem>
                                 {availableCountries.map((country) => (
                                     <SelectItem key={country.value} value={country.value}>
-                                        {country.label}
+                                        {country.label} ({country.count})
                                     </SelectItem>
                                 ))}
                             </SelectContent>
@@ -463,7 +764,7 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
                                     value={selectedState}
                                     onValueChange={(value) => {
                                         setSelectedState(value);
-                                        setSelectedCity("all");
+                                        setSelectedCities([]);
                                     }}
                                 >
                                 <SelectTrigger className="w-full sm:w-32">
@@ -475,29 +776,62 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
                                     </SelectItem>
                                     {availableStates.map((state) => (
                                         <SelectItem key={state.value} value={state.value}>
-                                            {state.label}
+                                            {state.label} ({state.count})
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
                         )}
                         {selectedState !== "all" && availableCities.length > 0 && (
-                            <Select
-                                value={selectedCity}
-                                onValueChange={setSelectedCity}
-                            >
-                                <SelectTrigger className="w-full sm:w-32">
-                                    <SelectValue placeholder="City" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Cities</SelectItem>
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button
+                                        variant="outline"
+                                        className="w-full sm:w-48 justify-start font-normal"
+                                    >
+                                        {selectedCities.length === 0
+                                            ? "All Cities"
+                                            : selectedCities.length === 1
+                                              ? "1 city selected"
+                                              : `${selectedCities.length} cities selected`}
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent className="w-56 max-h-72 overflow-y-auto">
+                                    <DropdownMenuItem onClick={() => setSelectedCities([])}>
+                                        Clear city filters
+                                    </DropdownMenuItem>
                                     {availableCities.map((city) => (
-                                        <SelectItem key={city.value} value={city.value}>
-                                            {city.label}
-                                        </SelectItem>
+                                        <DropdownMenuCheckboxItem
+                                            key={city.value}
+                                            checked={selectedCities.includes(city.value)}
+                                            onCheckedChange={(checked) => {
+                                                setSelectedCities((prev) =>
+                                                    checked
+                                                        ? [...prev, city.value]
+                                                        : prev.filter((value) => value !== city.value)
+                                                );
+                                            }}
+                                        >
+                                            {city.label} ({city.count})
+                                        </DropdownMenuCheckboxItem>
                                     ))}
-                                </SelectContent>
-                            </Select>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        )}
+                        {(selectedCountry !== "all" ||
+                            selectedState !== "all" ||
+                            selectedCities.length > 0) && (
+                            <Button
+                                variant="ghost"
+                                className="w-full sm:w-auto"
+                                onClick={() => {
+                                    setSelectedCountry("all");
+                                    setSelectedState("all");
+                                    setSelectedCities([]);
+                                }}
+                            >
+                                Clear location filters
+                            </Button>
                         )}
                     </div>
                 </div>

@@ -67,7 +67,6 @@ const COUNTRY_ALIAS_TO_CODE: Record<string, string> = {
   "united states": "US",
   "united states of america": "US",
   america: "US",
-  ca: "CA",
   can: "CA",
   canada: "CA",
   uk: "GB",
@@ -226,6 +225,8 @@ function stripDecorators(text: string): string {
 function resolveCountry(input: string | null): { code: string | null; name: string | null } {
   if (!input) return { code: null, name: null };
   const key = normalizeText(input);
+  // "CA" est ambigu (Canada vs California). On n'accepte pas "CA" comme pays sans contexte.
+  if (key === "ca") return { code: null, name: null };
   const code = COUNTRY_ALIAS_TO_CODE[key] || null;
   if (!code) return { code: null, name: null };
   return { code, name: COUNTRY_CODE_TO_NAME[code] || null };
