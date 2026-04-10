@@ -507,7 +507,7 @@ export function formatLocationForDisplay(locations: NormalizedJobLocation[]): st
     const parts = [
       location.normalized.city,
       location.normalized.region_code || location.normalized.region,
-      location.normalized.country_code,
+      location.normalized.country || location.normalized.country_code,
     ].filter(Boolean);
     if (parts.length) {
       display.add(parts.join(", "));
