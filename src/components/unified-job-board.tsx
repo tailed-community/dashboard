@@ -77,6 +77,11 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
     const currentObservedRef = useRef<Element | null>(null);
     const navigate = useNavigate();
 
+    const arraysHaveSameValues = <T,>(left: T[], right: T[]): boolean => {
+        if (left.length !== right.length) return false;
+        return left.every((value, index) => value === right[index]);
+    };
+
     useEffect(() => {
         const observer = new IntersectionObserver(
             (entries) => {
@@ -604,24 +609,34 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
 
     useEffect(() => {
         const citySet = new Set(availableCities.map((c) => c.value));
-        setSelectedCities((prev) => prev.filter((city) => citySet.has(city)));
+        setSelectedCities((prev) => {
+            const next = prev.filter((city) => citySet.has(city));
+            return arraysHaveSameValues(prev, next) ? prev : next;
+        });
     }, [availableCities]);
 
     useEffect(() => {
         const typeSet = new Set(availableTypeOptions.map((opt) => opt.value));
-        setSelectedTypes((prev) => prev.filter((type) => typeSet.has(type)));
+        setSelectedTypes((prev) => {
+            const next = prev.filter((type) => typeSet.has(type));
+            return arraysHaveSameValues(prev, next) ? prev : next;
+        });
     }, [availableTypeOptions]);
 
     useEffect(() => {
         const categorySet = new Set(availableCategoryOptions.map((opt) => opt.value));
-        setSelectedCategories((prev) => prev.filter((category) => categorySet.has(category)));
+        setSelectedCategories((prev) => {
+            const next = prev.filter((category) => categorySet.has(category));
+            return arraysHaveSameValues(prev, next) ? prev : next;
+        });
     }, [availableCategoryOptions]);
 
     useEffect(() => {
         const modeSet = new Set(availableWorkModeOptions.map((opt) => opt.value));
-        setSelectedWorkModes((prev) =>
-            prev.filter((mode) => modeSet.has(mode))
-        );
+        setSelectedWorkModes((prev) => {
+            const next = prev.filter((mode) => modeSet.has(mode));
+            return arraysHaveSameValues(prev, next) ? prev : next;
+        });
     }, [availableWorkModeOptions]);
 
     useEffect(() => {
