@@ -24,7 +24,6 @@ import ApplicationConfirmation from "./confirmation";
 import { getFileUrl } from "@/lib/firebase-client";
 import { studentAuth, signInWithGoogle } from "@/lib/auth";
 import { type TokenInfo, type JobData } from "./types";
-import { SiApple, SiLinkedin } from "react-icons/si";
 import { EmailLoginForm } from "@/pages/(auth)/sign-in/email-login-form";
 
 // Define access types for clarity

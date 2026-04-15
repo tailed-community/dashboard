@@ -1,7 +1,8 @@
 import { Link } from "react-router-dom";
 import { Header } from "@/components/landing/header";
 import { Target, Eye, Users, Rocket, Heart, TrendingUp, Globe } from "lucide-react";
-import { SiYoutube, SiInstagram, SiDiscord, SiGithub, SiLinkedin } from "react-icons/si";
+import { SiYoutube, SiInstagram, SiDiscord, SiGithub } from "react-icons/si";
+import { FaLinkedinIn } from "react-icons/fa";
 
 interface SocialLink {
   type: "linkedin" | "instagram" | "portfolio" | "github" | "twitter";
@@ -54,7 +55,7 @@ const getSocialIcon = (type: SocialLink["type"]) => {
   const iconClass = "w-4 h-4";
   switch (type) {
     case "linkedin":
-      return <SiLinkedin className={iconClass} />;
+      return <FaLinkedinIn className={iconClass} />;
     case "instagram":
       return <SiInstagram className={iconClass} />;
     case "github":
