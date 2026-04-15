@@ -84,8 +84,6 @@ export function SignUpForm({ className, ...props }: SignUpFormProps) {
     const onSubmit = async (data: SignUpData) => {
         setIsLoading(true);
 
-	console.log( "Submit signup form" , data)
-
         try {
             // First, check if the user already exists
             const checkResponse = await apiFetch("/auth/check-user-exists", {
