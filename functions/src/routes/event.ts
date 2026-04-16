@@ -27,18 +27,14 @@ const eventBaseSchema = z.object({
   digitalLink: z.string().url().optional().or(z.literal("")),
   status: z.enum(["draft", "published", "cancelled"]).default("published"),
   schedule: z.string().optional(),
-  helpSearch: z.array(
-    z.object({
-      status: z.boolean(),
-      value: z.string(),
-    })
-  ).optional(),
-});
-
-
-const createEventSchema = eventBaseSchema.extend({
-  slug: z.string().min(3).max(200).regex(/^[a-z0-9-]+$/),
-  communityId: z.string().optional(),
+  helpSearch: z
+    .array(
+      z.object({
+        status: z.boolean(),
+        value: z.string(),
+      })
+    )
+    .optional(),
 });
 
 /**
