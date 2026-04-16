@@ -231,24 +231,7 @@ const resolveEvent = async (
   return bySlug.empty ? null : bySlug.docs[0];
 };
 
-const participantSchema = z.object({
-  profileId: z.string(),
-  id: z.string(),
-  role: z.string(),
-  status: z.enum([
-    "pending",
-    "confirmed",
-    "rejected",
-    "cancelled",
-    "waitlisted",
-    "attended",
-    "no-show",
-  ]),
-});
 
-const joinEventSchema = z.object({
-  role: z.string().min(1).max(50),
-});
 
 // Validation schema for event update
 const updateEventSchema = z.object({
@@ -272,7 +255,6 @@ const updateEventSchema = z.object({
   winners: z.array(z.object({ id: z.string() })).optional(),
   organizer: z.array(z.object({ id: z.string() })).optional(),
   stand: z.array(z.object({ id: z.string() })).optional(),
-  participants: z.array(participantSchema).optional(),
   schedule: z.string().optional(),
   helpSearch: z
     .array(
@@ -637,14 +619,25 @@ router.delete("/:eventId", async (req: Request, res: Response) => {
 });
 
 // Validation schema for attendee import
-const attendeeSchema = z.object({
+const importAttendeeSchema = z.object({
   email: z.string().email(),
   firstName: z.string().min(1).optional(),
   lastName: z.string().min(1).optional(),
+  role: z.enum(["mentor", "judge", "participant"]).default("participant"),
+  status: z.enum([
+    "pending",
+    "confirmed",
+    "rejected",
+    "cancelled",
+    "waitlisted",
+    "attended",
+    "no-show",
+  ]).default("confirmed"),
 });
 
+//validation schema for batch import of attendees
 const importAttendeesSchema = z.object({
-  attendees: z.array(attendeeSchema).min(1).max(500), // Limit to 500 per batch
+  attendees: z.array(importAttendeeSchema).min(1).max(500), // Limit to 500 per batch
   sendNotifications: z.boolean().default(false),
 });
 
@@ -703,7 +696,7 @@ router.post("/:eventId/import-attendees", async (req: Request, res: Response) =>
     // Verify user is a community admin
     const admins = communityData.admins || [];
     if (!admins.includes(userId)) {
-      return res.status(403).json({ error: "Only community admins can import attendees" });
+      return res.status(403).json({ error: "Only community admins can import registrations" });
     }
 
     const results = {
@@ -713,7 +706,7 @@ router.post("/:eventId/import-attendees", async (req: Request, res: Response) =>
       errors: [] as { email: string; error: string }[],
     };
 
-    // Process each attendee
+    // Process each registration request
     for (const attendee of attendees) {
       try {
         // Use centralized upsert function
@@ -802,6 +795,7 @@ router.post("/:eventId/import-attendees", async (req: Request, res: Response) =>
           .doc(resolvedEventId)
           .collection("registrations")
           .where("userId", "==", upsertResult.userRecord.uid)
+          .where("role", "==", attendee.role)
           .limit(1)
           .get();
 
@@ -817,6 +811,8 @@ router.post("/:eventId/import-attendees", async (req: Request, res: Response) =>
               email: emailLower,
               firstName: attendee.firstName || "",
               lastName: attendee.lastName || "",
+              role: attendee.role,
+              status: attendee.status,
               registeredAt: new Date(),
               registeredBy: userId,
               source: "admin-import",
@@ -864,9 +860,27 @@ router.post("/:eventId/import-attendees", async (req: Request, res: Response) =>
   }
 });
 
+const createAttendeeSchema = z.object({
+  userId: z.string(),
+  email: z.string().email(),
+  firstName: z.string().min(1).optional(),
+  lastName: z.string().min(1).optional(),
+  role: z.enum(["mentor", "judge", "participant"]).default("participant"),
+  status: z.enum([
+    "pending",
+    "confirmed",
+    "rejected",
+    "cancelled",
+    "waitlisted",
+    "attended",
+    "no-show",
+  ]).default("pending"),
+});
+
 /**
  * POST /events/:eventId/join
  * Join an event and sync the event onto the user's profile
+ * Requires the user to be logged in and to provide a role (mentor, judge, participant)
  */
 router.post("/:eventId/join", async (req: Request, res: Response) => {
   try {
@@ -892,7 +906,10 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Event is not open for joining" });
     }
 
-    const validationResult = joinEventSchema.safeParse(req.body);
+    const validationResult = z.object({
+      role: z.string().min(1).max(50),
+    }).safeParse(req.body);
+
     if (!validationResult.success) {
       return res.status(400).json({
         error: "Invalid request data",
@@ -937,49 +954,45 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
         };
       }
 
-      const participants = Array.isArray(freshEventData.participants)
-        ? freshEventData.participants
-        : [];
       const profileEvents = profileDoc.exists && Array.isArray(profileDoc.data()?.events)
         ? profileDoc.data()?.events
         : [];
 
-      const alreadyInEvent = participants.some(
-        (participant: any) =>
-          participant?.profileId === userId && participant?.role === role
-      );
-      const alreadyInProfile = profileEvents.includes(resolvedEventId);
+      const registrationsRef = eventRef.collection("registrations");
+      const existingRegistrationQuery = registrationsRef
+        .where("userId", "==", userId)
+        .where("role", "==", role)
+        .limit(1);
+      const existingRegistrationSnapshot = await transaction.get(existingRegistrationQuery);
 
-      if (alreadyInEvent) {
+      if (!existingRegistrationSnapshot.empty) {
         throw {
           status: 400,
           error: "Already joined this event with this role",
         };
       }
 
-      const participantEntry = participantSchema.parse({
-        profileId: userId,
-        id: userId,
+      const attendeeEntry = createAttendeeSchema.parse({
+        userId,
+        email: profileDoc.data()?.email || "",
+        firstName: profileDoc.data()?.firstName,
+        lastName: profileDoc.data()?.lastName,
         role,
         status: "confirmed",
       });
 
-      const updatedParticipants = alreadyInEvent
-        ? participants
-        : [...participants, participantEntry];
+      const registrationRef = registrationsRef.doc();
 
-      const updates: Record<string, unknown> = {
-        updatedAt: new Date(),
-      };
+      transaction.set(registrationRef, {
+        ...attendeeEntry,
+        eventId: resolvedEventId,
+        registeredAt: new Date(),
+        registeredBy: userId,
+        source: "self-join",
+        communityId: eventData.communityId,
+      });
 
-      if (!alreadyInEvent) {
-        updates.participants = updatedParticipants;
-        updates.attendees = updatedParticipants.length;
-      }
-
-      transaction.update(eventRef, updates);
-
-      if (!alreadyInProfile) {
+      if (existingRegistrationSnapshot.empty) {
         transaction.set(
           profileRef,
           {
@@ -991,8 +1004,8 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
       }
 
       return {
-        participant: participantEntry,
-        attendees: updatedParticipants.length,
+        attendee: attendeeEntry,
+        registrations: 1,
         joined: true,
       };
     });
@@ -1000,8 +1013,8 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
     return res.status(200).json({
       success: true,
       message: "Successfully joined event",
-      participant: result.participant,
-      attendees: result.attendees,
+      attendee: result.attendee,
+      registrations: result.registrations,
     });
   } catch (error: any) {
     console.error("Error joining event:", error);
@@ -1064,15 +1077,15 @@ router.get("/:eventId/attendees", async (req: Request, res: Response) => {
       .orderBy("registeredAt", "desc")
       .get();
 
-    const attendees = registrationsSnapshot.docs.map((doc) => ({
+    const registrations = registrationsSnapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
     }));
 
     return res.status(200).json({
       success: true,
-      attendees,
-      count: attendees.length,
+      registrations,
+      count: registrations.length,
     });
 
   } catch (error: any) {
