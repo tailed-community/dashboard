@@ -28,6 +28,15 @@ const createEventSchema = z.object({
   registrationLink: z.string().url().optional().or(z.literal("")),
   digitalLink: z.string().url().optional().or(z.literal("")),
   status: z.enum(["draft", "published", "cancelled"]).default("published"),
+  schedule: z.string().optional(),
+  helpSearch: z
+    .array(
+      z.object({
+        status: z.boolean(),
+        value: z.string(),
+      })
+    )
+    .optional(),
 });
 
 /**
@@ -241,6 +250,28 @@ const updateEventSchema = z.object({
   registrationLink: z.string().url().optional().or(z.literal("")),
   digitalLink: z.string().url().optional().or(z.literal("")),
   status: z.enum(["draft", "published", "cancelled"]).optional(),
+  winners: z.array(z.object({ id: z.string() })).optional(),
+  organizer: z.array(z.object({ id: z.string() })).optional(),
+  stand: z.array(z.object({ id: z.string() })).optional(),
+  participants: z
+    .array(
+      z.object({
+        profileId: z.string(),
+        id: z.string(),
+        role: z.string(),
+        status: z.enum(["pending", "confirmed", "rejected", "cancelled", "waitlisted", "attended", "no-show"]),
+      })
+    )
+    .optional(),
+  schedule: z.string().optional(),
+  helpSearch: z
+    .array(
+      z.object({
+        status: z.boolean(),
+        value: z.string(),
+      })
+    )
+    .optional(),
 });
 
 /**
