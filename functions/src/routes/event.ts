@@ -514,6 +514,88 @@ router.post("/:eventId/awards", async (req: Request, res: Response) => {
 });
 
 /**
+ * PATCH /events/:eventId/awards/:awardId
+ * Update an award for community admins
+ */
+router.patch("/:eventId/awards/:awardId", async (req: Request, res: Response) => {
+  try {
+    const { eventId, awardId } = req.params;
+    const userId = req.user?.uid;
+
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const eventDoc = await resolveEvent(eventId);
+    if (!eventDoc) {
+      return res.status(404).json({ error: "Event not found" });
+    }
+
+    const eventData = eventDoc.data();
+    if (!eventData) {
+      return res.status(404).json({ error: "Event data not found" });
+    }
+
+    if (!eventData.communityId) {
+      return res.status(400).json({ error: "Awards can only be updated for community events" });
+    }
+
+    const communityDoc = await db.collection("communities").doc(eventData.communityId).get();
+    if (!communityDoc.exists) {
+      return res.status(404).json({ error: "Community not found" });
+    }
+
+    const communityData = communityDoc.data();
+    const admins = communityData?.admins || [];
+    if (!admins.includes(userId)) {
+      return res.status(403).json({ error: "Only community admins can update awards" });
+    }
+
+    const validationResult = updateAwardSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({
+        error: "Invalid request data",
+        details: validationResult.error.errors,
+      });
+    }
+
+    const awardRef = db
+      .collection("events")
+      .doc(eventDoc.id)
+      .collection("awards")
+      .doc(awardId);
+
+    const awardDoc = await awardRef.get();
+    if (!awardDoc.exists) {
+      return res.status(404).json({ error: "Award not found" });
+    }
+
+    const awardData = validationResult.data;
+    await awardRef.update({
+      ...awardData,
+      updatedAt: new Date(),
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Award updated successfully",
+      award: {
+        id: awardDoc.id,
+        ...awardDoc.data(),
+        ...awardData,
+        updatedAt: new Date(),
+      },
+    });
+  } catch (error: any) {
+    console.error("Error updating award:", error);
+    return res.status(500).json({
+      error: "Failed to update award",
+      details: error.message,
+    });
+  }
+});
+
+/**
  * POST /events
  * Create a new event (with optional heroImage upload)
  * Always uses multipart/form-data (files are optional)
