@@ -3,7 +3,7 @@ import { z } from "zod";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { FcGoogle } from "react-icons/fc";
-import { SiLinkedin, SiApple } from "react-icons/si";
+import { SiApple } from "react-icons/si";
 import { Loader2, Mail } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Link } from "react-router-dom";
