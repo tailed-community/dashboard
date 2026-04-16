@@ -101,7 +101,7 @@ Represents a single event.
 
 ```ts
 type Event = {
-    Tech:string,
+    category:string,
     city?: string,
     communityId: string,
     createdAt: timestamp,
@@ -149,7 +149,7 @@ type Participant = {
   // role inside event
   role: "attendee" | "organizer" | "company" | "volunteer" | "sponsor" | "judge" | "mentor",
   // request lifecycle
-  status: "pending" | "approved" | "rejected" | "waitlist",
+  status: "pending" | "approved" | "rejected" | "waitlist" | "cancelled" | "attended" | "no-show" ,
   createdAt: Timestamp
 }
 ```
