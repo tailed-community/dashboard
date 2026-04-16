@@ -366,6 +366,25 @@ const awardBaseSchema = z.object({
   prizeDescription: z.string().max(200).optional(),
   recipientIds: z.array(z.string().min(1)).min(1).optional(),
 });
+const participantSchema = z.object({
+  profileId: z.string(),
+  id: z.string(),
+  role: z.string(),
+  status: z.enum([
+    "pending",
+    "confirmed",
+    "rejected",
+    "cancelled",
+    "waitlisted",
+    "attended",
+    "no-show",
+  ]),
+});
+
+const joinEventSchema = z.object({
+  role: z.string().min(1).max(50),
+});
+
 
 const createAwardSchema = awardBaseSchema;
 
@@ -1590,6 +1609,161 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
         error: "Failed to join event",
       });
     }
+  } catch (error: any) {
+    console.error("Error joining event:", error);
+
+    if (error.status) {
+      return res.status(error.status).json({
+        error: error.error,
+      });
+    }
+
+    return res.status(500).json({
+      error: "Failed to join event",
+      details: error.message,
+    });
+  }
+});
+
+/**
+ * POST /events/:eventId/join
+ * Join an event and sync the event onto the user's profile
+ */
+router.post("/:eventId/join", async (req: Request, res: Response) => {
+  try {
+    const { eventId } = req.params;
+    const userId = req.user?.uid;
+
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const eventDoc = await resolveEvent(eventId);
+    if (!eventDoc) {
+      return res.status(404).json({ error: "Event not found" });
+    }
+
+    const resolvedEventId = eventDoc.id;
+    const eventData = eventDoc.data();
+    if (!eventData) {
+      return res.status(404).json({ error: "Event data not found" });
+    }
+
+    if (eventData.status && eventData.status !== "published") {
+      return res.status(400).json({ error: "Event is not open for joining" });
+    }
+
+    const validationResult = joinEventSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({
+        error: "Invalid request data",
+        details: validationResult.error.errors,
+      });
+    }
+
+    const { role } = validationResult.data;
+
+    if (eventData.communityId) {
+      const communityDoc = await db
+        .collection("communities")
+        .doc(eventData.communityId)
+        .get();
+
+      if (!communityDoc.exists) {
+        return res.status(404).json({ error: "Community not found" });
+      }
+    }
+
+    const eventRef = db.collection("events").doc(resolvedEventId);
+    const profileRef = db.collection("profiles").doc(userId);
+
+    const result = await db.runTransaction(async (transaction) => {
+      const [freshEventDoc, profileDoc] = await Promise.all([
+        transaction.get(eventRef),
+        transaction.get(profileRef),
+      ]);
+
+      if (!freshEventDoc.exists) {
+        throw {
+          status: 404,
+          error: "Event not found",
+        };
+      }
+
+      const freshEventData = freshEventDoc.data();
+      if (!freshEventData) {
+        throw {
+          status: 404,
+          error: "Event data not found",
+        };
+      }
+
+      const participants = Array.isArray(freshEventData.participants)
+        ? freshEventData.participants
+        : [];
+      const profileEvents = profileDoc.exists && Array.isArray(profileDoc.data()?.events)
+        ? profileDoc.data()?.events
+        : [];
+
+      const alreadyInEvent = participants.some(
+        (participant: any) =>
+          participant?.profileId === userId && participant?.role === role
+      );
+      const alreadyInProfile = profileEvents.includes(resolvedEventId);
+
+      if (alreadyInEvent) {
+        throw {
+          status: 400,
+          error: "Already joined this event with this role",
+        };
+      }
+
+      const participantEntry = participantSchema.parse({
+        profileId: userId,
+        id: userId,
+        role,
+        status: "confirmed",
+      });
+
+      const updatedParticipants = alreadyInEvent
+        ? participants
+        : [...participants, participantEntry];
+
+      const updates: Record<string, unknown> = {
+        updatedAt: new Date(),
+      };
+
+      if (!alreadyInEvent) {
+        updates.participants = updatedParticipants;
+        updates.attendees = updatedParticipants.length;
+      }
+
+      transaction.update(eventRef, updates);
+
+      if (!alreadyInProfile) {
+        transaction.set(
+          profileRef,
+          {
+            events: [...profileEvents, resolvedEventId],
+            updatedAt: new Date(),
+          },
+          { merge: true }
+        );
+      }
+
+      return {
+        participant: participantEntry,
+        attendees: updatedParticipants.length,
+        joined: true,
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Successfully joined event",
+      participant: result.participant,
+      attendees: result.attendees,
+    });
   } catch (error: any) {
     console.error("Error joining event:", error);
 
