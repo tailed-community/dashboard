@@ -537,23 +537,35 @@ router.get("/:identifier", async (req: Request, res: Response) => {
 router.post("/:eventId/awards", async (req: Request, res: Response) => {
   try {
     const { eventId } = req.params;
-    const userId = requireUserId(req, res);
-    if (!userId) return null;
+    const userId = req.user?.uid;
 
-    const eventContext = await loadEventContext(res, eventId);
-    if (!eventContext) return null;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
 
-    const { eventDoc, eventData } = eventContext;
+    const eventDoc = await resolveEvent(eventId);
+    if (!eventDoc) {
+      return res.status(404).json({ error: "Event not found" });
+    }
 
-    const communityContext = await requireCommunityContext(
-      res,
-      eventData,
-      "Awards can only be added to community events"
-    );
-    if (!communityContext) return null;
+    const eventData = eventDoc.data();
+    if (!eventData) {
+      return res.status(404).json({ error: "Event data not found" });
+    }
 
-    if (!ensureCommunityAdmin(res, userId, communityContext.admins, "Only community admins can add awards")) {
-      return null;
+    if (!eventData.communityId) {
+      return res.status(400).json({ error: "Awards can only be added to community events" });
+    }
+
+    const communityDoc = await db.collection("communities").doc(eventData.communityId).get();
+    if (!communityDoc.exists) {
+      return res.status(404).json({ error: "Community not found" });
+    }
+
+    const communityData = communityDoc.data();
+    const admins = communityData?.admins || [];
+    if (!admins.includes(userId)) {
+      return res.status(403).json({ error: "Only community admins can add awards" });
     }
 
     const validationResult = createAwardSchema.safeParse(req.body);
@@ -572,7 +584,7 @@ router.post("/:eventId/awards", async (req: Request, res: Response) => {
       .add({
         ...awardData,
         eventId: eventDoc.id,
-        communityId: communityContext.communityId,
+        communityId: eventData.communityId,
         createdBy: userId,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -585,7 +597,7 @@ router.post("/:eventId/awards", async (req: Request, res: Response) => {
         id: awardRef.id,
         ...awardData,
         eventId: eventDoc.id,
-        communityId: communityContext.communityId,
+        communityId: eventData.communityId,
         createdBy: userId,
       },
     });
