@@ -232,6 +232,21 @@ const resolveEvent = async (
 };
 
 
+const createAwardSchema = z.object({
+  type: z.enum(["main_place", "special"]),
+  place: z.union([z.literal(1), z.literal(2), z.literal(3), z.null()]),
+  title: z.string().min(1).max(120),
+  prizeDescription: z.string().max(200).optional(),
+  recipientIds: z.array(z.string().min(1)).min(1).optional(),
+});
+
+const updateAwardSchema = z.object({
+  type: z.enum(["main_place", "special"]).optional(),
+  place: z.union([z.literal(1), z.literal(2), z.literal(3), z.null()]).optional(),
+  title: z.string().min(1).max(120).optional(),
+  prizeDescription: z.string().max(200).optional(),
+  recipientIds: z.array(z.string().min(1)).min(1).optional(),
+});
 
 // Validation schema for event update
 const updateEventSchema = z.object({
@@ -253,6 +268,7 @@ const updateEventSchema = z.object({
   digitalLink: z.string().url().optional().or(z.literal("")),
   status: z.enum(["draft", "published", "cancelled"]).optional(),
   winners: z.array(z.object({ id: z.string() })).optional(),
+  awards: z.array(createAwardSchema).optional(),
   organizer: z.array(z.object({ id: z.string() })).optional(),
   stand: z.array(z.object({ id: z.string() })).optional(),
   schedule: z.string().optional(),
@@ -412,6 +428,86 @@ router.get("/:identifier", async (req: Request, res: Response) => {
     console.error("Error fetching event:", error);
     return res.status(500).json({
       error: "Failed to fetch event",
+      details: error.message,
+    });
+  }
+});
+
+/**
+ * POST /events/:eventId/awards
+ * Add a new award to an event for community admins
+ */
+router.post("/:eventId/awards", async (req: Request, res: Response) => {
+  try {
+    const { eventId } = req.params;
+    const userId = req.user?.uid;
+
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const eventDoc = await resolveEvent(eventId);
+    if (!eventDoc) {
+      return res.status(404).json({ error: "Event not found" });
+    }
+
+    const eventData = eventDoc.data();
+    if (!eventData) {
+      return res.status(404).json({ error: "Event data not found" });
+    }
+
+    if (!eventData.communityId) {
+      return res.status(400).json({ error: "Awards can only be added to community events" });
+    }
+
+    const communityDoc = await db.collection("communities").doc(eventData.communityId).get();
+    if (!communityDoc.exists) {
+      return res.status(404).json({ error: "Community not found" });
+    }
+
+    const communityData = communityDoc.data();
+    const admins = communityData?.admins || [];
+    if (!admins.includes(userId)) {
+      return res.status(403).json({ error: "Only community admins can add awards" });
+    }
+
+    const validationResult = createAwardSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({
+        error: "Invalid request data",
+        details: validationResult.error.errors,
+      });
+    }
+
+    const awardData = validationResult.data;
+    const awardRef = await db
+      .collection("events")
+      .doc(eventDoc.id)
+      .collection("awards")
+      .add({
+        ...awardData,
+        eventId: eventDoc.id,
+        communityId: eventData.communityId,
+        createdBy: userId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+    return res.status(201).json({
+      success: true,
+      message: "Award created successfully",
+      award: {
+        id: awardRef.id,
+        ...awardData,
+        eventId: eventDoc.id,
+        communityId: eventData.communityId,
+        createdBy: userId,
+      },
+    });
+  } catch (error: any) {
+    console.error("Error creating award:", error);
+    return res.status(500).json({
+      error: "Failed to create award",
       details: error.message,
     });
   }
