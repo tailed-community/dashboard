@@ -374,9 +374,6 @@ const participantSchema = z.object({
   ]),
 });
 
-const joinEventSchema = z.object({
-  role: z.string().min(1).max(50),
-});
 
 
 const createAwardSchema = awardBaseSchema;
@@ -1362,6 +1359,7 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
 /**
  * POST /events/:eventId/join
  * Join an event and sync the event onto the user's profile
+ * Requires the user to be logged in and to provide a role (mentor, judge, participant)
  */
 router.post("/:eventId/join", async (req: Request, res: Response) => {
   try {
@@ -1387,7 +1385,10 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Event is not open for joining" });
     }
 
-    const validationResult = joinEventSchema.safeParse(req.body);
+    const validationResult = z.object({
+      role: z.string().min(1).max(50),
+    }).safeParse(req.body);
+
     if (!validationResult.success) {
       return res.status(400).json({
         error: "Invalid request data",
@@ -1432,49 +1433,45 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
         };
       }
 
-      const participants = Array.isArray(freshEventData.participants)
-        ? freshEventData.participants
-        : [];
       const profileEvents = profileDoc.exists && Array.isArray(profileDoc.data()?.events)
         ? profileDoc.data()?.events
         : [];
 
-      const alreadyInEvent = participants.some(
-        (participant: any) =>
-          participant?.profileId === userId && participant?.role === role
-      );
-      const alreadyInProfile = profileEvents.includes(resolvedEventId);
+      const registrationsRef = eventRef.collection("registrations");
+      const existingRegistrationQuery = registrationsRef
+        .where("userId", "==", userId)
+        .where("role", "==", role)
+        .limit(1);
+      const existingRegistrationSnapshot = await transaction.get(existingRegistrationQuery);
 
-      if (alreadyInEvent) {
+      if (!existingRegistrationSnapshot.empty) {
         throw {
           status: 400,
           error: "Already joined this event with this role",
         };
       }
 
-      const participantEntry = participantSchema.parse({
-        profileId: userId,
-        id: userId,
+      const attendeeEntry = createAttendeeSchema.parse({
+        userId,
+        email: profileDoc.data()?.email || "",
+        firstName: profileDoc.data()?.firstName,
+        lastName: profileDoc.data()?.lastName,
         role,
         status: "confirmed",
       });
 
-      const updatedParticipants = alreadyInEvent
-        ? participants
-        : [...participants, participantEntry];
+      const registrationRef = registrationsRef.doc();
 
-      const updates: Record<string, unknown> = {
-        updatedAt: new Date(),
-      };
+      transaction.set(registrationRef, {
+        ...attendeeEntry,
+        eventId: resolvedEventId,
+        registeredAt: new Date(),
+        registeredBy: userId,
+        source: "self-join",
+        communityId: eventData.communityId,
+      });
 
-      if (!alreadyInEvent) {
-        updates.participants = updatedParticipants;
-        updates.attendees = updatedParticipants.length;
-      }
-
-      transaction.update(eventRef, updates);
-
-      if (!alreadyInProfile) {
+      if (existingRegistrationSnapshot.empty) {
         transaction.set(
           profileRef,
           {
@@ -1486,8 +1483,8 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
       }
 
       return {
-        participant: participantEntry,
-        attendees: updatedParticipants.length,
+        attendee: attendeeEntry,
+        registrations: 1,
         joined: true,
       };
     });
@@ -1495,8 +1492,8 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
     return res.status(200).json({
       success: true,
       message: "Successfully joined event",
-      participant: result.participant,
-      attendees: result.attendees,
+      attendee: result.attendee,
+      registrations: result.registrations,
     });
   } catch (error: any) {
     console.error("Error joining event:", error);
