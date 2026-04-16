@@ -4,10 +4,10 @@
 
 This document defines:
 
-* the **core concepts**
-* the **data structures**
-* the **business rules**
-* the **feature expectations**
+* - the **core concepts**
+* - the **data structures**
+* - the **business rules**
+* - the **feature expectations**
 
 It is intended to allow **any contributor to continue the project without prior context**.
 
@@ -15,15 +15,15 @@ It is intended to allow **any contributor to continue the project without prior 
 
 # 🧠 Product Vision
 
-This platform enables **real-world networking during events** by transforming interactions into structured data.
+This platform enables **real-world networking during events**  by transforming interactions into structured data.
 
 ### Core idea:
 
-* People attend events
-* They **scan each other (QR code)**
-* This creates **connections**
-* These connections generate **insight for students, companies, and organizers**
-* Track Events Stats
+* - People attend events
+* - They **scan each other (QR code)**
+* - This creates **connections**
+* - These connections generate **insight for students, companies, and organizers**
+* - Track events **stats**
 
 ---
 
@@ -88,11 +88,10 @@ type Profile = {
 }
 ```
 
-### Notes
-
-* Every user MUST have a profile
-* QR codes are tied to profiles
-* Profile is used during scan interactions
+> [!NOTE]
+> * - Every user MUST have a profile
+> * - QR codes are tied to profiles
+> * -  Profile is used during scan interactions
 
 ---
 
@@ -155,12 +154,13 @@ type Participant = {
 }
 ```
 
-### Rules
-
-* A profile can only have **one participation per event**
-* Participation must go through **status transitions**
-* Organizers can approve/reject requests
-* Event can also auto approve requests. If max attendee is reach request status will be **waitlist**
+> [!IMPORTANT]
+> ### Rules
+> * - A profile can only have **one participation per event**
+> * - Participation must go through **status transitions**
+> * - Organizers can **approve/reject requests**
+> * - Event can also auto approve requests. If max attendee is reach request status will be **waitlist**
+> * - Auto-approved system is allowed
 
 ---
 
@@ -215,10 +215,10 @@ createConnection({
 
 ## Rules
 
-* A connection MUST belong to an event
-* A user cannot connect to themselves
-* Duplicate connections SHOULD be prevented or flagged
-* Connections are immutable once created
+* - A connection MUST belong to an event
+* - A user cannot connect to themselves
+* - Duplicate connections SHOULD be prevented or flagged
+* - Connections are immutable once created
 
 ---
 
@@ -227,17 +227,32 @@ createConnection({
 ## Company Perspective
 
 Companies attending events should be able to:
+* - find new events
+* - notifications when followed community event is plan
+* - Track:
+  * - number of connections per employee
+  * - number of connections per event
+  * - number of connections per stand 
+  * - number of anonymous connections
+  * - total participants
+  * - winners
+* - View:
+  * - best student match with company open position
+  * - most engaged students
+  * - quick student profile preview after scan
 
-* Track:
+## Data to store
 
-  * number of connections per employee
-  * number of connections per event
-* Identify:
+* - eventId
+* - standId
+* - connectionId
+* - profileRef (if not anonymous)
+* - connectedAt (timestamp)
 
-  * most engaged students
-* View:
 
-  * quick student profile preview after scan
+> [!INFO]
+> * - Add the connection id in the student and employee profile
+> * - ProfileRef = email || profileId
 
 ---
 
@@ -245,13 +260,10 @@ Companies attending events should be able to:
 
 Students should be able to:
 
-* Track connections made
-* View:
+* - Track connections made
+* - Collect event win trophies
+* - Collect event participation trophies
 
-  * companies they interacted with
-* (Future)
-
-  * earn participation / networking achievements
 
 ---
 
@@ -259,14 +271,27 @@ Students should be able to:
 
 Organizers manage:
 
-* Event creation
-* Participant requests
-* Role assignments:
+* - Event creation
+* - Participant requests
+* - Team management
+* - Role assignments:
+  * - Participants
+  * - Volunteers
+  * - Sponsors
+  * - Judges
+  * - Mentors
+* - Participant management 
+  * - Participant 
+  * - Judges 
+  * - Mentors 
+  * - Sponsors 
+  * - Volunteers
+* - Compile votes
+* - Establish winners
 
-  * Volunteers
-  * Sponsors
-  * Judges
-  * Mentors
+> [!NOTE]
+> The uses cases for the Organizer Perspective need to be determined
+> Please ensure to documents the uses cases clearly
 
 ---
 
@@ -282,24 +307,31 @@ Organizer reviews
 approved | rejected | waitlist
 ```
 
+# 🧾 Participation Flow 2
+
+```text
+User requests to join event
+        ↓
+Status = approved | wailist
+```
+
 ---
 
 # 🧠 Role System
 
 Roles are assigned per event:
-* organizer
-* Participant: 
-    * attendee
-    * volunteer
-    * sponsor
-    * judge
-    * mentor
+* - organizer
+* - Participant: 
+    * - attendee
+    * - volunteer
+    * - sponsor
+    * - judge
+    * - mentor
 
-### Notes
-
-* Roles are flexible and extensible
-* Profile can have multiple role in a single Event
-* The organizer can't be part of the participants roles
+> [!NOTE]
+> * - Roles are flexible and extensible
+> * - Profile can have multiple role in a single Event
+> * - The organizer can't be part of the participants roles
 
 ---
 
@@ -325,12 +357,7 @@ type EventScheduleItem = {
 Events may belong to a community.
 
 ```ts
-type Community = {
-  id: string
-  name: string
-
-  createdBy: string
-}
+type Community = {}
 ```
 
 ---
@@ -339,10 +366,10 @@ type Community = {
 
 The system should support:
 
-* total participants per event
-* total connections per event
-* connections per company
-* connections per student
+* - total participants per event
+* - total connections per event
+* - connections per company
+* - connections per student
 
 ⚠️ These metrics are expected to be **precomputed**, not calculated on demand.
 
@@ -352,33 +379,25 @@ The system should support:
 
 Events that should trigger notifications:
 
-* New connection created
-* Participation approved/rejected
-* Event starting soon
-* Follow community upcomming event
+* - New connection created
+* - Participation approved/rejected
+* - Event starting soon
+* - Follow community upcomming event
 
 ---
 
 # 🔌 Integrations (Open Questions)
 
-* Google Calendar sync for events
-* Organization / team management
-
----
-
-# ❓ Open Questions (To Be Decided)
-
-* Should users be linked to an organization by default?
-* Should company employees share a common dashboard?
-* Should connections be private or visible?
+* - Google Calendar sync for events
+* - Organization / team management
 
 ---
 
 # ⚠️ Constraints & Assumptions
 
-* System is designed for **real-time event usage**
-* Data integrity must be maintained during high activity (many scans)
-* Connections are the **most critical data point**
+* - System is designed for **real-time event usage**
+* - Data integrity must be maintained during high activity (many scans)
+* - Connections are the **most critical data point**
 
 ---
 
@@ -386,18 +405,18 @@ Events that should trigger notifications:
 
 ## DO
 
-* Keep entities **simple and focused**
-* Treat **connections as the core feature**
-* Always attach data to an **event context**
+* - Keep entities **simple and focused**
+* - Treat **connections as the core feature**
+* - Always attach data to an **event context**
 
 ## DO NOT
 
-* Mix unrelated responsibilities into one entity
-* Add features without defining:
+* - Mix unrelated responsibilities into one entity
+* - Add features without defining:
 
-  * data model
-  * rules
-  * lifecycle
+  * - data model
+  * - rules
+  * - lifecycle
 
 ---
 
@@ -411,9 +430,9 @@ It builds a:
 
 If extended properly, it can evolve into:
 
-* recruitment intelligence platform
-* networking analytics system
-* professional discovery engine
+* - recruitment intelligence platform
+* - networking analytics system
+* - professional discovery engine
 
 ---
 
@@ -423,21 +442,21 @@ If you are continuing this project:
 
 1. Start from:
 
-   * Profile
-   * Event
-   * Participation
-   * Connection
+   * - Profile
+   * - Event
+   * - Participation
+   * - Connection
 
 2. Validate all new features against:
 
-   * event context
-   * connection system
+   * - event context
+   * - connection system
 
 3. When adding a feature:
 
-   * define entity
-   * define rules
-   * define lifecycle
+   * - define entity
+   * - define rules
+   * - define lifecycle
 
 ---
 
