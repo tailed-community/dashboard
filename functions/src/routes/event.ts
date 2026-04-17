@@ -60,6 +60,8 @@ const uploadEventImages = (
       } else if (fieldname === "isPaid") {
         // Parse boolean from FormData string
         fields[fieldname] = val === "true";
+      } else if (fieldname === "removeScheduleImage") {
+        fields[fieldname] = val === "true";
       } else {
         fields[fieldname] = val;
       }
@@ -139,7 +141,8 @@ const uploadEventImages = (
 const createEventInDB = async (
   eventData: any,
   userId: string,
-  heroImageUrl: string | null = null
+  heroImageUrl: string | null = null,
+  scheduleImageUrl: string | null = null
 ): Promise<string> => {
   // Validate required fields
   const validationResult = createEventSchema.safeParse(eventData);
@@ -188,6 +191,7 @@ const createEventInDB = async (
   const eventRef = await db.collection("events").add({
     ...validatedData,
     heroImage: heroImageUrl,
+    scheduleImage: scheduleImageUrl,
     createdBy: userId,
     attendees: 0,
     createdAt: new Date(),
@@ -280,7 +284,18 @@ const updateEventSchema = z.object({
       })
     )
     .optional(),
+  removeScheduleImage: z.boolean().optional(),
 });
+
+const safeDeleteStorageFile = async (filePath?: string): Promise<void> => {
+  if (!filePath) return;
+
+  try {
+    await storage.bucket().file(filePath).delete({ ignoreNotFound: true });
+  } catch (error) {
+    console.error("Failed to delete storage file:", filePath, error);
+  }
+};
 
 /**
  * GET /events
@@ -718,7 +733,7 @@ router.delete("/:eventId/awards/:awardId", async (req: Request, res: Response) =
 
 /**
  * POST /events
- * Create a new event (with optional heroImage upload)
+ * Create a new event (with optional heroImage and scheduleImage uploads)
  * Always uses multipart/form-data (files are optional)
  */
 router.post("/", async (req: Request, res: Response) => {
@@ -736,7 +751,8 @@ router.post("/", async (req: Request, res: Response) => {
     const eventId = await createEventInDB(
       fields,
       userId,
-      files.heroImage || null
+      files.heroImage || null,
+      files.scheduleImage || null
     );
 
     return res.status(201).json({
@@ -763,7 +779,7 @@ router.post("/", async (req: Request, res: Response) => {
 
 /**
  * PATCH /events/:eventId
- * Update an event (supports both JSON and multipart/form-data for hero image)
+ * Update an event (supports both JSON and multipart/form-data for hero/schedule images)
  */
 router.patch("/:eventId", async (req: Request, res: Response) => {
   try {
@@ -801,6 +817,7 @@ router.patch("/:eventId", async (req: Request, res: Response) => {
     // Parse request body — multipart/form-data or JSON
     let fields: any;
     let newHeroImagePath: string | null = null;
+    let newScheduleImagePath: string | null = null;
     const contentType = req.headers["content-type"] || "";
 
     if (contentType.includes("multipart/form-data")) {
@@ -808,6 +825,9 @@ router.patch("/:eventId", async (req: Request, res: Response) => {
       fields = result.fields;
       if (result.files.heroImage) {
         newHeroImagePath = result.files.heroImage;
+      }
+      if (result.files.scheduleImage) {
+        newScheduleImagePath = result.files.scheduleImage;
       }
     } else {
       fields = req.body;
@@ -820,6 +840,9 @@ router.patch("/:eventId", async (req: Request, res: Response) => {
     if (typeof fields.isPaid === "string") {
       fields.isPaid = fields.isPaid === "true";
     }
+    if (typeof fields.removeScheduleImage === "string") {
+      fields.removeScheduleImage = fields.removeScheduleImage === "true";
+    }
 
     // Validate fields
     const validationResult = updateEventSchema.safeParse(fields);
@@ -831,14 +854,29 @@ router.patch("/:eventId", async (req: Request, res: Response) => {
     }
 
     const updates = validationResult.data;
+    const shouldRemoveScheduleImage = Boolean(updates.removeScheduleImage);
 
     const updateObj: any = {
       ...updates,
       updatedAt: new Date(),
     };
 
+    delete updateObj.removeScheduleImage;
+
     if (newHeroImagePath) {
       updateObj.heroImage = newHeroImagePath;
+    }
+
+    if (newScheduleImagePath) {
+      updateObj.scheduleImage = newScheduleImagePath;
+      if (eventData.scheduleImage && eventData.scheduleImage !== newScheduleImagePath) {
+        await safeDeleteStorageFile(eventData.scheduleImage);
+      }
+    } else if (shouldRemoveScheduleImage) {
+      updateObj.scheduleImage = null;
+      if (eventData.scheduleImage) {
+        await safeDeleteStorageFile(eventData.scheduleImage);
+      }
     }
 
     await db.collection("events").doc(resolvedEventId).update(updateObj);
