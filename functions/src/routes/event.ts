@@ -469,6 +469,66 @@ const updateEventSchema = eventBaseSchema
     removeScheduleImage: z.boolean().optional(),
   });
 
+type AwardRecipientSummary = {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  initials: string;
+  displayName: string;
+  email?: string;
+};
+
+type AwardDocument = {
+  recipientIds?: string[];
+  [key: string]: unknown;
+};
+
+const buildDisplayName = (firstName: string, lastName: string, fallback: string): string => {
+  const name = `${firstName} ${lastName}`.trim();
+  return name || fallback;
+};
+
+const fetchRecipientProfiles = async (recipientIds: string[]): Promise<AwardRecipientSummary[]> => {
+  const uniqueRecipientIds = [...new Set(recipientIds)].filter((recipientId) => recipientId.trim().length > 0);
+
+  if (uniqueRecipientIds.length === 0) {
+    return [];
+  }
+
+  const batchSize = 10;
+  const recipientProfiles = new Map<string, AwardRecipientSummary>();
+
+  for (let i = 0; i < uniqueRecipientIds.length; i += batchSize) {
+    const batch = uniqueRecipientIds.slice(i, i + batchSize);
+    const profilesSnapshot = await db
+      .collection("profiles")
+      .where("userId", "in", batch)
+      .get();
+
+    profilesSnapshot.forEach((doc) => {
+      const data = doc.data();
+      const firstName = typeof data.firstName === "string" ? data.firstName : "";
+      const lastName = typeof data.lastName === "string" ? data.lastName : "";
+      const initials = typeof data.initials === "string" && data.initials.trim().length > 0
+        ? data.initials
+        : `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase() || "U";
+
+      recipientProfiles.set(doc.id, {
+        userId: doc.id,
+        firstName,
+        lastName,
+        initials,
+        displayName: buildDisplayName(firstName, lastName, "Community Member"),
+        email: typeof data.email === "string" ? data.email : undefined,
+      });
+    });
+  }
+
+  return uniqueRecipientIds
+    .map((recipientId) => recipientProfiles.get(recipientId))
+    .filter((recipient): recipient is AwardRecipientSummary => recipient !== undefined);
+};
+
 const safeDeleteStorageFile = async (filePath?: string): Promise<void> => {
   if (!filePath) return;
 
@@ -768,12 +828,11 @@ router.patch("/:eventId/awards/:awardId", async (req: Request, res: Response) =>
 router.get("/:eventId/awards", async (req: Request, res: Response) => {
   try {
     const { eventId } = req.params;
-    const userId = req.user?.uid;
 
     const eventContext = await loadEventContext(res, eventId);
     if (!eventContext) return null;
 
-    const { eventDoc, eventData } = eventContext;
+    const { eventDoc } = eventContext;
 
     const awardsSnapshot = await db
       .collection("events")
@@ -782,34 +841,32 @@ router.get("/:eventId/awards", async (req: Request, res: Response) => {
       .orderBy("createdAt", "desc")
       .get();
 
-    if (eventData.communityId) {
-      if (!userId) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-
-      const communityContext = await requireCommunityContext(
-        res,
-        eventData,
-        "Event is not associated with a community"
-      );
-      if (!communityContext) return null;
-
-      const canView =
-        eventData.createdBy === userId || communityContext.admins.includes(userId);
-      if (!canView) {
-        return res.status(403).json({ error: "Access denied" });
-      }
-    }
-
     const awards = awardsSnapshot.docs.map((doc) => ({
       id: doc.id,
-      ...doc.data(),
+      ...(doc.data() as AwardDocument),
+    }));
+
+    const recipientIds = awards.flatMap((award) =>
+      Array.isArray(award.recipientIds) ? award.recipientIds : []
+    );
+    const recipientProfiles = await fetchRecipientProfiles(recipientIds);
+    const recipientProfileMap = new Map(
+      recipientProfiles.map((recipient) => [recipient.userId, recipient])
+    );
+
+    const enrichedAwards = awards.map((award) => ({
+      ...award,
+      recipientProfiles: Array.isArray(award.recipientIds)
+        ? award.recipientIds
+            .map((recipientId) => recipientProfileMap.get(recipientId))
+            .filter((recipient): recipient is AwardRecipientSummary => recipient !== undefined)
+        : [],
     }));
 
     return res.status(200).json({
       success: true,
-      awards,
-      count: awards.length,
+      awards: enrichedAwards,
+      count: enrichedAwards.length,
     });
   } catch (error: any) {
     console.error("Error fetching awards:", error);
