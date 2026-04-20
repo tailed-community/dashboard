@@ -38,6 +38,9 @@ const eventBaseSchema = z.object({
 });
 
 
+
+
+
 const createEventSchema = eventBaseSchema.extend({
   slug: z.string().min(3).max(200).regex(/^[a-z0-9-]+$/),
   communityId: z.string().optional(),
@@ -2086,12 +2089,19 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
       };
     });
 
-    return res.status(200).json({
-      success: true,
-      message: "Successfully joined event",
-      attendee: result.attendee,
-      registrations: result.registrations,
-    });
+    if ("attendee" in result) {
+      return res.status(200).json({
+        success: true,
+        message: "Successfully joined event",
+        attendee: result.attendee,
+        registrations: result.registrations,
+      });
+    }
+    else{
+      return res.status(500).json({
+        error: "Failed to join event",
+      });
+    }
   } catch (error: any) {
     console.error("Error joining event:", error);
 
