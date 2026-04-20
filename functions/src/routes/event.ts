@@ -324,6 +324,33 @@ const ensureCommunityAdmin = (
   return true;
 };
 
+const ensureEventCreatorOrCommunityAdmin = async (
+  res: Response,
+  userId: string,
+  eventData: FirebaseFirestore.DocumentData,
+  forbiddenMessage: string
+): Promise<boolean> => {
+  if (eventData.createdBy === userId) {
+    return true;
+  }
+
+  if (eventData.communityId) {
+    const communityContext = await requireCommunityContext(
+      res,
+      eventData,
+      "Event is not associated with a community"
+    );
+    if (!communityContext) return false;
+
+    if (communityContext.admins.includes(userId)) {
+      return true;
+    }
+  }
+
+  res.status(403).json({ error: forbiddenMessage });
+  return false;
+};
+
 const awardBaseSchema = z.object({
   type: z.enum(["main_place", "special"]),
   place: z.union([z.literal(1), z.literal(2), z.literal(3), z.null()]),
@@ -798,22 +825,13 @@ router.patch("/:eventId", async (req: Request, res: Response) => {
 
     const { resolvedEventId, eventData } = eventContext;
 
-    // Check authorization: event creator or community admin
-    let isAuthorized = eventData.createdBy === userId;
-    if (!isAuthorized && eventData.communityId) {
-      const communityContext = await requireCommunityContext(
-        res,
-        eventData,
-        "Event is not associated with a community"
-      );
-      if (!communityContext) return;
-
-      isAuthorized = communityContext.admins.includes(userId);
-    }
-
-    if (!isAuthorized) {
-      return res.status(403).json({ error: "Only event creators or community admins can update event details" });
-    }
+    const isAuthorized = await ensureEventCreatorOrCommunityAdmin(
+      res,
+      userId,
+      eventData,
+      "Only event creators or community admins can update event details"
+    );
+    if (!isAuthorized) return;
 
     // Parse request body — multipart/form-data or JSON
     let fields: any;
@@ -911,24 +929,13 @@ router.delete("/:eventId", async (req: Request, res: Response) => {
 
     const { resolvedEventId, eventData } = eventContext;
 
-    // Check if user is event creator
-    let isAuthorized = eventData.createdBy === userId;
-
-    // If event has a community, check if user is community admin
-    if (!isAuthorized && eventData.communityId) {
-      const communityContext = await requireCommunityContext(
-        res,
-        eventData,
-        "Event is not associated with a community"
-      );
-      if (!communityContext) return;
-
-      isAuthorized = communityContext.admins.includes(userId);
-    }
-
-    if (!isAuthorized) {
-      return res.status(403).json({ error: "Only event creators or community admins can delete events" });
-    }
+    const isAuthorized = await ensureEventCreatorOrCommunityAdmin(
+      res,
+      userId,
+      eventData,
+      "Only event creators or community admins can delete events"
+    );
+    if (!isAuthorized) return;
 
     // Soft delete by setting status to cancelled
     await db.collection("events").doc(resolvedEventId).update({
@@ -1347,21 +1354,13 @@ router.get("/:eventId/attendees", async (req: Request, res: Response) => {
 
     const { resolvedEventId, eventData } = eventContext;
 
-    // Verify user has access (community admin or event creator)
-    if (eventData.communityId) {
-      const communityContext = await requireCommunityContext(
-        res,
-        eventData,
-        "Event is not associated with a community"
-      );
-      if (!communityContext) return;
-
-      if (!communityContext.admins.includes(userId) && eventData.createdBy !== userId) {
-        return res.status(403).json({ error: "Access denied" });
-      }
-    } else if (eventData.createdBy !== userId) {
-      return res.status(403).json({ error: "Access denied" });
-    }
+    const canAccess = await ensureEventCreatorOrCommunityAdmin(
+      res,
+      userId,
+      eventData,
+      "Access denied"
+    );
+    if (!canAccess) return;
 
     // Get registrations
     const registrationsSnapshot = await db
