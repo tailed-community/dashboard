@@ -1756,12 +1756,19 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
       };
     });
 
-    return res.status(200).json({
-      success: true,
-      message: "Successfully joined event",
-      attendee: result.attendee,
-      registrations: result.registrations,
-    });
+    if ("attendee" in result) {
+      return res.status(200).json({
+        success: true,
+        message: "Successfully joined event",
+        attendee: result.attendee,
+        registrations: result.registrations,
+      });
+    }
+    else{
+      return res.status(500).json({
+        error: "Failed to join event",
+      });
+    }
   } catch (error: any) {
     console.error("Error joining event:", error);
 
