@@ -1695,18 +1695,12 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
       ]);
 
       if (!freshEventDoc.exists) {
-        throw {
-          status: 404,
-          error: "Event not found",
-        };
+        return res.status(400).json({ error: "Event not found" });
       }
 
       const freshEventData = freshEventDoc.data();
       if (!freshEventData) {
-        throw {
-          status: 404,
-          error: "Event data not found",
-        };
+        return res.status(400).json({ error: "Event data not found" });
       }
 
       const profileEvents = profileDoc.exists && Array.isArray(profileDoc.data()?.events)
@@ -1721,10 +1715,7 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
       const existingRegistrationSnapshot = await transaction.get(existingRegistrationQuery);
 
       if (!existingRegistrationSnapshot.empty) {
-        throw {
-          status: 400,
-          error: "Already joined this event with this role",
-        };
+        return res.status(400).json({ error: "Already joined this event with this role" });
       }
 
       const attendeeEntry = createAttendeeSchema.parse({
