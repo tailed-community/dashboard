@@ -54,6 +54,8 @@ const editEventSchema = z.object({
     communityId: z.string().optional(),
     customHostName: z.string().optional(),
     heroImage: z.instanceof(File).optional(),
+    scheduleImage: z.instanceof(File).optional(),
+    removeScheduleImage: z.boolean().default(false),
     capacity: z.string().optional(),
     status: z.enum(["draft", "published", "cancelled"]).default("published"),
 });
@@ -108,6 +110,8 @@ export default function EditEventPage() {
     const [loadingCommunities, setLoadingCommunities] = useState(true);
     const [heroImagePreview, setHeroImagePreview] = useState<string | null>(null);
     const [currentHeroImagePath, setCurrentHeroImagePath] = useState<string | null>(null);
+    const [scheduleImagePreview, setScheduleImagePreview] = useState<string | null>(null);
+    const [currentScheduleImagePath, setCurrentScheduleImagePath] = useState<string | null>(null);
     const [forbidden, setForbidden] = useState(false);
 
     const form = useForm<EditEventFormData>({
@@ -129,6 +133,7 @@ export default function EditEventPage() {
             hostType: "custom",
             communityId: "",
             customHostName: "",
+            removeScheduleImage: false,
             capacity: "",
             status: "published",
         },
@@ -177,6 +182,17 @@ export default function EditEventPage() {
                     }
                 }
 
+                // Load current schedule image preview
+                if (event.scheduleImage) {
+                    setCurrentScheduleImagePath(event.scheduleImage);
+                    try {
+                        const url = await getFileUrl(event.scheduleImage);
+                        setScheduleImagePreview(url);
+                    } catch {
+                        // ignore if image fails to load
+                    }
+                }
+
                 // Pre-populate form with existing event data
                 form.reset({
                     title: event.title || "",
@@ -195,6 +211,7 @@ export default function EditEventPage() {
                     hostType: event.hostType || "custom",
                     communityId: event.communityId || "",
                     customHostName: event.customHostName || "",
+                    removeScheduleImage: false,
                     capacity: event.capacity ? String(event.capacity) : "",
                     status: event.status || "published",
                 });
@@ -271,6 +288,12 @@ export default function EditEventPage() {
             if (data.heroImage) {
                 formData.append("heroImage", data.heroImage);
             }
+
+            if (data.scheduleImage) {
+                formData.append("scheduleImage", data.scheduleImage);
+            }
+
+            formData.append("removeScheduleImage", String(data.removeScheduleImage));
 
             const response = await apiFetch(`/events/${id}`, {
                 method: "PATCH",
@@ -817,6 +840,70 @@ export default function EditEventPage() {
                                                 {currentHeroImagePath
                                                     ? "Upload a new image to replace the current one"
                                                     : "Upload a cover image for your event (optional)"}
+                                            </FormDescription>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+
+                                {/* Schedule Image */}
+                                <FormField
+                                    control={form.control}
+                                    name="scheduleImage"
+                                    render={({ field: { value, onChange, ...field } }) => (
+                                        <FormItem>
+                                            <FormLabel>Schedule Image</FormLabel>
+                                            <FormControl>
+                                                <div className="space-y-4">
+                                                    <div className="flex items-center gap-4">
+                                                        <Input
+                                                            type="file"
+                                                            accept="image/*"
+                                                            onChange={(e) => {
+                                                                const file = e.target.files?.[0];
+                                                                if (file) {
+                                                                    onChange(file);
+                                                                    form.setValue("removeScheduleImage", false);
+                                                                    const reader = new FileReader();
+                                                                    reader.onloadend = () => {
+                                                                        setScheduleImagePreview(reader.result as string);
+                                                                    };
+                                                                    reader.readAsDataURL(file);
+                                                                }
+                                                            }}
+                                                            {...field}
+                                                        />
+                                                        <Upload className="h-5 w-5 text-slate-400" />
+                                                    </div>
+                                                    {scheduleImagePreview && (
+                                                        <div className="relative w-full aspect-image rounded-lg overflow-hidden border">
+                                                            <img
+                                                                src={scheduleImagePreview}
+                                                                alt="Schedule preview"
+                                                                className="w-full h-full object-cover"
+                                                            />
+                                                        </div>
+                                                    )}
+                                                    {currentScheduleImagePath && (
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            onClick={() => {
+                                                                form.setValue("scheduleImage", undefined);
+                                                                form.setValue("removeScheduleImage", true);
+                                                                setCurrentScheduleImagePath(null);
+                                                                setScheduleImagePreview(null);
+                                                            }}
+                                                        >
+                                                            Delete schedule image
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </FormControl>
+                                            <FormDescription>
+                                                {currentScheduleImagePath
+                                                    ? "Upload a new image to replace the current one, or delete it"
+                                                    : "Upload a schedule image for your event (optional)"}
                                             </FormDescription>
                                             <FormMessage />
                                         </FormItem>
