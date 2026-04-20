@@ -111,9 +111,9 @@ export default function EventDetailPage() {
                     setCommunity(eventData.community);
                     
                     // Load community logo from Firebase Storage if available
-                    if (eventData.community.logo) {
+                    if (eventData.community.logoUrl) {
                         try {
-                            const logoUrl = await getFileUrl(eventData.community.logo);
+                            const logoUrl = await getFileUrl(eventData.community.logoUrl);
                             setCommunityLogoUrl(logoUrl);
                         } catch (error) {
                             console.error("Failed to load community logo:", error);

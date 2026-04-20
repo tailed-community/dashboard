@@ -8,11 +8,21 @@ import {
     DialogDescription,
     DialogFooter,
 } from "@/components/ui/dialog";
-import { useForm } from "react-hook-form";
+import { useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { CalendarDays, MapPin, Users, Loader2, Upload, Link as LinkIcon } from "lucide-react";
+import {
+    CalendarDays,
+    MapPin,
+    Users,
+    Loader2,
+    Upload,
+    Link as LinkIcon,
+    Plus,
+    Trash2,
+    Trophy,
+} from "lucide-react";
 import { apiFetch } from "@/lib/fetch";
 import { Button } from "@/components/ui/button";
 import {
@@ -43,6 +53,34 @@ import { Switch } from "@/components/ui/switch";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { useAuth } from "@/hooks/use-auth";
 
+const awardSchema = z.object({
+    type: z.enum(["main_place", "special"]),
+    place: z.preprocess(
+        (value) => {
+            if (value === "" || value === undefined || value === null) {
+                return null;
+            }
+
+            if (value === "1" || value === 1) return 1;
+            if (value === "2" || value === 2) return 2;
+            if (value === "3" || value === 3) return 3;
+
+            return value;
+        },
+        z.union([z.literal(1), z.literal(2), z.literal(3), z.null()])
+    ),
+    title: z.string().min(1, "Award title is required").max(120, "Title must be less than 120 characters"),
+    prizeDescription: z.string().max(200, "Prize description must be less than 200 characters").optional(),
+}).superRefine((value, ctx) => {
+    if (value.type === "main_place" && value.place === null) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Place is required for main place awards",
+            path: ["place"],
+        });
+    }
+});
+
 // Zod schema for event validation
 const eventSchema = z.object({
     title: z.string().min(3, "Title must be at least 3 characters").max(200, "Title must be less than 200 characters"),
@@ -70,6 +108,7 @@ const eventSchema = z.object({
     }),
     communityId: z.string().optional(),
     customHostName: z.string().optional(),
+    awards: z.array(awardSchema).max(20, "You can add up to 20 awards").optional(),
     heroImage: z.instanceof(File).optional(),
     scheduleImage: z.instanceof(File).optional(),
     capacity: z.string().optional(),
@@ -101,6 +140,19 @@ type Community = {
     id: string;
     name: string;
     acronym?: string;
+};
+
+const toMainPlaceNumber = (value: unknown): 1 | 2 | 3 | null => {
+    if (value === "1" || value === 1) return 1;
+    if (value === "2" || value === 2) return 2;
+    if (value === "3" || value === 3) return 3;
+    return null;
+};
+
+const getMainPlaceTitle = (place: 1 | 2 | 3): string => {
+    if (place === 1) return "1st Place";
+    if (place === 2) return "2nd Place";
+    return "3rd Place";
 };
 
 const categories = [
@@ -181,12 +233,31 @@ export default function CreateEventPage() {
             hostType: "custom",
             communityId: "",
             customHostName: user?.displayName || "",
+            awards: [],
             capacity: "",
         },
     });
 
+    const { fields: awardFields, append: appendAward, remove: removeAward } = useFieldArray({
+        control: form.control,
+        name: "awards",
+    });
+
     const watchMode = form.watch("mode");
     const watchHostType = form.watch("hostType");
+    const watchAwards = form.watch("awards") || [];
+    const takenMainPlaces = new Set(
+        watchAwards
+            .map((award) => {
+                if (award?.type !== "main_place") {
+                    return null;
+                }
+
+                return toMainPlaceNumber(award.place);
+            })
+            .filter((place): place is 1 | 2 | 3 => place !== null)
+    );
+    const nextAvailableMainPlace = ([1, 2, 3] as const).find((place) => !takenMainPlaces.has(place)) ?? null;
 
     // Auto-generate slug from title
     const generateSlug = (title: string) => {
@@ -266,6 +337,10 @@ export default function CreateEventPage() {
             }
             if (data.hostType === "custom" && data.customHostName) {
                 formData.append("customHostName", data.customHostName);
+            }
+
+            if (data.awards && data.awards.length > 0) {
+                formData.append("awards", JSON.stringify(data.awards));
             }
 
             // Append optional hero image
@@ -888,6 +963,238 @@ export default function CreateEventPage() {
                                         )}
                                     />
                                 )}
+
+                                {/* Awards */}
+                                <div className="space-y-4 rounded-lg border border-slate-200 p-4">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <h3 className="flex items-center gap-2 text-base font-semibold text-slate-900">
+                                                <Trophy className="h-4 w-4" />
+                                                Awards
+                                            </h3>
+                                            <p className="text-sm text-slate-500">
+                                                Add optional awards for this event. Main place awards require a place.
+                                            </p>
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() => {
+                                                if (nextAvailableMainPlace) {
+                                                    appendAward({
+                                                        type: "main_place",
+                                                        place: nextAvailableMainPlace,
+                                                        title: getMainPlaceTitle(nextAvailableMainPlace),
+                                                        prizeDescription: "",
+                                                    });
+                                                    return;
+                                                }
+
+                                                appendAward({
+                                                    type: "special",
+                                                    place: null,
+                                                    title: "",
+                                                    prizeDescription: "",
+                                                });
+                                            }}
+                                        >
+                                            <Plus className="mr-2 h-4 w-4" />
+                                            Add Award
+                                        </Button>
+                                    </div>
+
+                                    {awardFields.length === 0 ? (
+                                        <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                                            No awards added yet.
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-4">
+                                            {awardFields.map((award, index) => {
+                                                const typeFieldName = `awards.${index}.type` as const;
+                                                const placeFieldName = `awards.${index}.place` as const;
+                                                const titleFieldName = `awards.${index}.title` as const;
+                                                const prizeFieldName = `awards.${index}.prizeDescription` as const;
+                                                const selectedType = form.watch(typeFieldName);
+                                                const selectedPlace = toMainPlaceNumber(form.getValues(placeFieldName));
+                                                const takenMainPlacesByOthers = new Set(
+                                                    watchAwards
+                                                        .map((awardValue, awardIndex) => {
+                                                            if (awardIndex === index) {
+                                                                return null;
+                                                            }
+
+                                                            if (awardValue?.type !== "main_place") {
+                                                                return null;
+                                                            }
+
+                                                            return toMainPlaceNumber(awardValue.place);
+                                                        })
+                                                        .filter((place): place is 1 | 2 | 3 => place !== null)
+                                                );
+
+                                                return (
+                                                    <div
+                                                        key={award.id}
+                                                        className="space-y-4 rounded-md border border-slate-200 bg-slate-50/40 p-4"
+                                                    >
+                                                        <div className="flex items-center justify-between">
+                                                            <p className="text-sm font-medium text-slate-800">
+                                                                Award {index + 1}
+                                                            </p>
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                onClick={() => removeAward(index)}
+                                                                className="text-slate-500 text-red-600 hover:text-red-600"
+                                                            >
+                                                                <Trash2 className="mr-1 h-4 w-4" />
+                                                                Remove
+                                                            </Button>
+                                                        </div>
+
+                                                        <div className="grid gap-4 sm:grid-cols-2">
+                                                            <FormField
+                                                                control={form.control}
+                                                                name={typeFieldName}
+                                                                render={({ field }) => (
+                                                                    <FormItem>
+                                                                        <FormLabel>Award Type *</FormLabel>
+                                                                        <Select
+                                                                            onValueChange={(value) => {
+                                                                                field.onChange(value);
+                                                                                if (value === "special") {
+                                                                                    form.setValue(placeFieldName, null, {
+                                                                                        shouldValidate: true,
+                                                                                        shouldDirty: true,
+                                                                                    });
+                                                                                } else if (form.getValues(placeFieldName) === null) {
+                                                                                    form.setValue(placeFieldName, 1, {
+                                                                                        shouldValidate: true,
+                                                                                        shouldDirty: true,
+                                                                                    });
+                                                                                    form.setValue(titleFieldName, getMainPlaceTitle(1), {
+                                                                                        shouldValidate: true,
+                                                                                        shouldDirty: true,
+                                                                                    });
+                                                                                }
+                                                                            }}
+                                                                            defaultValue={field.value}
+                                                                        >
+                                                                            <FormControl>
+                                                                                <SelectTrigger>
+                                                                                    <SelectValue placeholder="Select award type" />
+                                                                                </SelectTrigger>
+                                                                            </FormControl>
+                                                                            <SelectContent>
+                                                                                <SelectItem value="main_place">Main Place</SelectItem>
+                                                                                <SelectItem value="special">Special</SelectItem>
+                                                                            </SelectContent>
+                                                                        </Select>
+                                                                        <FormMessage />
+                                                                    </FormItem>
+                                                                )}
+                                                            />
+
+                                                            <FormField
+                                                                control={form.control}
+                                                                name={placeFieldName}
+                                                                render={({ field }) => (
+                                                                    <FormItem>
+                                                                        <FormLabel>Place</FormLabel>
+                                                                        <Select
+                                                                            onValueChange={(value) => {
+                                                                                field.onChange(value);
+                                                                                const parsedPlace = toMainPlaceNumber(value);
+                                                                                if (selectedType === "main_place" && parsedPlace) {
+                                                                                    form.setValue(titleFieldName, getMainPlaceTitle(parsedPlace), {
+                                                                                        shouldValidate: true,
+                                                                                        shouldDirty: true,
+                                                                                    });
+                                                                                }
+                                                                            }}
+                                                                            value={field.value === null ? "" : String(field.value)}
+                                                                            disabled={selectedType === "special"}
+                                                                        >
+                                                                            <FormControl>
+                                                                                <SelectTrigger>
+                                                                                    <SelectValue placeholder="Select place" />
+                                                                                </SelectTrigger>
+                                                                            </FormControl>
+                                                                            <SelectContent>
+                                                                                <SelectItem
+                                                                                    value="1"
+                                                                                    disabled={takenMainPlacesByOthers.has(1) && selectedPlace !== 1}
+                                                                                >
+                                                                                    1st Place
+                                                                                </SelectItem>
+                                                                                <SelectItem
+                                                                                    value="2"
+                                                                                    disabled={takenMainPlacesByOthers.has(2) && selectedPlace !== 2}
+                                                                                >
+                                                                                    2nd Place
+                                                                                </SelectItem>
+                                                                                <SelectItem
+                                                                                    value="3"
+                                                                                    disabled={takenMainPlacesByOthers.has(3) && selectedPlace !== 3}
+                                                                                >
+                                                                                    3rd Place
+                                                                                </SelectItem>
+                                                                            </SelectContent>
+                                                                        </Select>
+                                                                        <FormMessage />
+                                                                    </FormItem>
+                                                                )}
+                                                            />
+                                                        </div>
+
+                                                        <FormField
+                                                            control={form.control}
+                                                            name={titleFieldName}
+                                                            render={({ field }) => (
+                                                                <FormItem>
+                                                                    <FormLabel>Award Title *</FormLabel>
+                                                                    <FormControl>
+                                                                        <Input
+                                                                            placeholder="Best Project"
+                                                                            {...field}
+                                                                        />
+                                                                    </FormControl>
+                                                                    <FormMessage />
+                                                                </FormItem>
+                                                            )}
+                                                        />
+
+                                                        <FormField
+                                                            control={form.control}
+                                                            name={prizeFieldName}
+                                                            render={({ field }) => (
+                                                                <FormItem>
+                                                                    <FormLabel>Prize Description</FormLabel>
+                                                                    <FormControl>
+                                                                        <Input
+                                                                            placeholder="Best UI/UX design"
+                                                                            {...field}
+                                                                        />
+                                                                    </FormControl>
+                                                                    <FormDescription>
+                                                                        Optional short description of the prize
+                                                                    </FormDescription>
+                                                                    <FormMessage />
+                                                                </FormItem>
+                                                            )}
+                                                        />
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+
+                                    {form.formState.errors.awards?.message && (
+                                        <p className="text-sm font-medium text-red-600">
+                                            {form.formState.errors.awards.message}
+                                        </p>
+                                    )}
+                                </div>
 
                                 {/* Hero Image Upload */}
                                 <FormField

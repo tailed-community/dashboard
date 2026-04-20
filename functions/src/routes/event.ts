@@ -40,7 +40,46 @@ const eventBaseSchema = z.object({
 const createEventSchema = eventBaseSchema.extend({
   slug: z.string().min(3).max(200).regex(/^[a-z0-9-]+$/),
   communityId: z.string().optional(),
+  awards: z.array(
+    z.object({
+      type: z.enum(["main_place", "special"]),
+      place: z.union([z.literal(1), z.literal(2), z.literal(3), z.null()]),
+      title: z.string().min(1).max(120),
+      prizeDescription: z.string().max(200).optional(),
+      recipientIds: z.array(z.string().min(1)).min(1).optional(),
+    }).superRefine((value, ctx) => {
+      if (value.type === "main_place" && value.place === null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["place"],
+          message: "Main place awards require place",
+        });
+      }
+    })
+  ).max(20).optional(),
 });
+
+const parseAwardsFieldIfPresent = (fields: Record<string, unknown>): void => {
+  if (typeof fields.awards !== "string") {
+    return;
+  }
+
+  const rawAwards = fields.awards.trim();
+  if (!rawAwards) {
+    fields.awards = [];
+    return;
+  }
+
+  try {
+    const parsedAwards = JSON.parse(rawAwards);
+    fields.awards = parsedAwards;
+  } catch {
+    throw {
+      status: 400,
+      error: "Invalid awards payload",
+    };
+  }
+};
 
 /**
  * Helper: Upload images to Firebase Storage for events
@@ -160,6 +199,7 @@ const createEventInDB = async (
   }
 
   const validatedData = validationResult.data;
+  const awards = validatedData.awards || [];
 
   // Check if slug is unique
   const existingSlug = await db
@@ -185,16 +225,28 @@ const createEventInDB = async (
       };
     }
 
+    const communityData = communityDoc.data() || {};
+    const admins = Array.isArray(communityData.admins) ? communityData.admins : [];
+
+    if (!admins.includes(userId)) {
+      throw {
+        status: 403,
+        error: "Only community admins can create events for this community",
+      };
+    }
+
     // Increment community event count
     await db.collection("communities").doc(validatedData.communityId).update({
-      eventCount: (communityDoc.data()?.eventCount || 0) + 1,
+      eventCount: (communityData.eventCount || 0) + 1,
       updatedAt: new Date(),
     });
   }
 
+  const { awards: _awards, ...eventPayload } = validatedData;
+
   // Create event document
   const eventRef = await db.collection("events").add({
-    ...validatedData,
+    ...eventPayload,
     heroImage: heroImageUrl,
     scheduleImage: scheduleImageUrl,
     createdBy: userId,
@@ -214,6 +266,25 @@ const createEventInDB = async (
       events: [...events, eventRef.id],
       updatedAt: new Date(),
     });
+  }
+
+  if (awards.length > 0) {
+    const batch = db.batch();
+    const eventAwardsCollection = db.collection("events").doc(eventRef.id).collection("awards");
+
+    for (const award of awards) {
+      const awardRef = eventAwardsCollection.doc();
+      batch.set(awardRef, {
+        ...award,
+        eventId: eventRef.id,
+        communityId: validatedData.communityId || null,
+        createdBy: userId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    }
+
+    await batch.commit();
   }
 
   return eventRef.id;
@@ -813,6 +884,7 @@ router.post("/", async (req: Request, res: Response) => {
 
     // Always process as multipart (files are optional)
     const { fields, files } = await uploadEventImages(req, userId);
+    parseAwardsFieldIfPresent(fields);
 
     // Create event with optional file URL
     const eventId = await createEventInDB(
