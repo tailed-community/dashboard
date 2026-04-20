@@ -7,10 +7,8 @@ import Busboy from "busboy";
 
 const router = Router();
 
-// Validation schema for event creation
-const createEventSchema = z.object({
+const eventBaseSchema = z.object({
   title: z.string().min(3).max(200),
-  slug: z.string().min(3).max(200).regex(/^[a-z0-9-]+$/),
   description: z.string().min(10).max(5000),
   startDate: z.string().min(1),
   startTime: z.string().min(1),
@@ -19,7 +17,6 @@ const createEventSchema = z.object({
   mode: z.enum(["Online", "In Person", "Hybrid"]),
   location: z.string().optional(),
   capacity: z.number().int().positive().optional(),
-  communityId: z.string().optional(),
   hostType: z.enum(["community", "custom"]).optional(),
   customHostName: z.string().optional(),
   category: z.string().min(1),
@@ -29,14 +26,18 @@ const createEventSchema = z.object({
   digitalLink: z.string().url().optional().or(z.literal("")),
   status: z.enum(["draft", "published", "cancelled"]).default("published"),
   schedule: z.string().optional(),
-  helpSearch: z
-    .array(
-      z.object({
-        status: z.boolean(),
-        value: z.string(),
-      })
-    )
-    .optional(),
+  helpSearch: z.array(
+    z.object({
+      status: z.boolean(),
+      value: z.string(),
+    })
+  ).optional(),
+});
+
+
+const createEventSchema = eventBaseSchema.extend({
+  slug: z.string().min(3).max(200).regex(/^[a-z0-9-]+$/),
+  communityId: z.string().optional(),
 });
 
 /**
@@ -235,8 +236,7 @@ const resolveEvent = async (
   return bySlug.empty ? null : bySlug.docs[0];
 };
 
-
-const createAwardSchema = z.object({
+const awardBaseSchema = z.object({
   type: z.enum(["main_place", "special"]),
   place: z.union([z.literal(1), z.literal(2), z.literal(3), z.null()]),
   title: z.string().min(1).max(120),
@@ -244,48 +244,20 @@ const createAwardSchema = z.object({
   recipientIds: z.array(z.string().min(1)).min(1).optional(),
 });
 
-const updateAwardSchema = z.object({
-  type: z.enum(["main_place", "special"]).optional(),
-  place: z.union([z.literal(1), z.literal(2), z.literal(3), z.null()]).optional(),
-  title: z.string().min(1).max(120).optional(),
-  prizeDescription: z.string().max(200).optional(),
-  recipientIds: z.array(z.string().min(1)).min(1).optional(),
-});
+const createAwardSchema = awardBaseSchema;
 
-// Validation schema for event update
-const updateEventSchema = z.object({
-  title: z.string().min(3).max(200).optional(),
-  description: z.string().min(10).max(5000).optional(),
-  startDate: z.string().optional(),
-  startTime: z.string().optional(),
-  endDate: z.string().optional(),
-  endTime: z.string().optional(),
-  mode: z.enum(["Online", "In Person", "Hybrid"]).optional(),
-  location: z.string().min(1).max(500).optional(),
-  capacity: z.number().int().positive().optional(),
-  hostType: z.enum(["community", "custom"]).optional(),
-  customHostName: z.string().optional(),
-  category: z.string().min(1).optional(),
-  city: z.string().optional(),
-  isPaid: z.boolean().optional(),
-  registrationLink: z.string().url().optional().or(z.literal("")),
-  digitalLink: z.string().url().optional().or(z.literal("")),
-  status: z.enum(["draft", "published", "cancelled"]).optional(),
-  winners: z.array(z.object({ id: z.string() })).optional(),
-  awards: z.array(createAwardSchema).optional(),
-  organizer: z.array(z.object({ id: z.string() })).optional(),
-  stand: z.array(z.object({ id: z.string() })).optional(),
-  schedule: z.string().optional(),
-  helpSearch: z
-    .array(
-      z.object({
-        status: z.boolean(),
-        value: z.string(),
-      })
-    )
-    .optional(),
-  removeScheduleImage: z.boolean().optional(),
-});
+const updateAwardSchema = awardBaseSchema.partial();
+
+const updateEventSchema = eventBaseSchema
+  .partial()
+  .extend({
+    location: z.string().min(1).max(500).optional(), // override
+    winners: z.array(z.object({ id: z.string() })).optional(),
+    awards: z.array(createAwardSchema).optional(),
+    organizer: z.array(z.object({ id: z.string() })).optional(),
+    stand: z.array(z.object({ id: z.string() })).optional(),
+    removeScheduleImage: z.boolean().optional(),
+  });
 
 const safeDeleteStorageFile = async (filePath?: string): Promise<void> => {
   if (!filePath) return;
@@ -1338,12 +1310,19 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
       };
     });
 
-    return res.status(200).json({
-      success: true,
-      message: "Successfully joined event",
-      attendee: result.attendee,
-      registrations: result.registrations,
-    });
+    if ("attendee" in result) {
+      return res.status(200).json({
+        success: true,
+        message: "Successfully joined event",
+        attendee: result.attendee,
+        registrations: result.registrations,
+      });
+    }
+    else{
+      return res.status(500).json({
+        error: "Failed to join event",
+      });
+    }
   } catch (error: any) {
     console.error("Error joining event:", error);
 
