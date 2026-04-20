@@ -8,7 +8,6 @@ import {
     Clock,
     ArrowLeft,
     Share2,
-    Bookmark,
     ExternalLink,
     Loader2,
     Pencil,
@@ -54,6 +53,25 @@ type EventData = {
     community?: CommunityData; // Populated by backend
 };
 
+type AwardRecipient = {
+    userId: string;
+    firstName: string;
+    lastName: string;
+    initials: string;
+    displayName: string;
+    email?: string;
+};
+
+type EventAward = {
+    id: string;
+    type: "main_place" | "special";
+    place?: 1 | 2 | 3 | null;
+    title: string;
+    prizeDescription?: string;
+    recipientIds?: string[];
+    recipientProfiles?: AwardRecipient[];
+};
+
 type CommunityData = {
     name: string;
     logoUrl?: string;
@@ -66,12 +84,38 @@ export default function EventDetailPage() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const [event, setEvent] = useState<EventData | null>(null);
+    const [awards, setAwards] = useState<EventAward[]>([]);
     const [community, setCommunity] = useState<CommunityData | null>(null);
     const [heroImageUrl, setHeroImageUrl] = useState<string | null>(null);
     const [scheduleImageUrl, setScheduleImageUrl] = useState<string | null>(null);
     const [communityLogoUrl, setCommunityLogoUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
-    const [isRegistered, setIsRegistered] = useState(false);
+    const [loadingAwards, setLoadingAwards] = useState(false);
+    const [expandedAwardDescriptions, setExpandedAwardDescriptions] = useState<Record<string, boolean>>({});
+
+    const toggleAwardDescription = (awardId: string) => {
+        setExpandedAwardDescriptions((current) => ({
+            ...current,
+            [awardId]: !current[awardId],
+        }));
+    };
+
+    const getAwardPlaceLabel = (place?: 1 | 2 | 3 | null): string => {
+        if (place === 1) return "1st Place";
+        if (place === 2) return "2nd Place";
+        if (place === 3) return "3rd Place";
+        return "Award";
+    };
+
+    const getAwardTypeLabel = (award: EventAward): string => {
+        if (award.type === "main_place") {
+            return getAwardPlaceLabel(award.place ?? null);
+        }
+
+        return "Special Award";
+    };
+
+    const getAwardWinners = (award: EventAward): AwardRecipient[] => award.recipientProfiles || [];
 
     useEffect(() => {
         if (!id) {
@@ -143,6 +187,23 @@ export default function EventDetailPage() {
                         setScheduleImageUrl(null);
                     }
                 }
+
+                try {
+                    setLoadingAwards(true);
+                    const awardsResponse = await apiFetch(`/events/${id}/awards`);
+                    const awardsResult = await awardsResponse.json();
+
+                    if (awardsResponse.ok && Array.isArray(awardsResult.awards)) {
+                        setAwards(awardsResult.awards);
+                    } else {
+                        setAwards([]);
+                    }
+                } catch (error) {
+                    console.error("Failed to load awards:", error);
+                    setAwards([]);
+                } finally {
+                    setLoadingAwards(false);
+                }
             } catch (error) {
                 console.error("Error fetching event:", error);
                 toast.error("Failed to load event");
@@ -202,11 +263,6 @@ export default function EventDetailPage() {
             navigator.clipboard.writeText(window.location.href);
             toast.success("Link copied to clipboard!");
         }
-    };
-
-    const handleRegister = () => {
-        setIsRegistered(!isRegistered);
-        toast.success(isRegistered ? "Registration cancelled" : "Successfully registered!");
     };
 
     return (
@@ -352,6 +408,126 @@ export default function EventDetailPage() {
                                 </div>
                             </>
                         )}
+
+                        <Separator />
+
+                        {/* Awards */}
+                        <div className="space-y-4">
+                            <div className="flex items-end justify-between gap-4">
+                                <div>
+                                    <h2 className="text-xl font-semibold text-slate-900">Awards</h2>
+                                    <p className="text-sm text-slate-600">
+                                        Recognition, prizes, and winners for this event.
+                                    </p>
+                                </div>
+                                {!loadingAwards && awards.length > 0 && (
+                                    <Badge variant="secondary" className="rounded-full">
+                                        {awards.length} {awards.length === 1 ? "award" : "awards"}
+                                    </Badge>
+                                )}
+                            </div>
+
+                            {loadingAwards ? (
+                                <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-5 text-sm text-slate-600">
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    Loading awards...
+                                </div>
+                            ) : awards.length === 0 ? (
+                                <div className="rounded-xl border border-dashed border-slate-200 bg-white px-4 py-6 text-sm text-slate-500">
+                                    No awards have been added for this event yet.
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    {awards.map((award) => {
+                                        const winners = getAwardWinners(award);
+                                        const hasLongDescription = (award.prizeDescription || "").length > 180;
+                                        const isExpanded = expandedAwardDescriptions[award.id] || false;
+                                        const description = award.prizeDescription || "No prize description provided.";
+
+                                        return (
+                                            <div
+                                                key={award.id}
+                                                className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+                                            >
+                                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                                    <div className="space-y-2">
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <Badge variant="outline" className="rounded-full">
+                                                                {getAwardTypeLabel(award)}
+                                                            </Badge>
+                                                            <Badge variant="secondary" className="rounded-full">
+                                                                {award.type === "main_place"
+                                                                    ? `Place ${award.place ?? "N/A"}`
+                                                                    : "Special Recognition"}
+                                                            </Badge>
+                                                        </div>
+                                                        <h3 className="text-lg font-semibold text-slate-900">
+                                                            {award.title}
+                                                        </h3>
+                                                    </div>
+
+                                                    {winners.length > 0 && (
+                                                        <Badge variant="success" className="rounded-full">
+                                                            {winners.length} {winners.length === 1 ? "winner" : "winners"}
+                                                        </Badge>
+                                                    )}
+                                                </div>
+
+                                                <div className="mt-4 space-y-3">
+                                                    <div>
+                                                        <p className="text-sm font-medium text-slate-900">Prize description</p>
+                                                        <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-600">
+                                                            {isExpanded || !hasLongDescription
+                                                                ? description
+                                                                : `${description.slice(0, 180).trimEnd()}...`}
+                                                        </p>
+                                                        {hasLongDescription && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => toggleAwardDescription(award.id)}
+                                                                className="mt-2 text-sm font-medium text-blue-600 hover:text-blue-700"
+                                                            >
+                                                                {isExpanded ? "Show less" : "Show more"}
+                                                            </button>
+                                                        )}
+                                                    </div>
+
+                                                    {winners.length > 0 && (
+                                                        <div>
+                                                            <p className="text-sm font-medium text-slate-900">Winners</p>
+                                                            <div className="mt-2 flex flex-wrap gap-3">
+                                                                {winners.map((winner) => (
+                                                                    <div
+                                                                        key={winner.userId}
+                                                                        className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
+                                                                    >
+                                                                        <Avatar className="h-9 w-9">
+                                                                            <AvatarFallback className="bg-slate-200 text-slate-700 text-xs font-semibold">
+                                                                                {winner.initials || winner.displayName.slice(0, 2).toUpperCase()}
+                                                                            </AvatarFallback>
+                                                                        </Avatar>
+                                                                        <div>
+                                                                            <p className="text-sm font-medium text-slate-900">
+                                                                                {winner.displayName}
+                                                                            </p>
+                                                                            {winner.email && (
+                                                                                <p className="text-xs text-slate-500">
+                                                                                    {winner.email}
+                                                                                </p>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
 
                         <Separator />
 
