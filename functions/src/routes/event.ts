@@ -7,10 +7,8 @@ import Busboy from "busboy";
 
 const router = Router();
 
-// Validation schema for event creation
-const createEventSchema = z.object({
+const eventBaseSchema = z.object({
   title: z.string().min(3).max(200),
-  slug: z.string().min(3).max(200).regex(/^[a-z0-9-]+$/),
   description: z.string().min(10).max(5000),
   startDate: z.string().min(1),
   startTime: z.string().min(1),
@@ -19,7 +17,6 @@ const createEventSchema = z.object({
   mode: z.enum(["Online", "In Person", "Hybrid"]),
   location: z.string().optional(),
   capacity: z.number().int().positive().optional(),
-  communityId: z.string().optional(),
   hostType: z.enum(["community", "custom"]).optional(),
   customHostName: z.string().optional(),
   category: z.string().min(1),
@@ -28,6 +25,19 @@ const createEventSchema = z.object({
   registrationLink: z.string().url().optional().or(z.literal("")),
   digitalLink: z.string().url().optional().or(z.literal("")),
   status: z.enum(["draft", "published", "cancelled"]).default("published"),
+  schedule: z.string().optional(),
+  helpSearch: z.array(
+    z.object({
+      status: z.boolean(),
+      value: z.string(),
+    })
+  ).optional(),
+});
+
+
+const createEventSchema = eventBaseSchema.extend({
+  slug: z.string().min(3).max(200).regex(/^[a-z0-9-]+$/),
+  communityId: z.string().optional(),
 });
 
 /**
@@ -50,6 +60,8 @@ const uploadEventImages = (
         fields[fieldname] = parseInt(val, 10);
       } else if (fieldname === "isPaid") {
         // Parse boolean from FormData string
+        fields[fieldname] = val === "true";
+      } else if (fieldname === "removeScheduleImage") {
         fields[fieldname] = val === "true";
       } else {
         fields[fieldname] = val;
@@ -130,7 +142,8 @@ const uploadEventImages = (
 const createEventInDB = async (
   eventData: any,
   userId: string,
-  heroImageUrl: string | null = null
+  heroImageUrl: string | null = null,
+  scheduleImageUrl: string | null = null
 ): Promise<string> => {
   // Validate required fields
   const validationResult = createEventSchema.safeParse(eventData);
@@ -179,6 +192,7 @@ const createEventInDB = async (
   const eventRef = await db.collection("events").add({
     ...validatedData,
     heroImage: heroImageUrl,
+    scheduleImage: scheduleImageUrl,
     createdBy: userId,
     attendees: 0,
     createdAt: new Date(),
@@ -222,26 +236,153 @@ const resolveEvent = async (
   return bySlug.empty ? null : bySlug.docs[0];
 };
 
-// Validation schema for event update
-const updateEventSchema = z.object({
-  title: z.string().min(3).max(200).optional(),
-  description: z.string().min(10).max(5000).optional(),
-  startDate: z.string().optional(),
-  startTime: z.string().optional(),
-  endDate: z.string().optional(),
-  endTime: z.string().optional(),
-  mode: z.enum(["Online", "In Person", "Hybrid"]).optional(),
-  location: z.string().min(1).max(500).optional(),
-  capacity: z.number().int().positive().optional(),
-  hostType: z.enum(["community", "custom"]).optional(),
-  customHostName: z.string().optional(),
-  category: z.string().min(1).optional(),
-  city: z.string().optional(),
-  isPaid: z.boolean().optional(),
-  registrationLink: z.string().url().optional().or(z.literal("")),
-  digitalLink: z.string().url().optional().or(z.literal("")),
-  status: z.enum(["draft", "published", "cancelled"]).optional(),
+interface ResolvedEventContext {
+  eventDoc: FirebaseFirestore.DocumentSnapshot;
+  resolvedEventId: string;
+  eventData: FirebaseFirestore.DocumentData;
+}
+
+interface CommunityContext {
+  communityId: string;
+  communityData: FirebaseFirestore.DocumentData;
+  admins: string[];
+}
+
+const requireUserId = (req: Request, res: Response): string | null => {
+  const userId = req.user?.uid;
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return null;
+  }
+
+  return userId;
+};
+
+const loadEventContext = async (
+  res: Response,
+  identifier: string
+): Promise<ResolvedEventContext | null> => {
+  const eventDoc = await resolveEvent(identifier);
+  if (!eventDoc) {
+    res.status(404).json({ error: "Event not found" });
+    return null;
+  }
+
+  const eventData = eventDoc.data();
+  if (!eventData) {
+    res.status(404).json({ error: "Event data not found" });
+    return null;
+  }
+
+  return {
+    eventDoc,
+    resolvedEventId: eventDoc.id,
+    eventData,
+  };
+};
+
+const requireCommunityContext = async (
+  res: Response,
+  eventData: FirebaseFirestore.DocumentData,
+  missingCommunityMessage: string
+): Promise<CommunityContext | null> => {
+  const communityId =
+    typeof eventData.communityId === "string" ? eventData.communityId : null;
+
+  if (!communityId) {
+    res.status(400).json({ error: missingCommunityMessage });
+    return null;
+  }
+
+  const communityDoc = await db.collection("communities").doc(communityId).get();
+  if (!communityDoc.exists) {
+    res.status(404).json({ error: "Community not found" });
+    return null;
+  }
+
+  const communityData = communityDoc.data() || {};
+  const admins = Array.isArray(communityData.admins) ? communityData.admins : [];
+
+  return {
+    communityId,
+    communityData,
+    admins,
+  };
+};
+
+const ensureCommunityAdmin = (
+  res: Response,
+  userId: string,
+  admins: string[],
+  forbiddenMessage: string
+): boolean => {
+  if (!admins.includes(userId)) {
+    res.status(403).json({ error: forbiddenMessage });
+    return false;
+  }
+
+  return true;
+};
+
+const ensureEventCreatorOrCommunityAdmin = async (
+  res: Response,
+  userId: string,
+  eventData: FirebaseFirestore.DocumentData,
+  forbiddenMessage: string
+): Promise<boolean> => {
+  if (eventData.createdBy === userId) {
+    return true;
+  }
+
+  if (eventData.communityId) {
+    const communityContext = await requireCommunityContext(
+      res,
+      eventData,
+      "Event is not associated with a community"
+    );
+    if (!communityContext) return false;
+
+    if (communityContext.admins.includes(userId)) {
+      return true;
+    }
+  }
+
+  res.status(403).json({ error: forbiddenMessage });
+  return false;
+};
+
+const awardBaseSchema = z.object({
+  type: z.enum(["main_place", "special"]),
+  place: z.union([z.literal(1), z.literal(2), z.literal(3), z.null()]),
+  title: z.string().min(1).max(120),
+  prizeDescription: z.string().max(200).optional(),
+  recipientIds: z.array(z.string().min(1)).min(1).optional(),
 });
+
+const createAwardSchema = awardBaseSchema;
+
+const updateAwardSchema = awardBaseSchema.partial();
+
+const updateEventSchema = eventBaseSchema
+  .partial()
+  .extend({
+    location: z.string().min(1).max(500).optional(), // override
+    winners: z.array(z.object({ id: z.string() })).optional(),
+    awards: z.array(createAwardSchema).optional(),
+    organizer: z.array(z.object({ id: z.string() })).optional(),
+    stand: z.array(z.object({ id: z.string() })).optional(),
+    removeScheduleImage: z.boolean().optional(),
+  });
+
+const safeDeleteStorageFile = async (filePath?: string): Promise<void> => {
+  if (!filePath) return;
+
+  try {
+    await storage.bucket().file(filePath).delete({ ignoreNotFound: true });
+  } catch (error) {
+    console.error("Failed to delete storage file:", filePath, error);
+  }
+};
 
 /**
  * GET /events
@@ -323,46 +464,29 @@ router.get("/:identifier", async (req: Request, res: Response) => {
   try {
     const { identifier } = req.params;
 
-    let eventDoc;
-    
-    // Try fetching by ID first
-    eventDoc = await db.collection("events").doc(identifier).get();
-    
-    // If not found by ID, try by slug
-    if (!eventDoc.exists) {
-      const slugQuery = await db
-        .collection("events")
-        .where("slug", "==", identifier)
-        .limit(1)
-        .get();
+    const eventContext = await loadEventContext(res, identifier);
+    if (!eventContext) return;
 
-      if (!slugQuery.empty) {
-        eventDoc = slugQuery.docs[0];
-      }
-    }
+    const { eventDoc, eventData } = eventContext;
 
-    if (!eventDoc.exists) {
-      return res.status(404).json({ error: "Event not found" });
-    }
-
-    const eventData: any = {
+    const eventResponse: any = {
       id: eventDoc.id,
-      ...eventDoc.data(),
+      ...eventData,
     };
 
     // Populate community data and check canEdit
     let canEdit = false;
 
     // Check if user is the event creator
-    if (req.user?.uid && eventData.createdBy === req.user.uid) {
+    if (req.user?.uid && eventResponse.createdBy === req.user.uid) {
       canEdit = true;
     }
 
-    if (eventData.communityId) {
-      const communityDoc = await db.collection("communities").doc(eventData.communityId).get();
+    if (eventResponse.communityId) {
+      const communityDoc = await db.collection("communities").doc(eventResponse.communityId).get();
       if (communityDoc.exists) {
         const communityData = communityDoc.data();
-        eventData.community = {
+        eventResponse.community = {
           id: communityDoc.id,
           name: communityData?.name,
           slug: communityData?.slug,
@@ -379,11 +503,11 @@ router.get("/:identifier", async (req: Request, res: Response) => {
       }
     }
 
-    eventData.canEdit = canEdit;
+    eventResponse.canEdit = canEdit;
 
     return res.status(200).json({
       success: true,
-      event: eventData,
+      event: eventResponse,
     });
   } catch (error: any) {
     console.error("Error fetching event:", error);
@@ -395,17 +519,263 @@ router.get("/:identifier", async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /events/:eventId/awards
+ * Add a new award to an event for community admins
+ */
+router.post("/:eventId/awards", async (req: Request, res: Response) => {
+  try {
+    const { eventId } = req.params;
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const eventContext = await loadEventContext(res, eventId);
+    if (!eventContext) return;
+
+    const { eventDoc, eventData } = eventContext;
+
+    const communityContext = await requireCommunityContext(
+      res,
+      eventData,
+      "Awards can only be added to community events"
+    );
+    if (!communityContext) return;
+
+    if (!ensureCommunityAdmin(res, userId, communityContext.admins, "Only community admins can add awards")) {
+      return;
+    }
+
+    const validationResult = createAwardSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({
+        error: "Invalid request data",
+        details: validationResult.error.errors,
+      });
+    }
+
+    const awardData = validationResult.data;
+    const awardRef = await db
+      .collection("events")
+      .doc(eventDoc.id)
+      .collection("awards")
+      .add({
+        ...awardData,
+        eventId: eventDoc.id,
+        communityId: communityContext.communityId,
+        createdBy: userId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+    return res.status(201).json({
+      success: true,
+      message: "Award created successfully",
+      award: {
+        id: awardRef.id,
+        ...awardData,
+        eventId: eventDoc.id,
+        communityId: communityContext.communityId,
+        createdBy: userId,
+      },
+    });
+  } catch (error: any) {
+    console.error("Error creating award:", error);
+    return res.status(500).json({
+      error: "Failed to create award",
+      details: error.message,
+    });
+  }
+});
+
+/**
+ * PATCH /events/:eventId/awards/:awardId
+ * Update an award for community admins
+ */
+router.patch("/:eventId/awards/:awardId", async (req: Request, res: Response) => {
+  try {
+    const { eventId, awardId } = req.params;
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const eventContext = await loadEventContext(res, eventId);
+    if (!eventContext) return;
+
+    const { eventDoc, eventData } = eventContext;
+
+    const communityContext = await requireCommunityContext(
+      res,
+      eventData,
+      "Awards can only be updated for community events"
+    );
+    if (!communityContext) return;
+
+    if (!ensureCommunityAdmin(res, userId, communityContext.admins, "Only community admins can update awards")) {
+      return;
+    }
+
+    const validationResult = updateAwardSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({
+        error: "Invalid request data",
+        details: validationResult.error.errors,
+      });
+    }
+
+    const awardRef = db
+      .collection("events")
+      .doc(eventDoc.id)
+      .collection("awards")
+      .doc(awardId);
+
+    const awardDoc = await awardRef.get();
+    if (!awardDoc.exists) {
+      return res.status(404).json({ error: "Award not found" });
+    }
+
+    const awardData = validationResult.data;
+    await awardRef.update({
+      ...awardData,
+      updatedAt: new Date(),
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Award updated successfully",
+      award: {
+        id: awardDoc.id,
+        ...awardDoc.data(),
+        ...awardData,
+        updatedAt: new Date(),
+      },
+    });
+  } catch (error: any) {
+    console.error("Error updating award:", error);
+    return res.status(500).json({
+      error: "Failed to update award",
+      details: error.message,
+    });
+  }
+});
+
+/**
+ * GET /events/:eventId/awards
+ * Get all awards for an event
+ */
+router.get("/:eventId/awards", async (req: Request, res: Response) => {
+  try {
+    const { eventId } = req.params;
+    const userId = req.user?.uid;
+
+    const eventContext = await loadEventContext(res, eventId);
+    if (!eventContext) return;
+
+    const { eventDoc, eventData } = eventContext;
+
+    const awardsSnapshot = await db
+      .collection("events")
+      .doc(eventDoc.id)
+      .collection("awards")
+      .orderBy("createdAt", "desc")
+      .get();
+
+    if (eventData.communityId) {
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const communityContext = await requireCommunityContext(
+        res,
+        eventData,
+        "Event is not associated with a community"
+      );
+      if (!communityContext) return;
+
+      const canView =
+        eventData.createdBy === userId || communityContext.admins.includes(userId);
+      if (!canView) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+    }
+
+    const awards = awardsSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    return res.status(200).json({
+      success: true,
+      awards,
+      count: awards.length,
+    });
+  } catch (error: any) {
+    console.error("Error fetching awards:", error);
+    return res.status(500).json({
+      error: "Failed to fetch awards",
+      details: error.message,
+    });
+  }
+});
+
+/**
+ * DELETE /events/:eventId/awards/:awardId
+ * Delete an award for community admins
+ */
+router.delete("/:eventId/awards/:awardId", async (req: Request, res: Response) => {
+  try {
+    const { eventId, awardId } = req.params;
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const eventContext = await loadEventContext(res, eventId);
+    if (!eventContext) return;
+
+    const { eventDoc, eventData } = eventContext;
+
+    const communityContext = await requireCommunityContext(
+      res,
+      eventData,
+      "Awards can only be deleted for community events"
+    );
+    if (!communityContext) return;
+
+    if (!ensureCommunityAdmin(res, userId, communityContext.admins, "Only community admins can delete awards")) {
+      return;
+    }
+
+    const awardRef = db
+      .collection("events")
+      .doc(eventDoc.id)
+      .collection("awards")
+      .doc(awardId);
+
+    const awardDoc = await awardRef.get();
+    if (!awardDoc.exists) {
+      return res.status(404).json({ error: "Award not found" });
+    }
+
+    await awardRef.delete();
+
+    return res.status(200).json({
+      success: true,
+      message: "Award deleted successfully",
+    });
+  } catch (error: any) {
+    console.error("Error deleting award:", error);
+    return res.status(500).json({
+      error: "Failed to delete award",
+      details: error.message,
+    });
+  }
+});
+
+/**
  * POST /events
- * Create a new event (with optional heroImage upload)
+ * Create a new event (with optional heroImage and scheduleImage uploads)
  * Always uses multipart/form-data (files are optional)
  */
 router.post("/", async (req: Request, res: Response) => {
   try {
-    const userId = req.user?.uid;
-
-    if (!userId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+    const userId = requireUserId(req, res);
+    if (!userId) return;
 
     // Always process as multipart (files are optional)
     const { fields, files } = await uploadEventImages(req, userId);
@@ -414,7 +784,8 @@ router.post("/", async (req: Request, res: Response) => {
     const eventId = await createEventInDB(
       fields,
       userId,
-      files.heroImage || null
+      files.heroImage || null,
+      files.scheduleImage || null
     );
 
     return res.status(201).json({
@@ -441,44 +812,31 @@ router.post("/", async (req: Request, res: Response) => {
 
 /**
  * PATCH /events/:eventId
- * Update an event (supports both JSON and multipart/form-data for hero image)
+ * Update an event (supports both JSON and multipart/form-data for hero/schedule images)
  */
 router.patch("/:eventId", async (req: Request, res: Response) => {
   try {
     const { eventId } = req.params;
-    const userId = req.user?.uid;
+    const userId = requireUserId(req, res);
+    if (!userId) return;
 
-    if (!userId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+    const eventContext = await loadEventContext(res, eventId);
+    if (!eventContext) return;
 
-    // Fetch event first for authorization check (by ID or slug)
-    const eventDoc = await resolveEvent(eventId);
-    if (!eventDoc) {
-      return res.status(404).json({ error: "Event not found" });
-    }
+    const { resolvedEventId, eventData } = eventContext;
 
-    const resolvedEventId = eventDoc.id;
-    const eventData = eventDoc.data();
-    if (!eventData) {
-      return res.status(404).json({ error: "Event data not found" });
-    }
-
-    // Check authorization: event creator or community admin
-    let isAuthorized = eventData.createdBy === userId;
-    if (!isAuthorized && eventData.communityId) {
-      const communityDoc = await db.collection("communities").doc(eventData.communityId).get();
-      const admins = communityDoc.data()?.admins || [];
-      isAuthorized = admins.includes(userId);
-    }
-
-    if (!isAuthorized) {
-      return res.status(403).json({ error: "Only event creators or community admins can update event details" });
-    }
+    const isAuthorized = await ensureEventCreatorOrCommunityAdmin(
+      res,
+      userId,
+      eventData,
+      "Only event creators or community admins can update event details"
+    );
+    if (!isAuthorized) return;
 
     // Parse request body — multipart/form-data or JSON
     let fields: any;
     let newHeroImagePath: string | null = null;
+    let newScheduleImagePath: string | null = null;
     const contentType = req.headers["content-type"] || "";
 
     if (contentType.includes("multipart/form-data")) {
@@ -486,6 +844,9 @@ router.patch("/:eventId", async (req: Request, res: Response) => {
       fields = result.fields;
       if (result.files.heroImage) {
         newHeroImagePath = result.files.heroImage;
+      }
+      if (result.files.scheduleImage) {
+        newScheduleImagePath = result.files.scheduleImage;
       }
     } else {
       fields = req.body;
@@ -498,6 +859,9 @@ router.patch("/:eventId", async (req: Request, res: Response) => {
     if (typeof fields.isPaid === "string") {
       fields.isPaid = fields.isPaid === "true";
     }
+    if (typeof fields.removeScheduleImage === "string") {
+      fields.removeScheduleImage = fields.removeScheduleImage === "true";
+    }
 
     // Validate fields
     const validationResult = updateEventSchema.safeParse(fields);
@@ -509,14 +873,29 @@ router.patch("/:eventId", async (req: Request, res: Response) => {
     }
 
     const updates = validationResult.data;
+    const shouldRemoveScheduleImage = Boolean(updates.removeScheduleImage);
 
     const updateObj: any = {
       ...updates,
       updatedAt: new Date(),
     };
 
+    delete updateObj.removeScheduleImage;
+
     if (newHeroImagePath) {
       updateObj.heroImage = newHeroImagePath;
+    }
+
+    if (newScheduleImagePath) {
+      updateObj.scheduleImage = newScheduleImagePath;
+      if (eventData.scheduleImage && eventData.scheduleImage !== newScheduleImagePath) {
+        await safeDeleteStorageFile(eventData.scheduleImage);
+      }
+    } else if (shouldRemoveScheduleImage) {
+      updateObj.scheduleImage = null;
+      if (eventData.scheduleImage) {
+        await safeDeleteStorageFile(eventData.scheduleImage);
+      }
     }
 
     await db.collection("events").doc(resolvedEventId).update(updateObj);
@@ -542,38 +921,21 @@ router.patch("/:eventId", async (req: Request, res: Response) => {
 router.delete("/:eventId", async (req: Request, res: Response) => {
   try {
     const { eventId } = req.params;
-    const userId = req.user?.uid;
+    const userId = requireUserId(req, res);
+    if (!userId) return;
 
-    if (!userId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+    const eventContext = await loadEventContext(res, eventId);
+    if (!eventContext) return;
 
-    // Get event and verify user is the creator or community creator (by ID or slug)
-    const eventDoc = await resolveEvent(eventId);
-    if (!eventDoc) {
-      return res.status(404).json({ error: "Event not found" });
-    }
+    const { resolvedEventId, eventData } = eventContext;
 
-    const resolvedEventId = eventDoc.id;
-    const eventData = eventDoc.data();
-    if (!eventData) {
-      return res.status(404).json({ error: "Event data not found" });
-    }
-
-    // Check if user is event creator
-    let isAuthorized = eventData.createdBy === userId;
-
-    // If event has a community, check if user is community admin
-    if (!isAuthorized && eventData.communityId) {
-      const communityDoc = await db.collection("communities").doc(eventData.communityId).get();
-      const communityData = communityDoc.data();
-      const admins = communityData?.admins || [];
-      isAuthorized = admins.includes(userId);
-    }
-
-    if (!isAuthorized) {
-      return res.status(403).json({ error: "Only event creators or community admins can delete events" });
-    }
+    const isAuthorized = await ensureEventCreatorOrCommunityAdmin(
+      res,
+      userId,
+      eventData,
+      "Only event creators or community admins can delete events"
+    );
+    if (!isAuthorized) return;
 
     // Soft delete by setting status to cancelled
     await db.collection("events").doc(resolvedEventId).update({
@@ -596,14 +958,25 @@ router.delete("/:eventId", async (req: Request, res: Response) => {
 });
 
 // Validation schema for attendee import
-const attendeeSchema = z.object({
+const importAttendeeSchema = z.object({
   email: z.string().email(),
   firstName: z.string().min(1).optional(),
   lastName: z.string().min(1).optional(),
+  role: z.enum(["mentor", "judge", "participant"]).default("participant"),
+  status: z.enum([
+    "pending",
+    "confirmed",
+    "rejected",
+    "cancelled",
+    "waitlisted",
+    "attended",
+    "no-show",
+  ]).default("confirmed"),
 });
 
+//validation schema for batch import of attendees
 const importAttendeesSchema = z.object({
-  attendees: z.array(attendeeSchema).min(1).max(500), // Limit to 500 per batch
+  attendees: z.array(importAttendeeSchema).min(1).max(500), // Limit to 500 per batch
   sendNotifications: z.boolean().default(false),
 });
 
@@ -615,11 +988,8 @@ const importAttendeesSchema = z.object({
 router.post("/:eventId/import-attendees", async (req: Request, res: Response) => {
   try {
     const { eventId } = req.params;
-    const userId = req.user?.uid;
-
-    if (!userId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+    const userId = requireUserId(req, res);
+    if (!userId) return;
 
     // Validate request body
     const validationResult = importAttendeesSchema.safeParse(req.body);
@@ -632,37 +1002,21 @@ router.post("/:eventId/import-attendees", async (req: Request, res: Response) =>
 
     const { attendees } = validationResult.data;
 
-    // Get event and verify it exists (by ID or slug)
-    const eventDoc = await resolveEvent(eventId);
-    if (!eventDoc) {
-      return res.status(404).json({ error: "Event not found" });
-    }
+    const eventContext = await loadEventContext(res, eventId);
+    if (!eventContext) return;
 
-    const resolvedEventId = eventDoc.id;
-    const eventData = eventDoc.data();
-    if (!eventData) {
-      return res.status(404).json({ error: "Event data not found" });
-    }
+    const { resolvedEventId, eventData } = eventContext;
 
-    // Get community and verify user is the creator
-    if (!eventData.communityId) {
-      return res.status(400).json({ error: "Event is not associated with a community" });
-    }
+    const communityContext = await requireCommunityContext(
+      res,
+      eventData,
+      "Event is not associated with a community"
+    );
+    if (!communityContext) return;
 
-    const communityDoc = await db.collection("communities").doc(eventData.communityId).get();
-    if (!communityDoc.exists) {
-      return res.status(404).json({ error: "Community not found" });
-    }
-
-    const communityData = communityDoc.data();
-    if (!communityData) {
-      return res.status(404).json({ error: "Community data not found" });
-    }
-
-    // Verify user is a community admin
-    const admins = communityData.admins || [];
-    if (!admins.includes(userId)) {
-      return res.status(403).json({ error: "Only community admins can import attendees" });
+    const { communityData, admins } = communityContext;
+    if (!ensureCommunityAdmin(res, userId, admins, "Only community admins can import registrations")) {
+      return;
     }
 
     const results = {
@@ -672,7 +1026,7 @@ router.post("/:eventId/import-attendees", async (req: Request, res: Response) =>
       errors: [] as { email: string; error: string }[],
     };
 
-    // Process each attendee
+    // Process each registration request
     for (const attendee of attendees) {
       try {
         // Use centralized upsert function
@@ -761,6 +1115,7 @@ router.post("/:eventId/import-attendees", async (req: Request, res: Response) =>
           .doc(resolvedEventId)
           .collection("registrations")
           .where("userId", "==", upsertResult.userRecord.uid)
+          .where("role", "==", attendee.role)
           .limit(1)
           .get();
 
@@ -776,6 +1131,8 @@ router.post("/:eventId/import-attendees", async (req: Request, res: Response) =>
               email: emailLower,
               firstName: attendee.firstName || "",
               lastName: attendee.lastName || "",
+              role: attendee.role,
+              status: attendee.status,
               registeredAt: new Date(),
               registeredBy: userId,
               source: "admin-import",
@@ -823,6 +1180,165 @@ router.post("/:eventId/import-attendees", async (req: Request, res: Response) =>
   }
 });
 
+const createAttendeeSchema = z.object({
+  userId: z.string(),
+  email: z.string().email(),
+  firstName: z.string().min(1).optional(),
+  lastName: z.string().min(1).optional(),
+  role: z.enum(["mentor", "judge", "participant"]).default("participant"),
+  status: z.enum([
+    "pending",
+    "confirmed",
+    "rejected",
+    "cancelled",
+    "waitlisted",
+    "attended",
+    "no-show",
+  ]).default("pending"),
+});
+
+/**
+ * POST /events/:eventId/join
+ * Join an event and sync the event onto the user's profile
+ * Requires the user to be logged in and to provide a role (mentor, judge, participant)
+ */
+router.post("/:eventId/join", async (req: Request, res: Response) => {
+  try {
+    const { eventId } = req.params;
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const eventContext = await loadEventContext(res, eventId);
+    if (!eventContext) return;
+
+    const { resolvedEventId, eventData } = eventContext;
+
+    if (eventData.status && eventData.status !== "published") {
+      return res.status(400).json({ error: "Event is not open for joining" });
+    }
+
+    const validationResult = z.object({
+      role: z.string().min(1).max(50),
+    }).safeParse(req.body);
+
+    if (!validationResult.success) {
+      return res.status(400).json({
+        error: "Invalid request data",
+        details: validationResult.error.errors,
+      });
+    }
+
+    const { role } = validationResult.data;
+
+    if (eventData.communityId) {
+      const communityContext = await requireCommunityContext(
+        res,
+        eventData,
+        "Event is not associated with a community"
+      );
+      if (!communityContext) return;
+    }
+
+    const eventRef = db.collection("events").doc(resolvedEventId);
+    const profileRef = db.collection("profiles").doc(userId);
+
+    const result = await db.runTransaction(async (transaction) => {
+      const [freshEventDoc, profileDoc] = await Promise.all([
+        transaction.get(eventRef),
+        transaction.get(profileRef),
+      ]);
+
+      if (!freshEventDoc.exists) {
+        return res.status(400).json({ error: "Event not found" });
+      }
+
+      const freshEventData = freshEventDoc.data();
+      if (!freshEventData) {
+        return res.status(400).json({ error: "Event data not found" });
+      }
+
+      const profileEvents = profileDoc.exists && Array.isArray(profileDoc.data()?.events)
+        ? profileDoc.data()?.events
+        : [];
+
+      const registrationsRef = eventRef.collection("registrations");
+      const existingRegistrationQuery = registrationsRef
+        .where("userId", "==", userId)
+        .where("role", "==", role)
+        .limit(1);
+      const existingRegistrationSnapshot = await transaction.get(existingRegistrationQuery);
+
+      if (!existingRegistrationSnapshot.empty) {
+        return res.status(400).json({ error: "Already joined this event with this role" });
+      }
+
+      const attendeeEntry = createAttendeeSchema.parse({
+        userId,
+        email: profileDoc.data()?.email || "",
+        firstName: profileDoc.data()?.firstName,
+        lastName: profileDoc.data()?.lastName,
+        role,
+        status: "confirmed",
+      });
+
+      const registrationRef = registrationsRef.doc();
+
+      transaction.set(registrationRef, {
+        ...attendeeEntry,
+        eventId: resolvedEventId,
+        registeredAt: new Date(),
+        registeredBy: userId,
+        source: "self-join",
+        communityId: eventData.communityId,
+      });
+
+      if (existingRegistrationSnapshot.empty) {
+        transaction.set(
+          profileRef,
+          {
+            events: [...profileEvents, resolvedEventId],
+            updatedAt: new Date(),
+          },
+          { merge: true }
+        );
+      }
+
+      return {
+        attendee: attendeeEntry,
+        registrations: 1,
+        joined: true,
+      };
+    });
+
+    if ("attendee" in result) {
+      return res.status(200).json({
+        success: true,
+        message: "Successfully joined event",
+        attendee: result.attendee,
+        registrations: result.registrations,
+      });
+    }
+    else{
+      return res.status(500).json({
+        error: "Failed to join event",
+      });
+    }
+  } catch (error: any) {
+    console.error("Error joining event:", error);
+
+    if (error.status) {
+      return res.status(error.status).json({
+        error: error.error,
+      });
+    }
+
+    return res.status(500).json({
+      error: "Failed to join event",
+      details: error.message,
+    });
+  }
+});
+
 /**
  * GET /events/:eventId/attendees
  * Get list of registered attendees for an event
@@ -830,35 +1346,21 @@ router.post("/:eventId/import-attendees", async (req: Request, res: Response) =>
 router.get("/:eventId/attendees", async (req: Request, res: Response) => {
   try {
     const { eventId } = req.params;
-    const userId = req.user?.uid;
+    const userId = requireUserId(req, res);
+    if (!userId) return;
 
-    if (!userId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+    const eventContext = await loadEventContext(res, eventId);
+    if (!eventContext) return;
 
-    // Get event (by ID or slug)
-    const eventDoc = await resolveEvent(eventId);
-    if (!eventDoc) {
-      return res.status(404).json({ error: "Event not found" });
-    }
+    const { resolvedEventId, eventData } = eventContext;
 
-    const resolvedEventId = eventDoc.id;
-    const eventData = eventDoc.data();
-    if (!eventData) {
-      return res.status(404).json({ error: "Event data not found" });
-    }
-
-    // Verify user has access (community admin or event creator)
-    if (eventData.communityId) {
-      const communityDoc = await db.collection("communities").doc(eventData.communityId).get();
-      const communityData = communityDoc.data();
-      const admins = communityData?.admins || [];
-      if (communityData && !admins.includes(userId) && eventData.createdBy !== userId) {
-        return res.status(403).json({ error: "Access denied" });
-      }
-    } else if (eventData.createdBy !== userId) {
-      return res.status(403).json({ error: "Access denied" });
-    }
+    const canAccess = await ensureEventCreatorOrCommunityAdmin(
+      res,
+      userId,
+      eventData,
+      "Access denied"
+    );
+    if (!canAccess) return;
 
     // Get registrations
     const registrationsSnapshot = await db
@@ -868,15 +1370,15 @@ router.get("/:eventId/attendees", async (req: Request, res: Response) => {
       .orderBy("registeredAt", "desc")
       .get();
 
-    const attendees = registrationsSnapshot.docs.map((doc) => ({
+    const registrations = registrationsSnapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
     }));
 
     return res.status(200).json({
       success: true,
-      attendees,
-      count: attendees.length,
+      registrations,
+      count: registrations.length,
     });
 
   } catch (error: any) {
