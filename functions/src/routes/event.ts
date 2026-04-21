@@ -4,6 +4,7 @@ import { sendCommunityWelcomeEmail } from "../lib/email-service";
 import { upsertStudentUser } from "../lib/user-management";
 import { z } from "zod";
 import Busboy from "busboy";
+import { FieldValue } from "firebase-admin/firestore";
 
 const router = Router();
 
@@ -459,6 +460,55 @@ type AwardDocument = {
   [key: string]: unknown;
 };
 
+const normalizeRecipientIds = (recipientIds: unknown): string[] => {
+  if (!Array.isArray(recipientIds)) {
+    return [];
+  }
+
+  return [...new Set(
+    recipientIds
+      .filter((recipientId): recipientId is string => typeof recipientId === "string")
+      .map((recipientId) => recipientId.trim())
+      .filter((recipientId) => recipientId.length > 0)
+  )];
+};
+
+const partitionRecipientChanges = (
+  previousRecipientIds: string[],
+  finalRecipientIds: string[]
+): { addedRecipientIds: string[]; removedRecipientIds: string[] } => {
+  const previousSet = new Set(previousRecipientIds);
+  const finalSet = new Set(finalRecipientIds);
+
+  const addedRecipientIds = finalRecipientIds.filter((recipientId) => !previousSet.has(recipientId));
+  const removedRecipientIds = previousRecipientIds.filter((recipientId) => !finalSet.has(recipientId));
+
+  return { addedRecipientIds, removedRecipientIds };
+};
+
+const queueProfileWinsSync = (
+  batch: FirebaseFirestore.WriteBatch,
+  eventId: string,
+  addedRecipientIds: string[],
+  removedRecipientIds: string[]
+): void => {
+  const now = new Date();
+
+  for (const recipientId of addedRecipientIds) {
+    batch.update(db.collection("profiles").doc(recipientId), {
+      wins: FieldValue.arrayUnion(eventId),
+      updatedAt: now,
+    });
+  }
+
+  for (const recipientId of removedRecipientIds) {
+    batch.update(db.collection("profiles").doc(recipientId), {
+      wins: FieldValue.arrayRemove(eventId),
+      updatedAt: now,
+    });
+  }
+};
+
 const buildDisplayName = (firstName: string, lastName: string, fallback: string): string => {
   const name = `${firstName} ${lastName}`.trim();
   return name || fallback;
@@ -684,18 +734,26 @@ router.post("/:eventId/awards", async (req: Request, res: Response) => {
     }
 
     const awardData = validationResult.data;
-    const awardRef = await db
+    const recipientIds = normalizeRecipientIds(awardData.recipientIds);
+    const awardRef = db
       .collection("events")
       .doc(eventDoc.id)
       .collection("awards")
-      .add({
-        ...awardData,
-        eventId: eventDoc.id,
-        communityId: communityContext.communityId,
-        createdBy: userId,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+      .doc();
+
+    const batch = db.batch();
+    batch.set(awardRef, {
+      ...awardData,
+      recipientIds,
+      eventId: eventDoc.id,
+      communityId: communityContext.communityId,
+      createdBy: userId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    queueProfileWinsSync(batch, eventDoc.id, recipientIds, []);
+    await batch.commit();
 
     return res.status(201).json({
       success: true,
@@ -762,11 +820,28 @@ router.patch("/:eventId/awards/:awardId", async (req: Request, res: Response) =>
       return res.status(404).json({ error: "Award not found" });
     }
 
+    const previousAwardData = (awardDoc.data() || {}) as AwardDocument;
+    const previousRecipientIds = normalizeRecipientIds(previousAwardData.recipientIds);
+
     const awardData = validationResult.data;
-    await awardRef.update({
+    const mergedAwardData: AwardDocument = {
+      ...previousAwardData,
       ...awardData,
+    };
+    const finalRecipientIds = normalizeRecipientIds(mergedAwardData.recipientIds);
+    const { addedRecipientIds, removedRecipientIds } = partitionRecipientChanges(
+      previousRecipientIds,
+      finalRecipientIds
+    );
+
+    const batch = db.batch();
+    batch.update(awardRef, {
+      ...awardData,
+      recipientIds: finalRecipientIds,
       updatedAt: new Date(),
     });
+    queueProfileWinsSync(batch, eventDoc.id, addedRecipientIds, removedRecipientIds);
+    await batch.commit();
 
     return res.status(200).json({
       success: true,
@@ -775,6 +850,7 @@ router.patch("/:eventId/awards/:awardId", async (req: Request, res: Response) =>
         id: awardDoc.id,
         ...awardDoc.data(),
         ...awardData,
+        recipientIds: finalRecipientIds,
         updatedAt: new Date(),
       },
     });
@@ -880,7 +956,13 @@ router.delete("/:eventId/awards/:awardId", async (req: Request, res: Response) =
       return res.status(404).json({ error: "Award not found" });
     }
 
-    await awardRef.delete();
+    const awardData = (awardDoc.data() || {}) as AwardDocument;
+    const recipientIds = normalizeRecipientIds(awardData.recipientIds);
+
+    const batch = db.batch();
+    batch.delete(awardRef);
+    queueProfileWinsSync(batch, eventDoc.id, [], recipientIds);
+    await batch.commit();
 
     return res.status(200).json({
       success: true,
