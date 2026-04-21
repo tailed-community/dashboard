@@ -11,7 +11,7 @@ Production deployment, release automation, and org-wide policy enforcement are t
 
 ## Prerequisites
 1. Node.js 22.x and npm 10+.
-2. Git installed and GitHub access token available.
+2. Git installed and GitHub access token available (optional for public clone, required for authenticated operations).
 3. Docker Desktop (or Docker Engine + Docker Compose plugin) installed and running.
 4. Required local ports available (Auth 9100, Functions 5003, Firestore 8081, Hosting 5004, Storage 9200). 
 
@@ -23,9 +23,9 @@ Production deployment, release automation, and org-wide policy enforcement are t
 5. Existing `.env` keys must be preserved unless explicitly overwritten.
 
 ## Init Workflow
-1. Discover `tailed-community` public repositories.
+1. Discover `tailed-community` public repositories from `https://github.com/tailed-community`.
 2. Ask user to select target repository.
-3. Fork selected repository to user namespace.
+3. Clone selected repository locally from the community org (no fork required for standard local setup).
 4. Ask user to select issue, create issue, or continue in free-dev mode.
 5. Validate local prerequisites (Node, npm, Firebase CLI, auth state).
 6. Generate root `.env` from template + defaults + user overrides.
