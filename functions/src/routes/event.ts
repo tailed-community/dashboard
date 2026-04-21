@@ -427,7 +427,7 @@ const awardBaseSchema = z.object({
   place: z.union([z.literal(1), z.literal(2), z.literal(3), z.null()]),
   title: z.string().min(1).max(120),
   prizeDescription: z.string().max(200).optional(),
-  recipientIds: z.array(z.string().min(1)).min(1).optional(),
+  recipientIds: z.array(z.string().min(1)).optional(),
 });
 
 const createAwardSchema = awardBaseSchema;
