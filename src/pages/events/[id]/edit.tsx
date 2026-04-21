@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useForm } from "react-hook-form";
+import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { CalendarDays, MapPin, Users, Loader2, Upload, Link as LinkIcon, ArrowLeft } from "lucide-react";
+import { CalendarDays, MapPin, Users, Loader2, Upload, Link as LinkIcon, ArrowLeft, Trophy, Plus, Trash2 } from "lucide-react";
 import { apiFetch } from "@/lib/fetch";
 import { getFileUrl } from "@/lib/firebase-client";
 import { Button } from "@/components/ui/button";
@@ -60,7 +60,9 @@ const editEventSchema = z.object({
     status: z.enum(["draft", "published", "cancelled"]).default("published"),
 });
 
-type EditEventFormData = z.infer<typeof editEventSchema>;
+// EditEventFormData is inferred from schema when needed
+
+// (form data extension intentionally not exported as a strict type here)
 
 type Community = { id: string; name: string; acronym?: string };
 
@@ -100,6 +102,19 @@ const cities = [
     { name: "Tokyo", region: "Asia & Pacific" },
 ];
 
+const toMainPlaceNumber = (value: unknown): 1 | 2 | 3 | null => {
+    if (value === "1" || value === 1) return 1;
+    if (value === "2" || value === 2) return 2;
+    if (value === "3" || value === 3) return 3;
+    return null;
+};
+
+const getMainPlaceTitle = (place: 1 | 2 | 3): string => {
+    if (place === 1) return "1st Place";
+    if (place === 2) return "2nd Place";
+    return "3rd Place";
+};
+
 export default function EditEventPage() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
@@ -114,7 +129,7 @@ export default function EditEventPage() {
     const [currentScheduleImagePath, setCurrentScheduleImagePath] = useState<string | null>(null);
     const [forbidden, setForbidden] = useState(false);
 
-    const form = useForm<EditEventFormData>({
+    const form = useForm<any>({
         resolver: zodResolver(editEventSchema),
         defaultValues: {
             title: "",
@@ -138,6 +153,16 @@ export default function EditEventPage() {
             status: "published",
         },
     });
+
+    const { fields: awardFields, append: appendAward, remove: removeAward, replace: replaceAwards } = useFieldArray({
+        control: form.control,
+        name: "awards",
+    });
+
+    const watchAwards = form.watch("awards") || [];
+    const [registrations, setRegistrations] = useState<any[]>([]);
+    const [loadingRegistrations, setLoadingRegistrations] = useState(false);
+    const [removedAwardIds, setRemovedAwardIds] = useState<string[]>([]);
 
     const watchMode = form.watch("mode");
     const watchHostType = form.watch("hostType");
@@ -215,6 +240,44 @@ export default function EditEventPage() {
                     capacity: event.capacity ? String(event.capacity) : "",
                     status: event.status || "published",
                 });
+
+                // Fetch awards for this event and set into the form
+                (async () => {
+                    try {
+                        const aRes = await apiFetch(`/events/${id}/awards`);
+                        const aJson = await aRes.json();
+                        if (aRes.ok && Array.isArray(aJson.awards)) {
+                            const mapped = aJson.awards.map((a: any) => ({
+                                id: a.id,
+                                type: a.type,
+                                place: a.place ?? null,
+                                title: a.title ?? "",
+                                prizeDescription: a.prizeDescription ?? "",
+                                recipientIds: Array.isArray(a.recipientIds) ? a.recipientIds : [],
+                            }));
+                            // replace field array
+                            replaceAwards(mapped);
+                        }
+                    } catch (e) {
+                        console.error("Failed to load awards:", e);
+                    }
+                })();
+
+                // Fetch attendees for assignment (use attendees route)
+                (async () => {
+                    setLoadingRegistrations(true);
+                    try {
+                        const rRes = await apiFetch(`/events/${id}/attendees`);
+                        const rJson = await rRes.json();
+                        if (rRes.ok && Array.isArray(rJson.registrations)) {
+                            setRegistrations(rJson.registrations || []);
+                        }
+                    } catch (e) {
+                        console.error("Failed to load attendees:", e);
+                    } finally {
+                        setLoadingRegistrations(false);
+                    }
+                })();
             } catch (error) {
                 console.error("Error fetching event:", error);
                 toast.error("Failed to load event");
@@ -250,7 +313,7 @@ export default function EditEventPage() {
         fetchCommunities();
     }, []);
 
-    const onSubmit = async (data: EditEventFormData) => {
+    const onSubmit = async (data: any) => {
         if (!user) {
             toast.error("You must be signed in to edit an event");
             return;
@@ -307,6 +370,57 @@ export default function EditEventPage() {
             }
 
             toast.success("Event updated successfully!");
+            // After event update, process awards (create/update/delete)
+            try {
+                const awards = form.getValues("awards") || [];
+
+                // Create or update awards
+                for (const award of awards) {
+                    const payload = {
+                        type: award.type,
+                        place: award.place === null ? null : award.place,
+                        title: award.title,
+                        prizeDescription: award.prizeDescription || undefined,
+                        recipientIds: Array.isArray(award.recipientIds) ? award.recipientIds : undefined,
+                    };
+
+                    if (award.id) {
+                        // update existing award
+                        try {
+                            await apiFetch(`/events/${id}/awards/${award.id}`, {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify(payload),
+                            });
+                        } catch (e) {
+                            console.error(`Failed to update award ${award.id}:`, e);
+                        }
+                    } else {
+                        // create new award
+                        try {
+                            await apiFetch(`/events/${id}/awards`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify(payload),
+                            });
+                        } catch (e) {
+                            console.error("Failed to create award:", e);
+                        }
+                    }
+                }
+
+                // Delete removed awards
+                for (const aid of removedAwardIds) {
+                    try {
+                        await apiFetch(`/events/${id}/awards/${aid}`, { method: "DELETE" });
+                    } catch (e) {
+                        console.error(`Failed to delete award ${aid}:`, e);
+                    }
+                }
+            } catch (e) {
+                console.error("Error processing awards:", e);
+            }
+
             navigate(`/events/${id}`);
         } catch (error) {
             console.error("Error updating event:", error);
@@ -796,6 +910,221 @@ export default function EditEventPage() {
                                         </FormItem>
                                     )}
                                 />
+
+                                {/* Awards */}
+                                <div className="space-y-4 rounded-lg border border-slate-200 p-4">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <h3 className="flex items-center gap-2 text-base font-semibold text-slate-900">
+                                                <Trophy className="h-4 w-4" />
+                                                Awards
+                                            </h3>
+                                            <p className="text-sm text-slate-500">Add optional awards for this event. Main place awards require a place. Assign winners below.</p>
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() => {
+                                                const takenMainPlaces = new Set(
+                                                    (watchAwards || [])
+                                                        .map((a: any) => (a?.type === "main_place" ? toMainPlaceNumber(a.place) : null))
+                                                        .filter((p: any) => p !== null)
+                                                );
+                                                const nextAvailableMainPlace = ([1, 2, 3] as const).find((p) => !takenMainPlaces.has(p)) ?? null;
+
+                                                if (nextAvailableMainPlace) {
+                                                    appendAward({
+                                                        type: "main_place",
+                                                        place: nextAvailableMainPlace,
+                                                        title: getMainPlaceTitle(nextAvailableMainPlace),
+                                                        prizeDescription: "",
+                                                        recipientIds: [],
+                                                    });
+                                                    return;
+                                                }
+
+                                                appendAward({
+                                                    type: "special",
+                                                    place: null,
+                                                    title: "",
+                                                    prizeDescription: "",
+                                                    recipientIds: [],
+                                                });
+                                            }}
+                                        >
+                                            <Plus className="mr-2 h-4 w-4" />
+                                            Add Award
+                                        </Button>
+                                    </div>
+
+                                    {awardFields.length === 0 ? (
+                                        <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                                            No awards added yet.
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-4">
+                                            {awardFields.map((award, index) => {
+                                                const typeFieldName = `awards.${index}.type` as const;
+                                                const placeFieldName = `awards.${index}.place` as const;
+                                                const titleFieldName = `awards.${index}.title` as const;
+                                                const prizeFieldName = `awards.${index}.prizeDescription` as const;
+                                                const selectedType = form.watch(typeFieldName);
+                                                const selectedPlace = toMainPlaceNumber(form.getValues(placeFieldName));
+                                                const takenMainPlacesByOthers = new Set(
+                                                    (watchAwards || [])
+                                                        .map((awardValue: any, awardIndex: number) => {
+                                                            if (awardIndex === index) return null;
+                                                            if (awardValue?.type !== "main_place") return null;
+                                                            return toMainPlaceNumber(awardValue.place);
+                                                        })
+                                                        .filter((place: any): place is 1 | 2 | 3 => place !== null)
+                                                );
+
+                                                return (
+                                                    <div key={award.id || index} className="space-y-4 rounded-md border border-slate-200 bg-slate-50/40 p-4">
+                                                        <div className="flex items-center justify-between">
+                                                            <p className="text-sm font-medium text-slate-800">Award {index + 1}</p>
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                onClick={() => {
+                                                                    const values = form.getValues(`awards.${index}` as any) as any;
+                                                                    if (values?.id) setRemovedAwardIds((s) => [...s, values.id]);
+                                                                    removeAward(index);
+                                                                }}
+                                                                className="text-slate-500 text-red-600 hover:text-red-600"
+                                                            >
+                                                                <Trash2 className="mr-1 h-4 w-4" />
+                                                                Remove
+                                                            </Button>
+                                                        </div>
+
+                                                        <div className="grid gap-4 sm:grid-cols-2">
+                                                            <FormField control={form.control} name={typeFieldName} render={({ field }) => (
+                                                                <FormItem>
+                                                                    <FormLabel>Award Type *</FormLabel>
+                                                                    <Select
+                                                                        onValueChange={(value) => {
+                                                                            field.onChange(value);
+                                                                            if (value === "special") {
+                                                                                form.setValue(placeFieldName, null, { shouldValidate: true, shouldDirty: true });
+                                                                            } else if (form.getValues(placeFieldName) === null) {
+                                                                                form.setValue(placeFieldName, 1, { shouldValidate: true, shouldDirty: true });
+                                                                                form.setValue(titleFieldName, getMainPlaceTitle(1), { shouldValidate: true, shouldDirty: true });
+                                                                            }
+                                                                        }}
+                                                                        defaultValue={field.value}
+                                                                    >
+                                                                        <FormControl>
+                                                                            <SelectTrigger>
+                                                                                <SelectValue placeholder="Select award type" />
+                                                                            </SelectTrigger>
+                                                                        </FormControl>
+                                                                        <SelectContent>
+                                                                            <SelectItem value="main_place">Main Place</SelectItem>
+                                                                            <SelectItem value="special">Special</SelectItem>
+                                                                        </SelectContent>
+                                                                    </Select>
+                                                                    <FormMessage />
+                                                                </FormItem>
+                                                            )} />
+
+                                                            <FormField control={form.control} name={placeFieldName} render={({ field }) => (
+                                                                <FormItem>
+                                                                    <FormLabel>Place</FormLabel>
+                                                                    <Select
+                                                                        onValueChange={(value) => {
+                                                                            field.onChange(value);
+                                                                            const parsedPlace = toMainPlaceNumber(value);
+                                                                            if (selectedType === "main_place" && parsedPlace) {
+                                                                                form.setValue(titleFieldName, getMainPlaceTitle(parsedPlace), { shouldValidate: true, shouldDirty: true });
+                                                                            }
+                                                                        }}
+                                                                        value={field.value === null ? "" : String(field.value)}
+                                                                        disabled={selectedType === "special"}
+                                                                    >
+                                                                        <FormControl>
+                                                                            <SelectTrigger>
+                                                                                <SelectValue placeholder="Select place" />
+                                                                            </SelectTrigger>
+                                                                        </FormControl>
+                                                                        <SelectContent>
+                                                                            <SelectItem value="1" disabled={takenMainPlacesByOthers.has(1) && selectedPlace !== 1}>1st Place</SelectItem>
+                                                                            <SelectItem value="2" disabled={takenMainPlacesByOthers.has(2) && selectedPlace !== 2}>2nd Place</SelectItem>
+                                                                            <SelectItem value="3" disabled={takenMainPlacesByOthers.has(3) && selectedPlace !== 3}>3rd Place</SelectItem>
+                                                                        </SelectContent>
+                                                                    </Select>
+                                                                    <FormMessage />
+                                                                </FormItem>
+                                                            )} />
+                                                        </div>
+
+                                                        <FormField control={form.control} name={titleFieldName} render={({ field }) => (
+                                                            <FormItem>
+                                                                <FormLabel>Award Title *</FormLabel>
+                                                                <FormControl>
+                                                                    <Input placeholder="Best Project" {...field} />
+                                                                </FormControl>
+                                                                <FormMessage />
+                                                            </FormItem>
+                                                        )} />
+
+                                                        <FormField control={form.control} name={prizeFieldName} render={({ field }) => (
+                                                            <FormItem>
+                                                                <FormLabel>Prize Description</FormLabel>
+                                                                <FormControl>
+                                                                    <Input placeholder="Best UI/UX design" {...field} />
+                                                                </FormControl>
+                                                                <FormDescription>Optional short description of the prize</FormDescription>
+                                                                <FormMessage />
+                                                            </FormItem>
+                                                        )} />
+
+                                                        {/* Winners selection (checkbox list from registrations) */}
+                                                        <div>
+                                                            <p className="text-sm font-medium text-slate-800">Winners</p>
+                                                            {loadingRegistrations ? (
+                                                                <p className="text-sm text-slate-500">Loading attendees…</p>
+                                                            ) : registrations.length === 0 ? (
+                                                                <p className="text-sm text-slate-500">No attendees to assign as winners.</p>
+                                                            ) : (
+                                                                <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-44 overflow-auto">
+                                                                    {registrations.map((reg) => {
+                                                                        const checked = (form.getValues(`awards.${index}.recipientIds`) || []).includes(reg.userId);
+                                                                        return (
+                                                                            <label key={reg.userId} className="flex items-center gap-2 p-2 rounded-md hover:bg-slate-50">
+                                                                                <input
+                                                                                    type="checkbox"
+                                                                                    checked={checked}
+                                                                                    onChange={(e) => {
+                                                                                        const cur: string[] = form.getValues(`awards.${index}.recipientIds`) || [];
+                                                                                        if (e.target.checked) {
+                                                                                            form.setValue(`awards.${index}.recipientIds`, [...cur, reg.userId], { shouldDirty: true });
+                                                                                        } else {
+                                                                                            form.setValue(`awards.${index}.recipientIds`, cur.filter((id) => id !== reg.userId), { shouldDirty: true });
+                                                                                        }
+                                                                                    }}
+                                                                                />
+                                                                                <div className="text-sm">
+                                                                                    <div className="font-medium">{reg.firstName || ""} {reg.lastName || ""}</div>
+                                                                                    <div className="text-xs text-slate-500">{reg.email}</div>
+                                                                                </div>
+                                                                            </label>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+
+                                    {form.formState.errors.awards?.message && (
+                                        <p className="text-sm font-medium text-red-600">{String(form.formState.errors.awards?.message)}</p>
+                                    )}
+                                </div>
 
                                 {/* Hero Image */}
                                 <FormField
