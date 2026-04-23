@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Form, FormItem, FormLabel, FormControl, FormField, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
@@ -32,6 +32,57 @@ export default function RegistrationFormBuilder({ eventId, fields = defaultField
     defaultValues: fields.reduce((acc, f, i) => ({ ...acc, [`f_${i}`]: "" }), {} as Record<string, any>),
   });
   const { handleSubmit, reset } = methods;
+  const [profile, setProfile] = useState<any>(null);
+
+  // Helper to get nested value from profile by path like 'firstName' or 'address.street'
+  const getNested = (obj: any, path: string) => {
+    if (!obj || !path) return undefined;
+    return path.split('.').reduce((acc: any, part: string) => (acc && acc[part] !== undefined ? acc[part] : undefined), obj);
+  };
+
+  useEffect(() => {
+    // Only fetch profile when at least one field has an autofillSource
+    const needsAutofill = fields.some((f) => !!f.autofillSource && String(f.autofillSource).startsWith('profile.'));
+    if (!needsAutofill) return;
+
+    let mounted = true;
+
+    (async () => {
+      try {
+        const resp = await apiFetch('/profile');
+        if (!resp.ok) return;
+        const body = await resp.json();
+        // API may return { profile } or profile directly
+        const prof = body.profile || body;
+        if (!mounted) return;
+        setProfile(prof);
+
+        // Build autofill values
+        const currentValues = methods.getValues();
+        const autofillValues: Record<string, any> = {};
+        fields.forEach((f, i) => {
+          if (f.autofillSource && String(f.autofillSource).startsWith('profile.')) {
+            const path = String(f.autofillSource).replace(/^profile\./, '');
+            const val = getNested(prof, path);
+            if (val !== undefined && val !== null) {
+              autofillValues[`f_${i}`] = val;
+            }
+          }
+        });
+
+        if (Object.keys(autofillValues).length > 0) {
+          methods.reset({ ...currentValues, ...autofillValues });
+        }
+      } catch (err) {
+        // ignore autofill errors
+        console.error('Failed to autofill registration form', err);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [fields, methods]);
 
   const onSubmit = async (data: Record<string, any>) => {
     try {

@@ -1264,7 +1264,7 @@ router.post("/:eventId/import-attendees", async (req: Request, res: Response) =>
               registeredAt: new Date(),
               registeredBy: userId,
               source: "admin-import",
-              communityId: eventData.communityId,
+              communityId: eventData.communityId || null,
             });
 
           results.registered.push(emailLower);
@@ -1310,7 +1310,8 @@ router.post("/:eventId/import-attendees", async (req: Request, res: Response) =>
 
 const createAttendeeSchema = z.object({
   userId: z.string(),
-  email: z.string().email(),
+  // Email moved to formAnswers — optional at top-level
+  email: z.string().email().optional(),
   firstName: z.string().min(1).optional(),
   lastName: z.string().min(1).optional(),
   role: z.enum(["mentor", "judge", "participant"]).default("participant"),
@@ -1458,7 +1459,7 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
         registeredAt: new Date(),
         registeredBy: userId,
         source: normalizedAnswers.length > 0 ? "form" : "self-join",
-        communityId: eventData.communityId,
+        communityId: eventData.communityId || null,
         formId: null,
         formLabel: null,
         formAnswers: normalizedAnswers,
