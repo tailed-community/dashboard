@@ -3,7 +3,7 @@ import Busboy from "busboy";
 import crypto from "crypto";
 import { db, studentAuth, storage } from "../lib/firebase";
 import { logger } from "firebase-functions";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldPath, FieldValue } from "firebase-admin/firestore";
 
 const router = express.Router();
 
@@ -133,6 +133,77 @@ export const calculateProfileScore = (profileData: any) => {
     };
 };
 
+type ActivityEventSummary = {
+    id: string;
+    slug?: string;
+    title: string;
+    description?: string;
+    heroImage?: string | null;
+    startDate?: string;
+    startTime?: string;
+    mode?: string;
+    location?: string;
+    status?: string;
+};
+
+const normalizeStringArray = (value: unknown): string[] => {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+
+    return [...new Set(
+        value
+            .filter((item): item is string => typeof item === "string")
+            .map((item) => item.trim())
+            .filter((item) => item.length > 0)
+    )];
+};
+
+const buildActivityEventSummary = (
+    doc: FirebaseFirestore.QueryDocumentSnapshot | FirebaseFirestore.DocumentSnapshot
+): ActivityEventSummary => {
+    const data = doc.data() || {};
+
+    return {
+        id: doc.id,
+        slug: typeof data.slug === "string" ? data.slug : undefined,
+        title: typeof data.title === "string" ? data.title : "Untitled event",
+        description: typeof data.description === "string" ? data.description : undefined,
+        heroImage: typeof data.heroImage === "string" ? data.heroImage : null,
+        startDate: typeof data.startDate === "string" ? data.startDate : undefined,
+        startTime: typeof data.startTime === "string" ? data.startTime : undefined,
+        mode: typeof data.mode === "string" ? data.mode : undefined,
+        location: typeof data.location === "string" ? data.location : undefined,
+        status: typeof data.status === "string" ? data.status : undefined,
+    };
+};
+
+const fetchEventsByIds = async (
+    eventIds: string[]
+): Promise<Map<string, ActivityEventSummary>> => {
+    const uniqueIds = normalizeStringArray(eventIds);
+    const eventMap = new Map<string, ActivityEventSummary>();
+
+    if (uniqueIds.length === 0) {
+        return eventMap;
+    }
+
+    const chunkSize = 10;
+    for (let i = 0; i < uniqueIds.length; i += chunkSize) {
+        const chunk = uniqueIds.slice(i, i + chunkSize);
+        const snapshot = await db
+            .collection("events")
+            .where(FieldPath.documentId(), "in", chunk)
+            .get();
+
+        snapshot.forEach((doc) => {
+            eventMap.set(doc.id, buildActivityEventSummary(doc));
+        });
+    }
+
+    return eventMap;
+};
+
 // GET /profile - Returns the profile of the currently authenticated user
 router.get("/", async (req, res) => {
     if (!req.user) {
@@ -219,6 +290,150 @@ router.get("/", async (req, res) => {
         return res.status(500).json({
             error: "Internal server error",
             message: "Failed to retrieve user profile data",
+        });
+    }
+});
+
+router.get("/activity", async (req, res) => {
+    try {
+        const requestedUserId =
+            typeof req.query.userId === "string" && req.query.userId.trim().length > 0
+                ? req.query.userId.trim()
+                : null;
+        const targetUserId = requestedUserId || req.user?.uid || null;
+
+        if (!targetUserId) {
+            return res.status(401).json({ error: "Unauthorized" });
+        }
+
+        const requesterId = req.user?.uid || null;
+        const isOwnProfile = requesterId === targetUserId;
+
+        const profileDoc = await db.collection("profiles").doc(targetUserId).get();
+        if (!profileDoc.exists) {
+            return res.status(200).json({
+                profile: { userId: targetUserId },
+                participation: [],
+                wins: [],
+            });
+        }
+
+        const profileData = profileDoc.data() || {};
+        const participatedEventIds = normalizeStringArray(profileData.events);
+        const wonEventIds = normalizeStringArray(profileData.wins);
+        const referencedEventIds = [...new Set([...participatedEventIds, ...wonEventIds])];
+
+        const eventMap = await fetchEventsByIds(referencedEventIds);
+
+        const isVisibleEvent = (event: ActivityEventSummary): boolean => {
+            if (isOwnProfile) {
+                return true;
+            }
+
+            return event.status === "published";
+        };
+
+        const participation = participatedEventIds
+            .map((eventId) => eventMap.get(eventId))
+            .filter((event): event is ActivityEventSummary => event !== undefined)
+            .filter(isVisibleEvent)
+            .map((event) => ({
+                type: "participation" as const,
+                event,
+            }));
+
+        const wins: Array<{
+            type: "win";
+            event: ActivityEventSummary;
+            award: {
+                id: string;
+                type?: string;
+                place: number | null;
+                title: string;
+                prizeDescription?: string;
+            };
+        }> = [];
+        const repairedWinEventIds = new Set<string>();
+        const winLookupEventIds = [...new Set([...wonEventIds, ...participatedEventIds])];
+
+        for (const eventId of winLookupEventIds) {
+            const event = eventMap.get(eventId);
+            if (!event || !isVisibleEvent(event)) {
+                continue;
+            }
+
+            const awardsSnapshot = await db
+                .collection("events")
+                .doc(eventId)
+                .collection("awards")
+                .where("recipientIds", "array-contains", targetUserId)
+                .get();
+
+            awardsSnapshot.forEach((awardDoc) => {
+                const awardData = awardDoc.data() || {};
+                repairedWinEventIds.add(eventId);
+                wins.push({
+                    type: "win",
+                    event,
+                    award: {
+                        id: awardDoc.id,
+                        type:
+                            typeof awardData.type === "string"
+                                ? awardData.type
+                                : undefined,
+                        place:
+                            typeof awardData.place === "number"
+                                ? awardData.place
+                                : null,
+                        title:
+                            typeof awardData.title === "string"
+                                ? awardData.title
+                                : "Award",
+                        prizeDescription:
+                            typeof awardData.prizeDescription === "string"
+                                ? awardData.prizeDescription
+                                : undefined,
+                    },
+                });
+            });
+        }
+
+        if (isOwnProfile && repairedWinEventIds.size > 0) {
+            const missingWinEventIds = [...repairedWinEventIds].filter(
+                (eventId) => !wonEventIds.includes(eventId)
+            );
+
+            if (missingWinEventIds.length > 0) {
+                await db.collection("profiles").doc(targetUserId).set(
+                    {
+                        wins: FieldValue.arrayUnion(...missingWinEventIds),
+                        updatedAt: new Date(),
+                    },
+                    { merge: true }
+                );
+            }
+        }
+
+        return res.status(200).json({
+            profile: {
+                userId: targetUserId,
+                firstName:
+                    typeof profileData.firstName === "string"
+                        ? profileData.firstName
+                        : "",
+                lastName:
+                    typeof profileData.lastName === "string"
+                        ? profileData.lastName
+                        : "",
+            },
+            participation,
+            wins,
+        });
+    } catch (error) {
+        logger.error("Error fetching profile activity:", error);
+        return res.status(500).json({
+            error: "Internal server error",
+            message: "Failed to retrieve profile activity",
         });
     }
 });
