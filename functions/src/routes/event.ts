@@ -2225,7 +2225,7 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
         registeredAt: new Date(),
         registeredBy: userId,
         source: normalizedAnswers.length > 0 ? "form" : "self-join",
-        communityId: eventData.communityId,
+        communityId: eventData.communityId || null,
         formId: null,
         formLabel: null,
         formAnswers: normalizedAnswers,
