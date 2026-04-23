@@ -35,6 +35,8 @@ import {
 } from "firebase/auth";
 import { FirebaseError } from "firebase/app";
 import type { DevpostProfile } from "../jobs/[slug]/apply/types";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { getFileUrl } from "@/lib/firebase-client";
 
 type StudentProps = {
     email: string;
@@ -79,6 +81,35 @@ type StudentProps = {
     };
 };
 
+type ActivityEvent = {
+    id: string;
+    slug?: string;
+    title: string;
+    description?: string;
+    heroImage?: string | null;
+    heroImageUrl?: string | null;
+    startDate?: string;
+    mode?: string;
+    location?: string;
+};
+
+type ParticipationItem = {
+    type: "participation";
+    event: ActivityEvent;
+};
+
+type WinItem = {
+    type: "win";
+    event: ActivityEvent;
+    award: {
+        id: string;
+        type?: string;
+        place: number | null;
+        title: string;
+        prizeDescription?: string;
+    };
+};
+
 // API service functions
 const apiService = {
     getStudent: async () => {
@@ -113,6 +144,10 @@ const apiService = {
 };
 
 export default function AccountPage() {
+    const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const profileUserId = searchParams.get("userId")?.trim() || "";
+
     const [student, setStudent] = useState({
         id: "",
         email: "",
@@ -185,6 +220,9 @@ export default function AccountPage() {
 
     const [isLoadingGithub, setIsLoadingGithub] = useState(false);
     const [githubError, setGithubError] = useState<string | null>(null);
+    const [participation, setParticipation] = useState<ParticipationItem[]>([]);
+    const [wins, setWins] = useState<WinItem[]>([]);
+    const [isLoadingActivity, setIsLoadingActivity] = useState(false);
 
     // Function to calculate profile completeness
     const calculateProfileScore = (profileData: any) => {
@@ -234,6 +272,79 @@ export default function AccountPage() {
         };
         loadStudent();
     }, []);
+
+    useEffect(() => {
+        const loadActivity = async () => {
+            setIsLoadingActivity(true);
+            try {
+                const query = profileUserId
+                    ? `/profile/activity?userId=${encodeURIComponent(profileUserId)}`
+                    : "/profile/activity";
+                const response = await apiFetch(query);
+                if (!response.ok) {
+                    throw new Error("Failed to load profile activity");
+                }
+
+                const data = await response.json();
+
+                const mapEventsWithImages = async <T extends { event: ActivityEvent }>(
+                    items: T[]
+                ): Promise<T[]> => {
+                    return Promise.all(
+                        items.map(async (item) => {
+                            const heroImagePath = item.event.heroImage;
+                            if (!heroImagePath) {
+                                return {
+                                    ...item,
+                                    event: {
+                                        ...item.event,
+                                        heroImageUrl: null,
+                                    },
+                                };
+                            }
+
+                            try {
+                                const heroImageUrl = await getFileUrl(heroImagePath);
+                                return {
+                                    ...item,
+                                    event: {
+                                        ...item.event,
+                                        heroImageUrl,
+                                    },
+                                };
+                            } catch {
+                                return {
+                                    ...item,
+                                    event: {
+                                        ...item.event,
+                                        heroImageUrl: null,
+                                    },
+                                };
+                            }
+                        })
+                    );
+                };
+
+                const fetchedParticipation = Array.isArray(data.participation)
+                    ? await mapEventsWithImages(data.participation)
+                    : [];
+                const fetchedWins = Array.isArray(data.wins)
+                    ? await mapEventsWithImages(data.wins)
+                    : [];
+
+                setParticipation(fetchedParticipation);
+                setWins(fetchedWins);
+            } catch (error) {
+                console.error("Error loading profile activity:", error);
+                setParticipation([]);
+                setWins([]);
+            } finally {
+                setIsLoadingActivity(false);
+            }
+        };
+
+        loadActivity();
+    }, [profileUserId]);
 
     // Calculate profile completeness dynamically whenever student data changes
     const profileScore = useMemo(() => {
@@ -876,6 +987,20 @@ export default function AccountPage() {
         }
     };
 
+    const truncateText = (text: string | undefined, maxLength: number): string => {
+        if (!text) {
+            return "";
+        }
+
+        return text.length > maxLength
+            ? `${text.slice(0, maxLength).trimEnd()}...`
+            : text;
+    };
+
+    const buildEventHref = (event: ActivityEvent): string => {
+        return `/events/${event.slug || event.id}`;
+    };
+
     if (isLoading) {
         return (
             <div className="w-full max-w-6xl mx-auto p-4 space-y-6">
@@ -1158,6 +1283,13 @@ export default function AccountPage() {
                     >
                         <FileText className="h-4 w-4" />
                         Skills & Resume
+                    </TabsTrigger>
+                    <TabsTrigger
+                        value="activity"
+                        className="flex items-center gap-2"
+                    >
+                        <GraduationCap className="h-4 w-4" />
+                        Events & Wins
                     </TabsTrigger>
                 </TabsList>
 
@@ -2100,6 +2232,127 @@ export default function AccountPage() {
                                     Ready to upload:{" "}
                                     <strong>{resumeFile.name}</strong>
                                 </p>
+                            )}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                <TabsContent value="activity" className="space-y-6 mt-6">
+                    <Card>
+                        <CardContent className="p-6">
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className="text-xl font-semibold">Participation</h2>
+                                <Badge variant="secondary">{participation.length} events</Badge>
+                            </div>
+
+                            {isLoadingActivity ? (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {Array.from({ length: 3 }).map((_, index) => (
+                                        <Skeleton key={index} className="h-56 w-full rounded-xl" />
+                                    ))}
+                                </div>
+                            ) : participation.length === 0 ? (
+                                <p className="text-sm text-gray-500">No participation events found.</p>
+                            ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {participation.map((item, index) => (
+                                        <button
+                                            key={`${item.event.id}-${index}`}
+                                            type="button"
+                                            onClick={() => navigate(buildEventHref(item.event))}
+                                            className="text-left rounded-xl border border-slate-200 bg-white hover:border-slate-300 hover:shadow-md transition overflow-hidden"
+                                        >
+                                            {item.event.heroImageUrl ? (
+                                                <img
+                                                    src={item.event.heroImageUrl}
+                                                    alt={item.event.title}
+                                                    className="h-32 w-full object-cover"
+                                                />
+                                            ) : (
+                                                <div className="h-32 w-full bg-slate-100" />
+                                            )}
+                                            <div className="p-3 space-y-2">
+                                                <Badge variant="outline" className="text-xs">Participation</Badge>
+                                                <p className="font-semibold text-sm leading-tight">{item.event.title}</p>
+                                                <p className="text-xs text-slate-600 line-clamp-3">
+                                                    {truncateText(item.event.description, 140) || "No description provided."}
+                                                </p>
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardContent className="p-6">
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className="text-xl font-semibold">Wins & Awards</h2>
+                                <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">{wins.length} awards</Badge>
+                            </div>
+
+                            {isLoadingActivity ? (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {Array.from({ length: 3 }).map((_, index) => (
+                                        <Skeleton key={index} className="h-64 w-full rounded-xl" />
+                                    ))}
+                                </div>
+                            ) : wins.length === 0 ? (
+                                <p className="text-sm text-gray-500">No wins recorded yet.</p>
+                            ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {wins.map((item, index) => {
+                                        const isFirstPlace = item.award.place === 1;
+
+                                        return (
+                                            <button
+                                                key={`${item.award.id}-${index}`}
+                                                type="button"
+                                                onClick={() => navigate(buildEventHref(item.event))}
+                                                className={`text-left rounded-xl border transition overflow-hidden hover:shadow-md ${
+                                                    isFirstPlace
+                                                        ? "border-amber-300 bg-gradient-to-b from-amber-50 to-white"
+                                                        : "border-slate-200 bg-white hover:border-slate-300"
+                                                }`}
+                                            >
+                                                {item.event.heroImageUrl ? (
+                                                    <img
+                                                        src={item.event.heroImageUrl}
+                                                        alt={item.event.title}
+                                                        className="h-32 w-full object-cover"
+                                                    />
+                                                ) : (
+                                                    <div
+                                                        className={`h-32 w-full ${
+                                                            isFirstPlace ? "bg-amber-100" : "bg-slate-100"
+                                                        }`}
+                                                    />
+                                                )}
+                                                <div className="p-3 space-y-2">
+                                                    <Badge
+                                                        className={
+                                                            isFirstPlace
+                                                                ? "bg-amber-500 text-white hover:bg-amber-500"
+                                                                : "bg-indigo-100 text-indigo-800 hover:bg-indigo-100"
+                                                        }
+                                                    >
+                                                        {isFirstPlace
+                                                            ? "1st Place Award"
+                                                            : item.award.place
+                                                            ? `${item.award.place}${item.award.place === 2 ? "nd" : item.award.place === 3 ? "rd" : "th"} Place Award`
+                                                            : "Special Award"}
+                                                    </Badge>
+                                                    <p className="font-semibold text-sm leading-tight">{item.award.title}</p>
+                                                    <p className="text-xs text-slate-700">{item.event.title}</p>
+                                                    <p className="text-xs text-slate-600 line-clamp-3">
+                                                        {truncateText(item.award.prizeDescription || item.event.description, 140) || "No description provided."}
+                                                    </p>
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             )}
                         </CardContent>
                     </Card>
