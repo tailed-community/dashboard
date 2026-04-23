@@ -1040,6 +1040,84 @@ router.post("/", async (req: Request, res: Response) => {
 router.post("/:eventId/registration-form", async (req: Request, res: Response) => {
   try {
     const { eventId } = req.params;
+    const userId = req.user?.uid;
+
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    // Resolve event (by id or slug)
+    const eventDoc = await resolveEvent(eventId);
+    if (!eventDoc) {
+      return res.status(404).json({ error: "Event not found" });
+    }
+
+    const resolvedEventId = eventDoc.id;
+    const eventData = eventDoc.data();
+    if (!eventData) {
+      return res.status(404).json({ error: "Event data not found" });
+    }
+
+    // Only allow event creator or community admin to create the form
+    let isAuthorized = eventData.createdBy === userId;
+    if (!isAuthorized && eventData.communityId) {
+      const communityDoc = await db.collection("communities").doc(eventData.communityId).get();
+      const admins = communityDoc.data()?.admins || [];
+      isAuthorized = admins.includes(userId);
+    }
+
+    if (!isAuthorized) {
+      return res.status(403).json({ error: "Only event creators or community admins can create registration forms" });
+    }
+
+    // Default fields: Full name and Email (autofill from profile)
+    const defaultFields = [
+      {
+        question: "Full name",
+        label: "Full name",
+        type: "text",
+        autofillSource: "profile.fullName",
+        required: true,
+      },
+      {
+        question: "Email address",
+        label: "Email",
+        type: "email",
+        autofillSource: "profile.email",
+        required: true,
+      },
+    ];
+
+    // Store as a single 'default' document under registrationForms subcollection
+    const formRef = db
+      .collection("events")
+      .doc(resolvedEventId)
+      .collection("registrationForms")
+      .doc("default");
+
+    await formRef.set({
+      fields: defaultFields,
+      createdAt: new Date(),
+      createdBy: userId,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Default registration form created",
+    });
+  } catch (error: any) {
+    console.error("Error creating registration form:", error);
+    return res.status(500).json({ error: "Failed to create registration form", details: error.message });
+  }
+});
+
+/**
+ * PATCH /events/:eventId
+ * Update an event (supports both JSON and multipart/form-data for hero/schedule images)
+ */
+router.post("/:eventId/registration-form", async (req: Request, res: Response) => {
+  try {
+    const { eventId } = req.params;
     const userId = requireUserId(req, res);
     if (!userId) return;
 

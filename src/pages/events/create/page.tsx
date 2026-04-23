@@ -7,8 +7,14 @@ import {
     DialogTitle,
     DialogDescription,
     DialogFooter,
+<<<<<<< HEAD
 } from "@/components/ui/dialog";
 import { useFieldArray, useForm } from "react-hook-form";
+=======
+    DialogClose,
+} from "@/components/ui/dialog";
+import { useForm } from "react-hook-form";
+>>>>>>> e74a059 (add default from creation)
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -405,12 +411,21 @@ export default function CreateEventPage() {
     };
 
     const handlePromptYes = () => {
+<<<<<<< HEAD
         // Navigate organizer to the custom form editor for this event
         setShowRegistrationPrompt(false);
         if (createdEventId) {
             navigate(`/events/${createdEventId}/forms/custom`);
         } else {
             toast.info("Event created — you can edit the registration form later.");
+=======
+        // Custom form creation not implemented yet
+        setShowRegistrationPrompt(false);
+        toast.info("Custom registration form editor not implemented yet.");
+        if (createdEventId) {
+            navigate(`/events/${createdEventId}`);
+        } else {
+>>>>>>> e74a059 (add default from creation)
             navigate("/events");
         }
     };
@@ -1020,6 +1035,7 @@ export default function CreateEventPage() {
                                         </DialogFooter>
                                     </DialogContent>
                                 </Dialog>
+<<<<<<< HEAD
                                 {/* Schedule Image Upload */}
                                 <FormField
                                     control={form.control}
@@ -1067,6 +1083,8 @@ export default function CreateEventPage() {
                                     )}
                                 />
 
+=======
+>>>>>>> e74a059 (add default from creation)
                                 {/* Submit Buttons */}
                                 <div className="flex gap-3 pt-4">
                                     <Button
