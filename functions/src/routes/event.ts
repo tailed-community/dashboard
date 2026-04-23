@@ -898,6 +898,47 @@ router.post("/:eventId/registration-form", async (req: Request, res: Response) =
 });
 
 /**
+ * GET /events/:eventId/registration-form
+ * Return the default or custom registration form schema for an event
+ */
+router.get("/:eventId/registration-form", async (req: Request, res: Response) => {
+  try {
+    const { eventId } = req.params;
+
+    const eventDoc = await resolveEvent(eventId);
+    if (!eventDoc) return res.status(404).json({ error: "Event not found" });
+
+    const resolvedEventId = eventDoc.id;
+
+    const formRef = db
+      .collection("events")
+      .doc(resolvedEventId)
+      .collection("registrationForms")
+      .doc("default");
+
+    const formDoc = await formRef.get();
+    if (formDoc.exists) {
+      const data = formDoc.data() || {};
+      return res.status(200).json({ success: true, form: data });
+    }
+
+    // Fallback: return default fields if none created yet
+    const fallback = {
+      fields: [
+        { question: "First name", label: "First name", type: "text", autofillSource: "profile.firstName", required: true },
+        { question: "Last name", label: "Last name", type: "text", autofillSource: "profile.lastName", required: true },
+        { question: "Email address", label: "Email", type: "email", autofillSource: "profile.email", required: true },
+      ],
+    };
+
+    return res.status(200).json({ success: true, form: fallback });
+  } catch (error: any) {
+    console.error("Error fetching registration form:", error);
+    return res.status(500).json({ error: "Failed to fetch registration form", details: error.message });
+  }
+});
+
+/**
  * PATCH /events/:eventId
  * Update an event (supports both JSON and multipart/form-data for hero/schedule images)
  */

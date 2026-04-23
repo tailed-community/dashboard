@@ -421,7 +421,13 @@ export default function EventDetailPage() {
                                             <ExternalLink className="h-4 w-4 ml-2" />
                                         </Button>
                                     ) : (
-                                        <>  </>
+                                        <Button
+                                            onClick={() => navigate(`/events/${id}/register`)}
+                                            className="w-full bg-slate-900 hover:bg-slate-800 rounded-lg"
+                                            size="lg"
+                                        >
+                                            Register
+                                        </Button>
                                     )
                                 ) : (
                                     <Button disabled className="w-full rounded-lg" size="lg">
