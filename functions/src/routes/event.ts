@@ -1070,13 +1070,20 @@ router.post("/:eventId/registration-form", async (req: Request, res: Response) =
       return res.status(403).json({ error: "Only event creators or community admins can create registration forms" });
     }
 
-    // Default fields: Full name and Email (autofill from profile)
+    // Default fields: First name, Last name and Email (autofill from profile)
     const defaultFields = [
       {
-        question: "Full name",
-        label: "Full name",
+        question: "First name",
+        label: "First name",
         type: "text",
-        autofillSource: "profile.fullName",
+        autofillSource: "profile.firstName",
+        required: true,
+      },
+      {
+        question: "Last name",
+        label: "Last name",
+        type: "text",
+        autofillSource: "profile.lastName",
         required: true,
       },
       {
@@ -2064,10 +2071,24 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Event is not open for joining" });
     }
 
-    const validationResult = z.object({
+    // Accept role, optional account info, optional form metadata and answers
+    const joinSchema = z.object({
       role: z.string().min(1).max(50),
-    }).safeParse(req.body);
+      email: z.string().email().optional(),
+      firstName: z.string().min(1).optional(),
+      lastName: z.string().min(1).optional(),
+      answers: z
+        .array(
+          z.object({
+            questionId: z.string().optional(),
+            label: z.string().min(1),
+            value: z.any(),
+          })
+        )
+        .optional(),
+    });
 
+    const validationResult = joinSchema.safeParse(req.body);
     if (!validationResult.success) {
       return res.status(400).json({
         error: "Invalid request data",
@@ -2075,7 +2096,7 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
       });
     }
 
-    const { role } = validationResult.data;
+    const { role, email: providedEmail, firstName: providedFirstName, lastName: providedLastName, answers } = validationResult.data;
 
     if (eventData.communityId) {
       const communityContext = await requireCommunityContext(
@@ -2119,11 +2140,38 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
         return res.status(400).json({ error: "Already joined this event with this role" });
       }
 
+      // Build attendee entry: personal fields (email, names, etc.) are stored in formAnswers
+      const resolvedEmail = (providedEmail && providedEmail.toLowerCase()) || (profileDoc.data()?.email || "");
+      const resolvedFirstName = providedFirstName ?? profileDoc.data()?.firstName ?? "";
+      const resolvedLastName = providedLastName ?? profileDoc.data()?.lastName ?? "";
+
+      // Normalize incoming answers (ensure questionId, label, value)
+      let normalizedAnswers = Array.isArray(answers)
+        ? answers.map((a: any) => ({ questionId: a.questionId || null, label: a.label, value: a.value }))
+        : [];
+
+      // Avoid duplicate labels (case-insensitive)
+      const existingLabels = new Set(normalizedAnswers.map((a: any) => String(a.label).toLowerCase()));
+
+      // Ensure first name / last name / email are included in answers (from provided values or profile)
+      if (resolvedFirstName && !existingLabels.has("first name") && !existingLabels.has("firstname") && !existingLabels.has("first_name")) {
+        normalizedAnswers.unshift({ questionId: null, label: "First name", value: resolvedFirstName });
+        existingLabels.add("first name");
+      }
+
+      if (resolvedLastName && !existingLabels.has("last name") && !existingLabels.has("lastname") && !existingLabels.has("last_name")) {
+        normalizedAnswers.unshift({ questionId: null, label: "Last name", value: resolvedLastName });
+        existingLabels.add("last name");
+      }
+
+      if (resolvedEmail && !existingLabels.has("email") && !existingLabels.has("email address") && !existingLabels.has("e-mail")) {
+        normalizedAnswers.unshift({ questionId: null, label: "Email", value: resolvedEmail });
+        existingLabels.add("email");
+      }
+
+      // Create attendee entry with only technical fields; personal PII is stored in formAnswers
       const attendeeEntry = createAttendeeSchema.parse({
         userId,
-        email: profileDoc.data()?.email || "",
-        firstName: profileDoc.data()?.firstName,
-        lastName: profileDoc.data()?.lastName,
         role,
         status: "confirmed",
       });
@@ -2135,8 +2183,11 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
         eventId: resolvedEventId,
         registeredAt: new Date(),
         registeredBy: userId,
-        source: "self-join",
+        source: normalizedAnswers.length > 0 ? "form" : "self-join",
         communityId: eventData.communityId,
+        formId: null,
+        formLabel: null,
+        formAnswers: normalizedAnswers,
       });
 
       if (existingRegistrationSnapshot.empty) {
