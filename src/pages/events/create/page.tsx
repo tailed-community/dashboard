@@ -1,5 +1,14 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter,
+    DialogClose,
+} from "@/components/ui/dialog";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -144,6 +153,8 @@ export default function CreateEventPage() {
     const navigate = useNavigate();
     const { user } = useAuth();
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [createdEventId, setCreatedEventId] = useState<string | null>(null);
+    const [showRegistrationPrompt, setShowRegistrationPrompt] = useState(false);
     const [communities, setCommunities] = useState<Community[]>([]);
     const [loadingCommunities, setLoadingCommunities] = useState(true);
     const [heroImagePreview, setHeroImagePreview] = useState<string | null>(null);
@@ -276,7 +287,21 @@ export default function CreateEventPage() {
                 description: "Your event has been published.",
             });
 
-            navigate("/events");
+            // Keep created event id
+            const newEventId = result.eventId || null;
+            setCreatedEventId(newEventId);
+
+            // Automatically create default registration form (name + email)
+            if (newEventId) {
+                try {
+                    await createDefaultRegistrationForm(newEventId);
+                } catch (err) {
+                    // createDefaultRegistrationForm already logs and toasts on error
+                }
+            }
+
+            // Show prompt asking if organizer wants to create a custom form
+            setShowRegistrationPrompt(true);
         } catch (error) {
             console.error("Error creating event:", error);
             toast.error("Failed to create event", {
@@ -284,6 +309,46 @@ export default function CreateEventPage() {
             });
         } finally {
             setIsSubmitting(false);
+        }
+    };
+
+    // Create default registration form for the event (called when organizer chooses No)
+    const createDefaultRegistrationForm = async (eventId: string) => {
+        try {
+            const resp = await apiFetch(`/events/${eventId}/registration-form`, {
+                method: "POST",
+            });
+
+            const json = await resp.json();
+            if (!resp.ok) {
+                throw new Error(json.error || "Failed to create registration form");
+            }
+
+            toast.success("Registration form created", { description: "Default registration fields added (name, email)." });
+        } catch (err) {
+            console.error("Failed to create default registration form:", err);
+            toast.error("Failed to create registration form");
+        }
+    };
+
+    const handlePromptNo = async () => {
+        // Default form was already created automatically. Close prompt and go to event page.
+        setShowRegistrationPrompt(false);
+        if (createdEventId) {
+            navigate(`/events/${createdEventId}`);
+        } else {
+            navigate("/events");
+        }
+    };
+
+    const handlePromptYes = () => {
+        // Custom form creation not implemented yet
+        setShowRegistrationPrompt(false);
+        toast.info("Custom registration form editor not implemented yet.");
+        if (createdEventId) {
+            navigate(`/events/${createdEventId}`);
+        } else {
+            navigate("/events");
         }
     };
 
@@ -305,7 +370,7 @@ export default function CreateEventPage() {
                     </CardContent>
                 </Card>
             </div>
-        );
+            );      
     }
 
     return (
@@ -842,7 +907,21 @@ export default function CreateEventPage() {
                                         </FormItem>
                                     )}
                                 />
-
+                                {/* Registration form prompt dialog */}
+                                <Dialog open={showRegistrationPrompt} onOpenChange={setShowRegistrationPrompt}>
+                                    <DialogContent>
+                                        <DialogHeader>
+                                            <DialogTitle>Create registration form?</DialogTitle>
+                                            <DialogDescription>
+                                                Do you want to create a custom registration form for this event?
+                                            </DialogDescription>
+                                        </DialogHeader>
+                                        <DialogFooter>
+                                            <Button variant="outline" onClick={handlePromptYes} className="mr-2">Yes (custom)</Button>
+                                            <Button onClick={handlePromptNo}>No — create default form</Button>
+                                        </DialogFooter>
+                                    </DialogContent>
+                                </Dialog>
                                 {/* Submit Buttons */}
                                 <div className="flex gap-3 pt-4">
                                     <Button
