@@ -26,10 +26,25 @@ export default function EventRegistrationPage() {
     const load = async () => {
       setLoading(true);
       try {
-        const realResp = await apiFetch(`/events/${eventId}/registration-form`);
-        if (!realResp.ok) throw await realResp.json();
-        const body = await realResp.json();
-        setFields(body.form?.fields || []);
+        const evRes = await apiFetch(`/events/${eventId}`);
+        if (!evRes.ok) throw await evRes.json();
+        const evBody = await evRes.json();
+        const regFormId = evBody.event?.registrationFormId;
+
+        if (regFormId && regFormId !== "default") {
+          const customResp = await apiFetch(`/events/${eventId}/registration-form?formId=${encodeURIComponent(regFormId)}`);
+          if (customResp.ok) {
+            const customBody = await customResp.json();
+            setFields(customBody.form?.fields || []);
+            setLoading(false);
+            return;
+          }
+        }
+        // Fallback to default form
+        const defaultResp = await apiFetch(`/events/${eventId}/registration-form`);
+        if (!defaultResp.ok) throw await defaultResp.json();
+        const defaultBody = await defaultResp.json();
+        setFields(defaultBody.form?.fields || []);
       } catch (err: any) {
         console.error("Failed to load registration form", err);
         setError(err?.message || "Failed to load form");

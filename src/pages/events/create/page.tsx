@@ -342,12 +342,12 @@ export default function CreateEventPage() {
     };
 
     const handlePromptYes = () => {
-        // Custom form creation not implemented yet
+        // Navigate organizer to the custom form editor for this event
         setShowRegistrationPrompt(false);
-        toast.info("Custom registration form editor not implemented yet.");
         if (createdEventId) {
-            navigate(`/events/${createdEventId}`);
+            navigate(`/events/${createdEventId}/forms/custom`);
         } else {
+            toast.info("Event created — you can edit the registration form later.");
             navigate("/events");
         }
     };

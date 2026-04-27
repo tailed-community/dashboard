@@ -296,8 +296,12 @@ const requireCommunityContext = async (
 
   const communityDoc = await db.collection("communities").doc(communityId).get();
   if (!communityDoc.exists) {
-    res.status(404).json({ error: "Community not found" });
-    return null;
+    console.warn(`Community ${communityId} not found; treating as no-admins`);
+    return {
+      communityId,
+      communityData: {},
+      admins: [],
+    };
   }
 
   const communityData = communityDoc.data() || {};
@@ -874,22 +878,83 @@ router.post("/:eventId/registration-form", async (req: Request, res: Response) =
       },
     ];
 
-    // Store as a single 'default' document under registrationForms subcollection
-    const formRef = db
-      .collection("events")
-      .doc(resolvedEventId)
-      .collection("registrationForms")
-      .doc("default");
+    // Allow callers to provide a specific formId and/or an explicit fields array
+    // If no fields provided, we create the default form. If no formId provided
+    // the document id will be 'default' to preserve existing behaviour.
+    const body = req.body || {};
+    const requestedFormId = typeof body.formId === "string" && body.formId ? body.formId : "default";
+    const providedFields = Array.isArray(body.fields) ? body.fields : null;
 
-    await formRef.set({
-      fields: defaultFields,
-      createdAt: new Date(),
-      createdBy: userId,
-    });
+    const fieldsToSave = providedFields || defaultFields;
+
+    // Use a single transaction to atomically create the form and update the event.
+    // This prevents the form from being created without the event pointing to it.
+    try {
+      const eventRef = db.collection("events").doc(resolvedEventId);
+      const formRef = eventRef.collection("registrationForms").doc(requestedFormId);
+
+      await db.runTransaction(async (tx) => {
+        const [evSnap, formSnap] = await Promise.all([tx.get(eventRef), tx.get(formRef)]);
+
+        if (!evSnap.exists) {
+          const e: any = new Error("Event not found when creating registration form");
+          e.status = 404;
+          throw e;
+        }
+
+        // Prevent overwriting an existing form document
+        if (formSnap.exists) {
+          const e: any = new Error("Registration form already exists");
+          e.status = 409;
+          throw e;
+        }
+
+        tx.set(formRef, {
+          fields: fieldsToSave,
+          createdAt: new Date(),
+          createdBy: userId,
+        });
+
+        tx.update(eventRef, {
+          registrationFormId: requestedFormId,
+          updatedAt: new Date(),
+        });
+      });
+    } catch (err: any) {
+      console.error("Failed to create registration form transaction:", err);
+      if ((err as any).status === 409) {
+        return res.status(409).json({ error: "Registration form already exists" });
+      }
+      if ((err as any).status === 404) {
+        return res.status(404).json({ error: "Event not found when creating registration form" });
+      }
+      return res.status(500).json({ error: "Failed to create registration form", details: err.message });
+    }
+
+    // Verification: re-fetch event and confirm registrationFormId was set
+    try {
+      const refreshedEvent = await db.collection("events").doc(resolvedEventId).get();
+      const refreshedData = refreshedEvent.exists ? refreshedEvent.data() || {} : {};
+      if (refreshedData.registrationFormId !== requestedFormId) {
+        console.error("Post-transaction verification: registrationFormId not set on event", {
+          eventId: resolvedEventId,
+          expected: requestedFormId,
+          actual: refreshedData.registrationFormId,
+        });
+      } else {
+        console.info("Post-transaction verification: registrationFormId set on event", {
+          eventId: resolvedEventId,
+          formId: requestedFormId,
+        });
+      }
+    } catch (verifyErr) {
+      console.error("Failed to verify event after creating registration form:", verifyErr);
+    }
 
     return res.status(201).json({
       success: true,
-      message: "Default registration form created",
+      message: "Registration form saved",
+      formId: requestedFormId,
     });
   } catch (error: any) {
     console.error("Error creating registration form:", error);
@@ -910,19 +975,35 @@ router.get("/:eventId/registration-form", async (req: Request, res: Response) =>
 
     const resolvedEventId = eventDoc.id;
 
-    const formRef = db
-      .collection("events")
-      .doc(resolvedEventId)
-      .collection("registrationForms")
-      .doc("default");
+    // Deterministic priority:
+    // 1) explicit ?formId
+    // 2) event.registrationFormId
+    // 3) 'default'
+    // 4) hardcoded fallback
 
-    const formDoc = await formRef.get();
-    if (formDoc.exists) {
-      const data = formDoc.data() || {};
-      return res.status(200).json({ success: true, form: data });
+    const explicitFormId = typeof req.query.formId === "string" && req.query.formId ? req.query.formId : null;
+
+    const eventData = eventDoc.data() || {};
+    const eventDefinedFormId = typeof eventData.registrationFormId === "string" && eventData.registrationFormId ? eventData.registrationFormId : null;
+
+    let tryOrder: (string | null)[] = [explicitFormId, eventDefinedFormId, "default"];
+
+    // Iterate through priority list and return first existing form
+    for (const id of tryOrder) {
+      if (!id) continue;
+      const formRef = db
+        .collection("events")
+        .doc(resolvedEventId)
+        .collection("registrationForms")
+        .doc(id);
+
+      const formDoc = await formRef.get();
+      if (formDoc.exists) {
+        return res.status(200).json({ success: true, form: formDoc.data() || {}, formId: id });
+      }
     }
 
-    // Fallback: return default fields if none created yet
+    // Hardcoded fallback
     const fallback = {
       fields: [
         { question: "First name", label: "First name", type: "text", autofillSource: "profile.firstName", required: true },
@@ -931,7 +1012,7 @@ router.get("/:eventId/registration-form", async (req: Request, res: Response) =>
       ],
     };
 
-    return res.status(200).json({ success: true, form: fallback });
+    return res.status(200).json({ success: true, form: fallback, formId: "default" });
   } catch (error: any) {
     console.error("Error fetching registration form:", error);
     return res.status(500).json({ error: "Failed to fetch registration form", details: error.message });
