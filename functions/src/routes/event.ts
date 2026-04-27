@@ -464,7 +464,7 @@ router.get("/:identifier", async (req: Request, res: Response) => {
   try {
     const { identifier } = req.params;
 
-    const eventContext = await loadEventContext(res, identifier);
+    const eventContext = await loadEventContext(res, identifier.toString());
     if (!eventContext) return;
 
     const { eventDoc, eventData } = eventContext;
@@ -528,7 +528,7 @@ router.post("/:eventId/awards", async (req: Request, res: Response) => {
     const userId = requireUserId(req, res);
     if (!userId) return;
 
-    const eventContext = await loadEventContext(res, eventId);
+    const eventContext = await loadEventContext(res, eventId.toString());
     if (!eventContext) return;
 
     const { eventDoc, eventData } = eventContext;
@@ -596,7 +596,7 @@ router.patch("/:eventId/awards/:awardId", async (req: Request, res: Response) =>
     const userId = requireUserId(req, res);
     if (!userId) return;
 
-    const eventContext = await loadEventContext(res, eventId);
+    const eventContext = await loadEventContext(res, eventId.toString());
     if (!eventContext) return;
 
     const { eventDoc, eventData } = eventContext;
@@ -624,7 +624,7 @@ router.patch("/:eventId/awards/:awardId", async (req: Request, res: Response) =>
       .collection("events")
       .doc(eventDoc.id)
       .collection("awards")
-      .doc(awardId);
+      .doc(awardId.toString());
 
     const awardDoc = await awardRef.get();
     if (!awardDoc.exists) {
@@ -665,7 +665,7 @@ router.get("/:eventId/awards", async (req: Request, res: Response) => {
     const { eventId } = req.params;
     const userId = req.user?.uid;
 
-    const eventContext = await loadEventContext(res, eventId);
+    const eventContext = await loadEventContext(res, eventId.toString());
     if (!eventContext) return;
 
     const { eventDoc, eventData } = eventContext;
@@ -725,7 +725,7 @@ router.delete("/:eventId/awards/:awardId", async (req: Request, res: Response) =
     const userId = requireUserId(req, res);
     if (!userId) return;
 
-    const eventContext = await loadEventContext(res, eventId);
+    const eventContext = await loadEventContext(res, eventId.toString());
     if (!eventContext) return;
 
     const { eventDoc, eventData } = eventContext;
@@ -745,7 +745,7 @@ router.delete("/:eventId/awards/:awardId", async (req: Request, res: Response) =
       .collection("events")
       .doc(eventDoc.id)
       .collection("awards")
-      .doc(awardId);
+      .doc(awardId.toString());
 
     const awardDoc = await awardRef.get();
     if (!awardDoc.exists) {
@@ -820,7 +820,7 @@ router.patch("/:eventId", async (req: Request, res: Response) => {
     const userId = requireUserId(req, res);
     if (!userId) return;
 
-    const eventContext = await loadEventContext(res, eventId);
+    const eventContext = await loadEventContext(res, eventId.toString());
     if (!eventContext) return;
 
     const { resolvedEventId, eventData } = eventContext;
@@ -924,7 +924,7 @@ router.delete("/:eventId", async (req: Request, res: Response) => {
     const userId = requireUserId(req, res);
     if (!userId) return;
 
-    const eventContext = await loadEventContext(res, eventId);
+    const eventContext = await loadEventContext(res, eventId.toString());
     if (!eventContext) return;
 
     const { resolvedEventId, eventData } = eventContext;
@@ -1002,7 +1002,7 @@ router.post("/:eventId/import-attendees", async (req: Request, res: Response) =>
 
     const { attendees } = validationResult.data;
 
-    const eventContext = await loadEventContext(res, eventId);
+    const eventContext = await loadEventContext(res, eventId.toString());
     if (!eventContext) return;
 
     const { resolvedEventId, eventData } = eventContext;
@@ -1208,7 +1208,7 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
     const userId = requireUserId(req, res);
     if (!userId) return;
 
-    const eventContext = await loadEventContext(res, eventId);
+    const eventContext = await loadEventContext(res, eventId.toString());
     if (!eventContext) return;
 
     const { resolvedEventId, eventData } = eventContext;
@@ -1349,7 +1349,7 @@ router.get("/:eventId/attendees", async (req: Request, res: Response) => {
     const userId = requireUserId(req, res);
     if (!userId) return;
 
-    const eventContext = await loadEventContext(res, eventId);
+    const eventContext = await loadEventContext(res, eventId.toString());
     if (!eventContext) return;
 
     const { resolvedEventId, eventData } = eventContext;

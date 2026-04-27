@@ -163,7 +163,7 @@ router.get("/communities/:identifier", async (req: Request, res: Response) => {
 
     let communityDoc;
     
-    communityDoc = await db.collection("communities").doc(identifier).get();
+    communityDoc = await db.collection("communities").doc(identifier.toString()).get();
     
     if (!communityDoc.exists) {
       const slugQuery = await db
@@ -275,7 +275,7 @@ router.get("/events/:identifier", async (req: Request, res: Response) => {
 
     let eventDoc;
     
-    eventDoc = await db.collection("events").doc(identifier).get();
+    eventDoc = await db.collection("events").doc(identifier.toString()).get();
     
     if (!eventDoc.exists) {
       const slugQuery = await db
@@ -371,7 +371,7 @@ router.get("/companies/:identifier", async (req: Request, res: Response) => {
 
     let companyDoc;
     
-    companyDoc = await db.collection("organizations").doc(identifier).get();
+    companyDoc = await db.collection("organizations").doc(identifier.toString()).get();
     
     if (!companyDoc.exists) {
       const slugQuery = await db
