@@ -96,7 +96,7 @@ router.get("/:identifier", async (req: Request, res: Response) => {
     let communityDoc;
     
     // Try fetching by ID first
-    communityDoc = await db.collection("communities").doc(identifier).get();
+    communityDoc = await db.collection("communities").doc(identifier.toString()).get();
     
     // If not found by ID, try by slug
     if (!communityDoc.exists) {
@@ -343,7 +343,7 @@ router.post("/:communityId/join", async (req: Request, res: Response) => {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const communityRef = db.collection("communities").doc(communityId);
+    const communityRef = db.collection("communities").doc(communityId.toString());
     const communityDoc = await communityRef.get();
 
     if (!communityDoc.exists) {
@@ -404,7 +404,7 @@ router.post("/:communityId/leave", async (req: Request, res: Response) => {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const communityRef = db.collection("communities").doc(communityId);
+    const communityRef = db.collection("communities").doc(communityId.toString());
     const communityDoc = await communityRef.get();
 
     if (!communityDoc.exists) {
@@ -475,7 +475,7 @@ router.patch("/:communityId", async (req: Request, res: Response) => {
     }
 
     // Get community and verify user is an admin before doing any expensive work
-    const communityDoc = await db.collection("communities").doc(communityId).get();
+    const communityDoc = await db.collection("communities").doc(communityId.toString()).get();
     const communityData = communityDoc.data();
     if (!communityDoc.exists || !communityData) {
       return res.status(404).json({ error: "Community not found" });
@@ -512,7 +512,7 @@ router.patch("/:communityId", async (req: Request, res: Response) => {
 
     const updates = validationResult.data;
 
-    await db.collection("communities").doc(communityId).update({
+    await db.collection("communities").doc(communityId.toString()).update({
       ...updates,
       ...(newLogoPatch && { logo: newLogoPatch }),
       ...(newBannerPath && { banner: newBannerPath }),
@@ -549,7 +549,7 @@ router.get("/:communityId/events", async (req: Request, res: Response) => {
     }
 
     // Get community and verify user is the creator
-    const communityDoc = await db.collection("communities").doc(communityId).get();
+    const communityDoc = await db.collection("communities").doc(communityId.toString()).get();
     if (!communityDoc.exists) {
       return res.status(404).json({ error: "Community not found" });
     }
@@ -606,7 +606,7 @@ router.get("/:communityId/members", async (req: Request, res: Response) => {
     }
 
     // Get community and verify user is the creator
-    const communityDoc = await db.collection("communities").doc(communityId).get();
+    const communityDoc = await db.collection("communities").doc(communityId.toString()).get();
     if (!communityDoc.exists) {
       return res.status(404).json({ error: "Community not found" });
     }
@@ -710,7 +710,7 @@ router.post("/:communityId/import-members", async (req: Request, res: Response) 
     const { members } = validationResult.data;
 
     // Get community and verify user is the creator
-    const communityDoc = await db.collection("communities").doc(communityId).get();
+    const communityDoc = await db.collection("communities").doc(communityId.toString()).get();
     if (!communityDoc.exists) {
       return res.status(404).json({ error: "Community not found" });
     }
@@ -815,7 +815,7 @@ router.post("/:communityId/import-members", async (req: Request, res: Response) 
     // Update community members array and count
     if (newMemberIds.length > 0) {
       const updatedMembers = [...currentMembers, ...newMemberIds];
-      await db.collection("communities").doc(communityId).update({
+      await db.collection("communities").doc(communityId.toString()).update({
         members: updatedMembers,
         memberCount: updatedMembers.length,
         updatedAt: new Date(),
@@ -866,7 +866,7 @@ router.post("/:communityId/admins", async (req: Request, res: Response) => {
     const { userId: newAdminId } = validationResult.data;
 
     // Get community and verify user is an admin
-    const communityDoc = await db.collection("communities").doc(communityId).get();
+    const communityDoc = await db.collection("communities").doc(communityId.toString()).get();
     if (!communityDoc.exists) {
       return res.status(404).json({ error: "Community not found" });
     }
@@ -895,7 +895,7 @@ router.post("/:communityId/admins", async (req: Request, res: Response) => {
     }
 
     // Add to admins array
-    await db.collection("communities").doc(communityId).update({
+    await db.collection("communities").doc(communityId.toString()).update({
       admins: [...admins, newAdminId],
       updatedAt: new Date(),
     });
@@ -929,7 +929,7 @@ router.delete("/:communityId/admins/:adminId", async (req: Request, res: Respons
     }
 
     // Get community and verify user is an admin
-    const communityDoc = await db.collection("communities").doc(communityId).get();
+    const communityDoc = await db.collection("communities").doc(communityId.toString()).get();
     if (!communityDoc.exists) {
       return res.status(404).json({ error: "Community not found" });
     }
@@ -958,7 +958,7 @@ router.delete("/:communityId/admins/:adminId", async (req: Request, res: Respons
 
     // Remove from admins array
     const updatedAdmins = admins.filter((id: string) => id !== adminId);
-    await db.collection("communities").doc(communityId).update({
+    await db.collection("communities").doc(communityId.toString()).update({
       admins: updatedAdmins,
       updatedAt: new Date(),
     });
@@ -991,7 +991,7 @@ router.get("/:communityId/admins", async (req: Request, res: Response) => {
     }
 
     // Get community and verify user is an admin
-    const communityDoc = await db.collection("communities").doc(communityId).get();
+    const communityDoc = await db.collection("communities").doc(communityId.toString()).get();
     if (!communityDoc.exists) {
       return res.status(404).json({ error: "Community not found" });
     }
