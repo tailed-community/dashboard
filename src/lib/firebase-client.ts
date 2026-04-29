@@ -1,4 +1,4 @@
-import { getApps, getApp, initializeApp } from "@firebase/app";
+import { getApps, getApp, initializeApp } from "firebase/app";
 import { getDownloadURL, getStorage, ref } from "firebase/storage";
 
 export function FirebaseClient() {

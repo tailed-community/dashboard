@@ -1,8 +1,9 @@
 import express from "express";
 const router = express.Router();
 
-import { db, studentAuth } from "../lib/firebase";
+import { auth, createTenantAuth, db, studentAuth } from "../lib/firebase";
 import { z } from "zod";
+import { sendEmail } from "../lib/email-service";
 
 export const TENANT_IDS = { STUDENTS: process.env.FB_TENANT_ID! } as const;
 
@@ -25,6 +26,103 @@ const checkUserExistsSchema = z.object({
     email: z.string().email(),
 });
 
+const sendLoginLinkSchema = z.object({
+    email: z.string().email(),
+    tenantId: z.string().optional(),
+    redirectUrl: z.string().optional(),
+});
+
+router.post("/send-login-link", async (req, res) => {
+    try {
+        const result = sendLoginLinkSchema.safeParse(req.body);
+        if (!result.success) {
+            return res.status(400).json({
+                error: "Invalid request data",
+                details: result.error.format(),
+            });
+        }
+
+        const { email, tenantId, redirectUrl } = result.data;
+        const frontendBaseUrl = process.env.FRONTEND_URL || "http://localhost:5174";
+        const callbackUrl = new URL("/auth/callback", frontendBaseUrl);
+
+        if (tenantId) {
+            callbackUrl.searchParams.set("tenantId", tenantId);
+        }
+        if (redirectUrl) {
+            callbackUrl.searchParams.set("redirectUrl", redirectUrl);
+        }
+
+        const tenantAwareAuth = tenantId
+            ? await createTenantAuth(tenantId)
+            : auth;
+
+        const signInLink = await tenantAwareAuth.generateSignInWithEmailLink(email, {
+            url: callbackUrl.toString(),
+            handleCodeInApp: true,
+        });
+
+        await sendEmail({
+            to: email,
+            subject: "Your Tail'ed sign-in link",
+            html: `
+                <p>Hello,</p>
+                <p>Click the link below to sign in:</p>
+                <p><a href="${signInLink}">${signInLink}</a></p>
+                <p>If you did not request this email, you can ignore it.</p>
+            `,
+            text: `Sign in to Tail'ed: ${signInLink}`,
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Sign-in link sent",
+        });
+    } catch (error) {
+        console.error("Error sending sign-in link:", error);
+        return res.status(500).json({
+            error: "Server error",
+            message: "Failed to send sign-in link. Please try again later.",
+        });
+    }
+});
+
+
+const findProfileByEmail = async (email: string) => {
+    const emailLower = email.toLowerCase();
+
+    const byLower = await db
+        .collection("profiles")
+        .where("emailLower", "==", emailLower)
+        .limit(1)
+        .get();
+    if (!byLower.empty) return byLower.docs[0];
+
+    const byEmail = await db
+        .collection("profiles")
+        .where("email", "==", email)
+        .limit(1)
+        .get();
+    if (!byEmail.empty) return byEmail.docs[0];
+
+    if (emailLower !== email) {
+        const byNormalizedEmail = await db
+            .collection("profiles")
+            .where("email", "==", emailLower)
+            .limit(1)
+            .get();
+        if (!byNormalizedEmail.empty) return byNormalizedEmail.docs[0];
+    }
+
+    return null;
+};
+
+const findPendingProfileByEmail = async (email: string) => {
+    const emailLower = email.toLowerCase();
+    const pendingDoc = await db.collection("pendingProfiles").doc(emailLower).get();
+    return pendingDoc.exists ? pendingDoc : null;
+};
+
 router.post("/check-user-exists", async (req, res) => {
     try {
         // Validate request body using Zod
@@ -38,17 +136,32 @@ router.post("/check-user-exists", async (req, res) => {
         }
 
         const { email } = result.data;
-        const tenantAuth = await studentAuth();
+        const normalizedEmail = email.toLowerCase();
+
+        const existingProfile = await findProfileByEmail(normalizedEmail);
+        if (existingProfile) {
+            return res.status(200).json({
+                exists: true,
+                pendingAuthSync: false,
+                message: "User exists",
+            });
+        }
+
+        const pendingProfile = await findPendingProfileByEmail(normalizedEmail);
+        if (pendingProfile) {
+            return res.status(200).json({
+                exists: true,
+                pendingAuthSync: true,
+                message: "User exists",
+            });
+        }
 
         try {
+            const tenantAuth = await studentAuth();
             const user = await tenantAuth.getUserByEmail(email);
 
             if (user) {
-                // Check if user has a profile in Firestore
-                const profile = await db
-                    .collection("profiles")
-                    .doc(user.uid)
-                    .get();
+                const profile = await db.collection("profiles").doc(user.uid).get();
 
                 return res.status(200).json({
                     exists: profile.exists,

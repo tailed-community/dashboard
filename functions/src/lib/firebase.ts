@@ -1,27 +1,42 @@
 import admin from "firebase-admin";
 import dotenv from "dotenv";
 import { getFirestore } from "firebase-admin/firestore";
-import { TENANT_IDS } from "../routes/auth";
 import type { Request, Response, NextFunction } from "express";
 
 dotenv.config();
 
-const firebaseConfig = {
-  apiKey: process.env.FB_API_KEY,
-  authDomain: process.env.FB_AUTH_DOMAIN,
-  projectId: process.env.FB_PROJECT_ID,
-  storageBucket: process.env.FB_STORAGE_BUCKET,
-  messagingSenderId: process.env.FB_MESSAGING_SENDER_ID,
-  appId: process.env.FB_APP_ID,
-};
+const isDev = process.env.NODE_ENV === "development";
 
-if (!admin.apps.length) {
-  admin.initializeApp(firebaseConfig);
+if (isDev) {
+  process.env.GCLOUD_PROJECT ??= process.env.FB_PROJECT_ID ?? "tailed-community-dev";
+  if (!process.env.FIRESTORE_EMULATOR_HOST) {
+    process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8081";
+  } else if (process.env.FIRESTORE_EMULATOR_HOST.startsWith("0.0.0.0:")) {
+    process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST.replace("0.0.0.0:", "127.0.0.1:");
+  }
+
+  if (process.env.FIREBASE_AUTH_EMULATOR_HOST?.startsWith("0.0.0.0:")) {
+    process.env.FIREBASE_AUTH_EMULATOR_HOST =
+      process.env.FIREBASE_AUTH_EMULATOR_HOST.replace("0.0.0.0:", "127.0.0.1:");
+  }
+
+  if (process.env.FIREBASE_STORAGE_EMULATOR_HOST?.startsWith("0.0.0.0:")) {
+    process.env.FIREBASE_STORAGE_EMULATOR_HOST =
+      process.env.FIREBASE_STORAGE_EMULATOR_HOST.replace("0.0.0.0:", "127.0.0.1:");
+  }
 }
 
-const tenantManager = admin.auth().tenantManager();
+const app =
+  admin.apps[0] ??
+  admin.initializeApp({
+    projectId: process.env.FB_PROJECT_ID,
+    storageBucket: process.env.FB_STORAGE_BUCKET,
+  });
 
-export const auth = admin.auth(); // Default auth without tenant
+const tenantManager = admin.auth(app).tenantManager();
+const STUDENT_TENANT_ID = process.env.FB_TENANT_ID || "";
+
+export const auth = admin.auth(app); // Default auth without tenant
 
 export const createTenantAuth = async (tenantId: string) => {
   if (!tenantId) {
@@ -30,7 +45,7 @@ export const createTenantAuth = async (tenantId: string) => {
   return tenantManager.authForTenant(tenantId);
 };
 
-export const studentAuth = async () => createTenantAuth(TENANT_IDS.STUDENTS);
+export const studentAuth = async () => createTenantAuth(STUDENT_TENANT_ID);
 
 export const decodedToken = () => {
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -58,4 +73,4 @@ export const decodedToken = () => {
 
 export const db = getFirestore();
 
-export const storage = admin.storage();
+export const storage = admin.storage(app);
