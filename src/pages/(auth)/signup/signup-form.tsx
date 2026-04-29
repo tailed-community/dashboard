@@ -139,6 +139,18 @@ export function SignUpForm({ className, ...props }: SignUpFormProps) {
                 return;
             }
 
+            if (createResult.pendingAuthSync) {
+                toast.success("Account created locally", {
+                    description:
+                        "Auth emulator is not running on port 9100 yet. Start it, then use Sign in to receive your login link.",
+                });
+                setTimeout(() => {
+                    navigate("/sign-in");
+                }, 1200);
+                setIsLoading(false);
+                return;
+            }
+
             // Send login link after successful account creation
             await sendLoginLink(data.email, TENANT_IDS.STUDENTS, redirectUrl);
 
@@ -154,7 +166,10 @@ export function SignUpForm({ className, ...props }: SignUpFormProps) {
         } catch (error) {
             console.error("Sign up error:", error);
             toast.error("Sign up failed", {
-                description: "An unexpected error occurred. Please try again.",
+                description:
+                    error instanceof Error
+                        ? error.message
+                        : "An unexpected error occurred. Please try again.",
             });
         } finally {
             setIsLoading(false);
