@@ -1,0 +1,42 @@
+version: "3.8"
+
+services:
+  firestore_emulator:
+    image: mtlynch/firestore-emulator
+    environment:
+      - FIRESTORE_PROJECT_ID=tailed-community-dev
+      - PORT=8081
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
+
+  firebase_auth_emulator:
+    image: node:22
+    working_dir: /workspace
+    volumes:
+      - /workspace
+      - firebase_tools_cache:/root/.cache/firebase
+    command:
+      - sh
+      - -lc
+      - |
+        npm install -g firebase-tools
+        cat > /tmp/firebase.auth.json <<'JSON'
+        {"emulators":{"auth":{"host":"0.0.0.0","port":9100}}}
+        JSON
+        firebase emulators:start --only auth --project tailed-community-dev --config /tmp/firebase.auth.json
+    ports:
+      - "9100:9100"
+      - "4000:4000"
+    restart: unless-stopped
+
+  mailhog:
+    image: mailhog/mailhog
+    container_name: mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    restart: unless-stopped
+
+volumes:
+  firebase_tools_cache:
