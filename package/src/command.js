@@ -24,7 +24,8 @@ async function init({ project = "dashboard" }) {
             await data.seed();
             await github.cloneRepo("dashboard");
             await file.env();
-            await setup.executeCommand(`npm install ${dir} && npm install ${dir}/functions`);
+            await setup.executeCommand(`npm install`, {cwd: dir});
+            await setup.executeCommand(`npm install`, {cwd: path.join(dir, "functions")})
 
             console.log(`\n\n✅ Go to ${dir} and execute npm run dev,\nthen open a new terminal and *cd* into the functions directory\nexecute npm run dev to start the api`)
             console.log("\n\n✅ Project have been installed successfully!\n\n")

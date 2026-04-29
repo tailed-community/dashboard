@@ -5,8 +5,8 @@ const setup = require('./setup.js');
 const isAvailable = () => {
     try {
 
-        var isInstalled = setup.executeCommand("docker --version", { stdio: "ignore" });
-        var isRunning = setup.executeCommand("docker info", { stdio: "ignore" });
+        var isInstalled = setup.executeCommand("docker --version", { stdio: "ignore", throwOnError: false });
+        var isRunning = setup.executeCommand("docker info", { stdio: "ignore", throwOnError: false });
         return isInstalled && isRunning;
     } catch (error) {
         console.error("Docker is not installed or not running. Please ensure docker is installed and running")

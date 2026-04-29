@@ -2,14 +2,19 @@ const readline = require("readline");
 const { execSync } = require("child_process");
 
 const executeCommand = (command, options = {}) => {
+
+    const { throwOnError = true, ...execOptions } = options;
+
     try {
-        execSync(command, { stdio: "inherit", ...options });
+        execSync(command, { stdio: "inherit", ...execOptions });
         return true;
     } catch (err) {
         console.error(`Error executing command: ${command}`);
         console.error(err);
+        if (throwOnError) {
+            throw err;
+        }
         return false;
-        process.exit(1);
     }
 };
 
