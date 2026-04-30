@@ -400,15 +400,26 @@ export default function EventDetailPage() {
                             {/* Action Buttons */}
                             <div className="space-y-3">
                                 {event.canEdit && (
-                                    <Button
-                                        variant="outline"
-                                        onClick={() => navigate(`/events/${id}/edit`)}
-                                        className="w-full rounded-lg"
-                                        size="sm"
-                                    >
-                                        <Pencil className="h-4 w-4 mr-2" />
-                                        Edit Event
-                                    </Button>
+                                    <>
+                                        <Button
+                                            variant="outline"
+                                            onClick={() => navigate(`/events/${id}/manage`)}
+                                            className="w-full rounded-lg"
+                                            size="sm"
+                                        >
+                                            <Users className="h-4 w-4 mr-2" />
+                                            Manage Attendees
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            onClick={() => navigate(`/events/${id}/edit`)}
+                                            className="w-full rounded-lg"
+                                            size="sm"
+                                        >
+                                            <Pencil className="h-4 w-4 mr-2" />
+                                            Edit Event
+                                        </Button>
+                                    </>
                                 )}
                                 {!isPastEvent ? (
                                     event.registrationLink ? (

@@ -44,6 +44,7 @@ const EventDetailPage = lazy(() => import("./pages/events/[id]/page"));
 const CreateEventPage = lazy(() => import("./pages/events/create/page"));
 const EditEventPage = lazy(() => import("./pages/events/[id]/edit"));
 const EventRegisterPage = lazy(() => import("./pages/events/[id]/register/page"));
+const EventManageAttendeesPage = lazy(() => import("./pages/events/[id]/manage/page"));
 const CustomEventFormPage = lazy(() => import("./pages/events/[id]/forms/custom/page"));
 const CommunitiesPage = lazy(() => import("./pages/communities/page"));
 const CommunityDetailPage = lazy(() => import("./pages/communities/[id]/page"));
@@ -111,6 +112,14 @@ function App() {
                             <Route
                                 path="/events/:id/register"
                                 element={<EventRegisterPage />}
+                            />
+                            <Route
+                                path="/events/:id/manage"
+                                element={
+                                    <PrivateRoute>
+                                        <EventManageAttendeesPage />
+                                    </PrivateRoute>
+                                }
                             />
                             <Route
                                 path="/events/:id/forms/custom"
