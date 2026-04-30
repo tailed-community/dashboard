@@ -1589,23 +1589,103 @@ router.get("/:eventId/attendees", async (req: Request, res: Response) => {
     );
     if (!canAccess) return;
 
-    // Get registrations
-    const registrationsSnapshot = await db
-      .collection("events")
-      .doc(resolvedEventId)
-      .collection("registrations")
-      .orderBy("registeredAt", "desc")
-      .get();
+    // Query parameters: page, limit, q (search), status, sortBy, order
+    const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
+    const limit = Math.min(200, Math.max(1, parseInt((req.query.limit as string) || "50", 10)));
+    const q = typeof req.query.q === "string" && req.query.q.trim() ? req.query.q.trim().toLowerCase() : null;
+    const statusFilter = typeof req.query.status === "string" && req.query.status ? req.query.status : null;
+    const sortBy = typeof req.query.sortBy === "string" && req.query.sortBy ? req.query.sortBy : "registeredAt";
+    const order = (typeof req.query.order === "string" && req.query.order === "asc") ? "asc" : "desc";
 
-    const registrations = registrationsSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    const registrationsRef = db.collection("events").doc(resolvedEventId).collection("registrations");
+
+    // If no free-text search is requested and sorting is by registeredAt, do efficient query with offset.
+    if (!q && (sortBy === "registeredAt" || !sortBy)) {
+      let query: FirebaseFirestore.Query = registrationsRef;
+
+      if (statusFilter) {
+        query = query.where("status", "==", statusFilter);
+      }
+
+      query = query.orderBy("registeredAt", order as FirebaseFirestore.OrderByDirection).offset((page - 1) * limit).limit(limit);
+
+      const snapshot = await query.get();
+      const registrations = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+
+      // Get total count for meta (note: this does a collection scan - consider a counter field for heavy loads)
+      let total = 0;
+      if (!statusFilter) {
+        const allSnap = await registrationsRef.get();
+        total = allSnap.size;
+      } else {
+        const statusSnap = await registrationsRef.where("status", "==", statusFilter).get();
+        total = statusSnap.size;
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: registrations,
+        meta: {
+          total,
+          page,
+          limit,
+          hasMore: (page * limit) < total,
+        },
+      });
+    }
+
+    // Otherwise (search requested or sorting by other fields), fetch a reasonable cap and perform in-memory filtering/sorting.
+    const CAP = 1000; // safety cap to avoid very large reads
+    let snapshot = await registrationsRef.limit(CAP).get();
+    let items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as any));
+
+    if (statusFilter) {
+      items = items.filter((it) => it.status === statusFilter);
+    }
+
+    if (q) {
+      items = items.filter((it: any) => {
+        const hay: string[] = [];
+        if (it.email) hay.push(String(it.email).toLowerCase());
+        if (it.firstName) hay.push(String(it.firstName).toLowerCase());
+        if (it.lastName) hay.push(String(it.lastName).toLowerCase());
+        if (Array.isArray(it.formAnswers)) {
+          for (const a of it.formAnswers) {
+            if (a && a.value) hay.push(String(a.value).toLowerCase());
+            if (a && a.label) hay.push(String(a.label).toLowerCase());
+          }
+        }
+        const haystack = hay.join(" ");
+        return haystack.includes(q);
+      });
+    }
+
+    // Sorting in-memory for supported fields
+    const direction = order === "asc" ? 1 : -1;
+    items.sort((a: any, b: any) => {
+      if (sortBy === "firstName") {
+        return direction * ((String(a.firstName || "").localeCompare(String(b.firstName || ""))));
+      }
+      if (sortBy === "lastName") {
+        return direction * ((String(a.lastName || "").localeCompare(String(b.lastName || ""))));
+      }
+      if (sortBy === "status") {
+        return direction * ((String(a.status || "").localeCompare(String(b.status || ""))));
+      }
+      // Default: registeredAt
+      const ta = a.registeredAt ? new Date(a.registeredAt).getTime() : 0;
+      const tb = b.registeredAt ? new Date(b.registeredAt).getTime() : 0;
+      return direction * (ta - tb as any);
+    });
+
+    const total = items.length;
+    const start = (page - 1) * limit;
+    const paged = items.slice(start, start + limit);
 
     return res.status(200).json({
       success: true,
-      registrations,
-      count: registrations.length,
+      data: paged,
+      meta: { total, page, limit, hasMore: (start + paged.length) < total },
     });
 
   } catch (error: any) {
@@ -1614,6 +1694,86 @@ router.get("/:eventId/attendees", async (req: Request, res: Response) => {
       error: "Failed to fetch attendees",
       details: error.message,
     });
+  }
+});
+
+/**
+ * POST /events/:eventId/registrations/:registrationId/review
+ * Review (approve/reject) a registration. Requires event creator or community admin.
+ */
+router.post("/:eventId/registrations/:registrationId/review", async (req: Request, res: Response) => {
+  try {
+    const { eventId, registrationId } = req.params;
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const eventContext = await loadEventContext(res, eventId);
+    if (!eventContext) return;
+
+    const { resolvedEventId, eventData } = eventContext;
+
+    const canAccess = await ensureEventCreatorOrCommunityAdmin(
+      res,
+      userId,
+      eventData,
+      "Access denied"
+    );
+    if (!canAccess) return;
+
+    const bodySchema = z.object({
+      status: z.enum(["pending", "confirmed", "rejected", "cancelled", "waitlisted", "attended", "no-show"]),
+      reviewNotes: z.string().optional().nullable(),
+    });
+
+    const parsed = bodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request data", details: parsed.error.errors });
+    }
+
+    const { status, reviewNotes } = parsed.data;
+
+    const regRef = db.collection("events").doc(resolvedEventId).collection("registrations").doc(registrationId);
+    const regDoc = await regRef.get();
+    if (!regDoc.exists) {
+      return res.status(404).json({ error: "Registration not found" });
+    }
+
+    const updateObj: any = {
+      status,
+      reviewedBy: userId,
+      reviewedAt: new Date(),
+      reviewNotes: reviewNotes || null,
+      updatedAt: new Date(),
+    };
+
+    await regRef.update(updateObj);
+
+    // Update event-level attendee count if status changed to/from a positive attending state
+    try {
+      const regs = await db.collection("events").doc(resolvedEventId).collection("registrations").get();
+      await db.collection("events").doc(resolvedEventId).update({ attendees: regs.size, updatedAt: new Date() });
+    } catch (e) {
+      console.error("Failed to update event attendee count after review:", e);
+    }
+
+    // Optionally: write an activity/audit log
+    try {
+      await db.collection("events").doc(resolvedEventId).collection("activity").add({
+        type: "registration.review",
+        registrationId,
+        status,
+        reviewNotes: reviewNotes || null,
+        performedBy: userId,
+        performedAt: new Date(),
+      });
+    } catch (e) {
+      console.error("Failed to write activity log for registration review:", e);
+    }
+
+    return res.status(200).json({ success: true, message: "Registration updated" });
+  } catch (error: any) {
+    console.error("Error reviewing registration:", error);
+    return res.status(500).json({ error: "Failed to review registration", details: error.message });
   }
 });
 
