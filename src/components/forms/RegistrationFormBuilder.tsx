@@ -115,7 +115,7 @@ export default function RegistrationFormBuilder({ eventId, fields = defaultField
 
   return (
     <Form {...methods}>
-      <form onSubmit={handleSubmit(onSubmit)}>
+      <form onSubmit={handleSubmit(onSubmit)}> 
         {fields.map((f, i) => (
           <FormField
             key={i}

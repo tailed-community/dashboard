@@ -1,6 +1,7 @@
 import { CheckCircle, XCircle, Clock, MoreHorizontal } from "lucide-react";
 import type { Registration } from "@/types/registration";
 import { DateTime } from "luxon";
+import { formatDate } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -105,7 +106,7 @@ export function AttendeeTable({
                     </Badge>
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    {DateTime.fromISO(String(reg.registeredAt)).toFormat("MMM dd, yyyy")}
+                    {formatDate(reg.registeredAt, "MMM dd, yyyy")}
                   </TableCell>
                   <TableCell className="text-right">
                     <DropdownMenu>

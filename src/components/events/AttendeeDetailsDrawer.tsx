@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import type { Registration } from "@/types/registration";
 import { DateTime } from "luxon";
+import { formatDate } from "@/lib/dates";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/fetch";
 
@@ -104,12 +105,12 @@ export function AttendeeDetailsDrawer({
           {/* Current Status */}
           <div>
             <h3 className="mb-3 font-semibold">Current Status</h3>
-            <Badge className={`${config.bg} text-sm`}>
+            <Badge className={`${config.bg} ${config.color} text-sm gap-1 capitalize`}>
               {config.label}
             </Badge>
             {registration.reviewedAt && (
               <p className="mt-2 text-sm text-muted-foreground">
-                Reviewed by admin on {DateTime.fromISO(String(registration.reviewedAt)).toFormat("MMM dd, yyyy 'at' hh:mm a")}
+                Reviewed by admin on {formatDate(registration.reviewedAt, "MMM dd, yyyy 'at' hh:mm a")}
               </p>
             )}
           </div>
@@ -124,7 +125,7 @@ export function AttendeeDetailsDrawer({
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Registered At</p>
-              <p className="font-medium">{DateTime.fromISO(String(registration.registeredAt)).toFormat("MMM dd, yyyy 'at' hh:mm a")}</p>
+              <p className="font-medium">{formatDate(registration.registeredAt, "MMM dd, yyyy 'at' hh:mm a")}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Source</p>
