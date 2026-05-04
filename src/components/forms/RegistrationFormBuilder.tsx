@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { Form, FormItem, FormLabel, FormControl, FormField, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
@@ -32,7 +32,6 @@ export default function RegistrationFormBuilder({ eventId, fields = defaultField
     defaultValues: Object.fromEntries(fields.map((_, i) => [`f_${i}`, ""])) as Record<string, any>,
   });
   const { handleSubmit, reset } = methods;
-  const [profile, setProfile] = useState<any>(null);
 
   // Helper to get nested value from profile by path like 'firstName' or 'address.street'
   const getNested = (obj: any, path: string) => {
@@ -55,7 +54,6 @@ export default function RegistrationFormBuilder({ eventId, fields = defaultField
         // API may return { profile } or profile directly
         const prof = body.profile || body;
         if (!mounted) return;
-        setProfile(prof);
 
         // Build autofill values
         const currentValues = methods.getValues();
