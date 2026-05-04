@@ -406,6 +406,14 @@ export default function EventDetailPage() {
 
                         <Separator />
 
+                        {event.requiresApproval && (
+                            <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 text-sm text-amber-900">
+                                Participants submit a request to join this event. Organizer approval is required before access is granted.
+                            </div>
+                        )}
+
+                        {event.requiresApproval && <Separator />}
+
                         {/* Host */}
                         <div className="space-y-4">
                             <h2 className="text-xl font-semibold text-slate-900">
