@@ -2216,6 +2216,13 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
     }
 
     const { role, answers } = validationResult.data;
+    const normalizedAnswers = Array.isArray(answers)
+      ? answers.map((a: any) => ({
+        questionId: a.questionId || null,
+        label: a.label,
+        value: a.value,
+      }))
+      : [];
 
     if (eventData.communityId) {
       const communityContext = await requireCommunityContext(
@@ -2247,6 +2254,13 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
       const profileEvents = profileDoc.exists && Array.isArray(profileDoc.data()?.events)
         ? profileDoc.data()?.events
         : [];
+      const profileData = profileDoc.exists ? (profileDoc.data() || {}) : {};
+
+      const extractedEmail = getAnswerByLabels(normalizedAnswers, ["email", "email address"]) || profileData.email || "";
+      const extractedFirstName = getAnswerByLabels(normalizedAnswers, ["first name", "firstname", "first_name"]) || profileData.firstName || "";
+      const extractedLastName = getAnswerByLabels(normalizedAnswers, ["last name", "lastname", "last_name"]) || profileData.lastName || "";
+      const requiresApproval = Boolean(freshEventData.requiresApproval);
+      const initialStatus = requiresApproval ? "pending" : "confirmed";
 
       const registrationsRef = eventRef.collection("registrations");
       const existingRegistrationQuery = registrationsRef
@@ -2259,16 +2273,14 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
         return res.status(400).json({ error: "Already joined this event with this role" });
       }
 
-      // Normalize incoming answers (ensure questionId, label, value)
-      let normalizedAnswers = Array.isArray(answers)
-        ? answers.map((a: any) => ({ questionId: a.questionId || null, label: a.label, value: a.value }))
-        : [];
-
       // Create attendee entry with only technical fields; personal PII is stored in formAnswers
       const attendeeEntry = createAttendeeSchema.parse({
         userId,
+        email: extractedEmail || undefined,
+        firstName: extractedFirstName || undefined,
+        lastName: extractedLastName || undefined,
         role,
-        status: "confirmed",
+        status: initialStatus,
       });
 
       const registrationRef = registrationsRef.doc();
@@ -2283,9 +2295,10 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
         formId: null,
         formLabel: null,
         formAnswers: normalizedAnswers,
+        approvedAt: initialStatus === "confirmed" ? new Date() : null,
       });
 
-      if (existingRegistrationSnapshot.empty) {
+      if (existingRegistrationSnapshot.empty && initialStatus === "confirmed") {
         transaction.set(
           profileRef,
           {
@@ -2300,15 +2313,19 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
         attendee: attendeeEntry,
         registrations: 1,
         joined: true,
+        status: initialStatus,
       };
     });
 
     if ("attendee" in result) {
       return res.status(200).json({
         success: true,
-        message: "Successfully joined event",
+        message: result.status === "pending"
+          ? "Request submitted for organizer approval"
+          : "Successfully joined event",
         attendee: result.attendee,
         registrations: result.registrations,
+        status: result.status,
       });
     }
     else{
