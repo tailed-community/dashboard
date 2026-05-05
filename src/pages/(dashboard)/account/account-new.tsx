@@ -307,25 +307,22 @@ export default function AccountPage() {
                 return "";
 
             case "phone":
-                if (!value.trim()) return "Phone number is required";
+                if (!value.trim()) return "";
                 if (!/^[+\d\s()\-]+$/.test(value))
                     return "Invalid phone number format";
                 return "";
 
             case "location":
-                if (!value.trim()) return "Location is required";
                 return "";
 
             case "school":
-                if (!value.trim()) return "University/College is required";
                 return "";
 
             case "program":
-                if (!value.trim()) return "Major/Program is required";
                 return "";
 
             case "graduationYear":
-                if (!value.trim()) return "Graduation year is required";
+                if (!value.trim()) return "";
                 if (!/^\d{4}$/.test(value)) return "Must be a 4-digit year";
                 const year = parseInt(value);
                 if (year < currentYear - 50 || year > currentYear + 5) {
@@ -372,7 +369,7 @@ export default function AccountPage() {
         setStudent((prev) => ({ ...prev, [name]: value }));
 
         // Validate fields that require validation
-        const requiredFields = [
+        const fieldsToValidate = [
             "firstName",
             "lastName",
             "phone",
@@ -384,7 +381,7 @@ export default function AccountPage() {
             "portfolioUrl",
         ];
 
-        if (requiredFields.includes(name)) {
+        if (fieldsToValidate.includes(name)) {
             const error = validateField(name, value);
             setValidationErrors((prev) => ({ ...prev, [name]: error }));
         }
@@ -407,8 +404,8 @@ export default function AccountPage() {
     };
 
     const handleSaveChanges = async () => {
-        // Only validate required fields that have been changed
-        const requiredFields = [
+        // Validate changed profile fields (required and optional)
+        const fieldsToValidate = [
             "firstName",
             "lastName",
             "phone",
@@ -425,7 +422,7 @@ export default function AccountPage() {
         let hasErrors = false;
 
         // Only validate fields that were modified
-        requiredFields.forEach((field) => {
+        fieldsToValidate.forEach((field) => {
             const currentValue = (student as any)[field] || "";
             const originalValue = (originalStudent as any)?.[field] || "";
 

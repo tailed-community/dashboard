@@ -6,19 +6,45 @@ import { z } from "zod";
 
 export const TENANT_IDS = { STUDENTS: process.env.FB_TENANT_ID! } as const;
 
-const createAccountSchema = z.object({
-    firstName: z.string().min(1, "First name is required"),
-    lastName: z.string().min(1, "Last name is required"),
-    email: z.string().email("Invalid email address"),
-    location: z.string().min(1, "Location is required"),
-    phoneNumber: z.string().min(1, "Phone number is required"),
-    university: z.string().min(1, "University/College is required"),
-    major: z.string().min(1, "Major/Program is required"),
-    graduationYear: z
+const optionalTrimmedString = z.preprocess(
+    (value) => {
+        if (typeof value !== "string") return value;
+        const trimmed = value.trim();
+        return trimmed === "" ? undefined : trimmed;
+    },
+    z.string().optional()
+);
+
+const optionalGraduationYear = z.preprocess(
+    (value) => {
+        if (value === undefined || value === null) return undefined;
+
+        if (typeof value === "string") {
+            const trimmed = value.trim();
+            if (trimmed === "") return undefined;
+            const parsed = Number(trimmed);
+            return Number.isNaN(parsed) ? value : parsed;
+        }
+
+        return value;
+    },
+    z
         .number()
         .int()
         .min(1950)
-        .max(new Date().getFullYear() + 4, "Invalid graduation year"),
+        .max(new Date().getFullYear() + 4, "Invalid graduation year")
+        .optional()
+);
+
+const createAccountSchema = z.object({
+    firstName: z.string().trim().min(1, "First name is required"),
+    lastName: z.string().trim().min(1, "Last name is required"),
+    email: z.string().trim().email("Invalid email address"),
+    location: optionalTrimmedString,
+    phoneNumber: optionalTrimmedString,
+    university: optionalTrimmedString,
+    major: optionalTrimmedString,
+    graduationYear: optionalGraduationYear,
 });
 
 const checkUserExistsSchema = z.object({
@@ -99,11 +125,12 @@ router.post("/create-account", async (req, res) => {
             major,
             graduationYear,
         } = result.data;
+        const normalizedEmail = email.toLowerCase();
         const tenantAuth = await studentAuth();
 
         // Check if user already exists
         try {
-            const user = await tenantAuth.getUserByEmail(email);
+            const user = await tenantAuth.getUserByEmail(normalizedEmail);
             let existingUser = null;
             if (user) {
                 existingUser = await db
@@ -126,7 +153,7 @@ router.post("/create-account", async (req, res) => {
 
         // Create new user in Firebase Auth
         const userRecord = await tenantAuth.createUser({
-            email,
+            email: normalizedEmail,
             emailVerified: false,
         });
 
@@ -138,12 +165,14 @@ router.post("/create-account", async (req, res) => {
                 userId: userRecord.uid,
                 firstName,
                 lastName,
-                email,
-                location,
-                phone: phoneNumber,
-                school: university,
-                program: major,
-                graduationYear,
+                email: normalizedEmail,
+                emailLower: normalizedEmail,
+                location: location || "",
+                phone: phoneNumber || "",
+                school: university || "",
+                program: major || "",
+                graduationYear:
+                    graduationYear !== undefined ? String(graduationYear) : "",
                 linkedinUrl: null,
                 devpost: null,
                 initials: `${firstName.charAt(0)}${lastName.charAt(0)}`,

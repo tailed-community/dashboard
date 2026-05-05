@@ -21,39 +21,11 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 
-// Phone number regex - allows various formats
-const phoneRegex =
-    /^[\+]?[(]?[0-9]{1,4}[)]?[-\s\.]?[(]?[0-9]{1,4}[)]?[-\s\.]?[0-9]{1,9}$/;
-
-const currentYear = new Date().getFullYear();
-
 // Zod schema for signup validation
 const signUpSchema = z.object({
     firstName: z.string().min(1, "First name is required"),
     lastName: z.string().min(1, "Last name is required"),
     email: z.string().email("Invalid email address"),
-    location: z.string().min(1, "Location is required"),
-    phoneNumber: z
-        .string()
-        .min(1, "Phone number is required")
-        .regex(phoneRegex, "Invalid phone number format"),
-    university: z.string().min(1, "University/College is required"),
-    major: z.string().min(1, "Major/Program is required"),
-    graduationYear: z
-        .string()
-        .min(4, "Invalid year")
-        .max(4, "Invalid year")
-        .refine(
-            (val) => {
-                const year = parseInt(val);
-                return !isNaN(year) && year >= 1950 && year <= currentYear + 4;
-            },
-            {
-                message: `Graduation year must be between 1950 and ${
-                    currentYear + 4
-                }`,
-            }
-        ),
 });
 
 type SignUpData = z.infer<typeof signUpSchema>;
@@ -73,11 +45,6 @@ export function SignUpForm({ className, ...props }: SignUpFormProps) {
             firstName: "",
             lastName: "",
             email: "",
-            location: "",
-            phoneNumber: "",
-            university: "",
-            major: "",
-            graduationYear: "",
         },
     });
 
@@ -119,11 +86,6 @@ export function SignUpForm({ className, ...props }: SignUpFormProps) {
                     firstName: data.firstName,
                     lastName: data.lastName,
                     email: data.email,
-                    location: data.location,
-                    phoneNumber: data.phoneNumber,
-                    university: data.university,
-                    major: data.major,
-                    graduationYear: parseInt(data.graduationYear),
                 }),
             });
 
@@ -250,114 +212,6 @@ export function SignUpForm({ className, ...props }: SignUpFormProps) {
                                     </FormItem>
                                 )}
                             />
-
-                            {/* Location and Phone - Side by side */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <FormField
-                                    control={form.control}
-                                    name="location"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel>Location *</FormLabel>
-                                            <FormControl>
-                                                <Input
-                                                    placeholder="Toronto, ON"
-                                                    disabled={isLoading}
-                                                    {...field}
-                                                />
-                                            </FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-
-                                <FormField
-                                    control={form.control}
-                                    name="phoneNumber"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel>
-                                                Phone Number *
-                                            </FormLabel>
-                                            <FormControl>
-                                                <Input
-                                                    type="tel"
-                                                    placeholder="+1 (234) 567-8900"
-                                                    disabled={isLoading}
-                                                    {...field}
-                                                />
-                                            </FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-                            </div>
-
-                            {/* University */}
-                            <FormField
-                                control={form.control}
-                                name="university"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>
-                                            University/College *
-                                        </FormLabel>
-                                        <FormControl>
-                                            <Input
-                                                placeholder="University of Toronto"
-                                                disabled={isLoading}
-                                                {...field}
-                                            />
-                                        </FormControl>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-
-                            {/* Major and Graduation Year - Side by side */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <FormField
-                                    control={form.control}
-                                    name="major"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel>
-                                                Major/Program *
-                                            </FormLabel>
-                                            <FormControl>
-                                                <Input
-                                                    placeholder="Computer Science"
-                                                    disabled={isLoading}
-                                                    {...field}
-                                                />
-                                            </FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-
-                                <FormField
-                                    control={form.control}
-                                    name="graduationYear"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel>
-                                                Graduation Year *
-                                            </FormLabel>
-                                            <FormControl>
-                                                <Input
-                                                    type="text"
-                                                    placeholder="2025"
-                                                    maxLength={4}
-                                                    disabled={isLoading}
-                                                    {...field}
-                                                />
-                                            </FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-                            </div>
 
                             {/* Submit Button */}
                             <div className="flex flex-col gap-3">
