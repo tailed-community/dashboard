@@ -7,6 +7,7 @@ export interface Team {
   name: string;
   maxSize: number;
   members: string[]; // Array of userId/email
+  captainId: string;
   createdBy: string;
   createdAt: string | Date;
   updatedAt: string | Date;

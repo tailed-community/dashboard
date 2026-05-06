@@ -103,7 +103,7 @@ const eventSchema = z.object({
     heroImage: z.instanceof(File).optional(),
     scheduleImage: z.instanceof(File).optional(),
     capacity: z.string().optional(),
-    maxTeamSize: z.string().optional(), // Max size for participant teams
+    maxTeamSize: z.string().min(1, "Max team size is required"),
 }).refine((data) => {
     // If mode is In Person or Hybrid, location and city are required
     if ((data.mode === "In Person" || data.mode === "Hybrid") && (!data.location || !data.city)) {
@@ -126,7 +126,8 @@ const eventSchema = z.object({
     message: "Please fill in all required fields based on your selections",
 });
 
-type EventFormData = z.infer<typeof eventSchema>;
+type EventFormValues = z.input<typeof eventSchema>;
+type EventFormData = z.output<typeof eventSchema>;
 
 type Community = {
     id: string;
@@ -191,7 +192,7 @@ export default function CreateEventPage() {
     const [heroImagePreview, setHeroImagePreview] = useState<string | null>(null);
     const [scheduleImagePreview, setScheduleImagePreview] = useState<string | null>(null);
 
-    const form = useForm<EventFormData>({
+    const form = useForm<EventFormValues, undefined, EventFormData>({
         resolver: zodResolver(eventSchema),
         defaultValues: {
             title: "",
@@ -837,7 +838,7 @@ export default function CreateEventPage() {
                                                     </div>
                                                 </FormControl>
                                                 <FormDescription>
-                                                    Maximum participants per team (optional)
+                                                    Maximum participants per team
                                                 </FormDescription>
                                                 <FormMessage />
                                             </FormItem>

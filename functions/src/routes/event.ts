@@ -104,6 +104,8 @@ const uploadEventImages = (
       // Parse numbers
       if (fieldname === "capacity") {
         fields[fieldname] = parseInt(val, 10);
+      } else if (fieldname === "maxTeamSize") {
+        fields[fieldname] = parseInt(val, 10);
       } else if (fieldname === "isPaid") {
         // Parse boolean from FormData string
         fields[fieldname] = val === "true";
@@ -2688,14 +2690,16 @@ router.post("/:eventId/teams", async (req: Request, res: Response) => {
 
     const { name } = validationResult.data;
     const teamsRef = db.collection("events").doc(resolvedEventId).collection("teams");
+    const maxSize = Number(eventContext.eventData.maxTeamSize || 0) > 0 ? Number(eventContext.eventData.maxTeamSize) : 10;
     
     // Create new team
     const teamDocRef = teamsRef.doc();
     await teamDocRef.set({
       id: teamDocRef.id,
       name,
-      maxSize: 10, // Default max size (can be customized per team in future)
+      maxSize,
       members: [userId], // Creator is first member
+      captainId: userId,
       createdBy: userId,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -2706,8 +2710,9 @@ router.post("/:eventId/teams", async (req: Request, res: Response) => {
       data: {
         id: teamDocRef.id,
         name,
-        maxSize: 10,
+        maxSize,
         members: [userId],
+        captainId: userId,
         createdBy: userId,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -2742,6 +2747,7 @@ router.get("/:eventId/teams", async (req: Request, res: Response) => {
         maxSize: data.maxSize,
         members: data.members || [],
         memberCount: (data.members || []).length,
+        captainId: data.captainId || data.createdBy,
         createdBy: data.createdBy,
         createdAt: data.createdAt?.toDate?.().toISOString() || data.createdAt,
         updatedAt: data.updatedAt?.toDate?.().toISOString() || data.updatedAt,
@@ -2784,6 +2790,7 @@ router.get("/:eventId/teams/:teamId", async (req: Request, res: Response) => {
         maxSize: data.maxSize,
         members: data.members || [],
         memberCount: (data.members || []).length,
+        captainId: data.captainId || data.createdBy,
         createdBy: data.createdBy,
         createdAt: data.createdAt?.toDate?.().toISOString() || data.createdAt,
         updatedAt: data.updatedAt?.toDate?.().toISOString() || data.updatedAt,
@@ -2943,7 +2950,7 @@ router.delete("/:eventId/teams/:teamId", async (req: Request, res: Response) => 
     const teamData = teamDoc.data()!;
 
     // Only team creator can delete
-    if (teamData.createdBy !== userId) {
+    if ((teamData.captainId || teamData.createdBy) !== userId) {
       return res.status(403).json({
         error: "Only team creator can delete the team",
       });

@@ -17,6 +17,7 @@ type Props = {
   eventId: string;
   fields?: FieldDef[]; // if omitted, uses default form
   role?: "mentor" | "judge" | "participant";
+  teamId?: string | null;
   onSuccess?: (result: { status?: string; message?: string }) => void;
   onError?: (err: unknown) => void;
 };
@@ -27,7 +28,7 @@ const defaultFields: FieldDef[] = [
   { question: "email", label: "Email", type: "email", required: true, autofillSource: "profile.email" },
 ];
 
-export default function RegistrationFormBuilder({ eventId, fields = defaultFields, role = "participant", onSuccess, onError }: Props) {
+export default function RegistrationFormBuilder({ eventId, fields = defaultFields, role = "participant", teamId, onSuccess, onError }: Props) {
   const methods = useForm<Record<string, any>>({
     defaultValues: Object.fromEntries(fields.map((_, i) => [`f_${i}`, ""])) as Record<string, any>,
   });
@@ -134,7 +135,10 @@ export default function RegistrationFormBuilder({ eventId, fields = defaultField
         value: data[`f_${i}`],
       }));
 
-      const payload = { role, answers };
+      const payload: { role: string; answers: { questionId: string | null; label: string; value: any }[]; teamId?: string | null } = { role, answers };
+      if (teamId) {
+        payload.teamId = teamId;
+      }
 
       const resp = await apiFetch(`/events/${eventId}/join`, {
         method: "POST",
