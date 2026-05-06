@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Users } from "lucide-react";
 import { apiFetch } from "@/lib/fetch";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { AttendeeFilters } from "@/components/events/AttendeeFilters";
 import { AttendeeTable } from "@/components/events/AttendeeTable";
@@ -19,6 +20,7 @@ export default function EventManageAttendeesPage() {
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [teamCount, setTeamCount] = useState(0);
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState("");
@@ -45,7 +47,7 @@ export default function EventManageAttendeesPage() {
       params.set("order", order);
 
       const response = await apiFetch(`/events/${id}/attendees?${params.toString()}`);
-      const result: AttendeeListResponse = await response.json();
+      const result = await response.json() as AttendeeListResponse & { error?: string };
 
       if (!response.ok) {
         throw new Error(result.error || "Failed to load attendees");
@@ -53,6 +55,16 @@ export default function EventManageAttendeesPage() {
 
       setRegistrations(result.data || []);
       setTotal(result.meta?.total || 0);
+
+      try {
+        const teamsResp = await apiFetch(`/events/${id}/teams`);
+        if (teamsResp.ok) {
+          const teamsBody = await teamsResp.json();
+          setTeamCount(Array.isArray(teamsBody.data) ? teamsBody.data.length : 0);
+        }
+      } catch (teamError) {
+        console.error("Error fetching teams:", teamError);
+      }
     } catch (error) {
       console.error("Error fetching attendees:", error);
       toast.error(error instanceof Error ? error.message : "Failed to load attendees");
@@ -120,8 +132,14 @@ export default function EventManageAttendeesPage() {
           <h1 className="text-3xl font-bold">Manage Attendees</h1>
         </div>
         <p className="text-muted-foreground">
-          View, search, and manage event registrations
+          View, search, and manage event registrations. Team names are searchable and attendees are grouped by team.
         </p>
+      </div>
+
+      <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
+        <Badge variant="secondary">{total} registrations</Badge>
+        <Badge variant="secondary">{teamCount} teams</Badge>
+        <Badge variant="secondary">Search includes team names</Badge>
       </div>
 
       {/* Filters */}
@@ -136,7 +154,6 @@ export default function EventManageAttendeesPage() {
         currentOrder={order}
       />
 
-      {/* Table */}
       <AttendeeTable
         registrations={registrations}
         loading={loading}
@@ -148,6 +165,7 @@ export default function EventManageAttendeesPage() {
         limit={limit}
         total={total}
         onPageChange={setPage}
+        groupByTeam
       />
 
       {/* Details Drawer */}
