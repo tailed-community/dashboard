@@ -19,6 +19,7 @@ const eventBaseSchema = z.object({
   mode: z.enum(["Online", "In Person", "Hybrid"]),
   location: z.string().optional(),
   capacity: z.number().int().positive().optional(),
+  maxTeamSize: z.number().int().positive().optional(), // Max size for participant teams
   hostType: z.enum(["community", "custom"]).optional(),
   customHostName: z.string().optional(),
   category: z.string().min(1),
@@ -2205,6 +2206,7 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
           })
         )
         .optional(),
+      teamId: z.string().optional().nullable(), // Optional team to join
     });
 
     const validationResult = joinSchema.safeParse(req.body);
@@ -2215,7 +2217,7 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
       });
     }
 
-    const { role, answers } = validationResult.data;
+    const { role, answers, teamId } = validationResult.data;
     const normalizedAnswers = Array.isArray(answers)
       ? answers.map((a: any) => ({
         questionId: a.questionId || null,
@@ -2235,6 +2237,33 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
 
     const eventRef = db.collection("events").doc(resolvedEventId);
     const profileRef = db.collection("profiles").doc(userId);
+
+    // Validate and prepare team data if teamId is provided
+    if (teamId) {
+      const teamRef = db.collection("events").doc(resolvedEventId).collection("teams").doc(teamId);
+      const teamDoc = await teamRef.get();
+      
+      if (!teamDoc.exists) {
+        return res.status(404).json({ error: "Team not found" });
+      }
+      
+      const teamData = teamDoc.data()!;
+      const members = teamData.members || [];
+      
+      // Check if user is already in team
+      if (members.includes(userId)) {
+        return res.status(400).json({ error: "You are already a member of this team" });
+      }
+      
+      // Check if team is at capacity
+      if (members.length >= teamData.maxSize) {
+        return res.status(400).json({ 
+          error: "Team is at maximum capacity",
+          message: `This team can have maximum ${teamData.maxSize} members`,
+        });
+      }
+      
+    }
 
     const result = await db.runTransaction(async (transaction) => {
       const [freshEventDoc, profileDoc] = await Promise.all([
@@ -2316,6 +2345,30 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
         status: initialStatus,
       };
     });
+
+    // Add user to team if teamId was provided
+    if (teamId && "attendee" in result) {
+      try {
+        const teamRef = db.collection("events").doc(resolvedEventId).collection("teams").doc(teamId);
+        const teamDoc = await teamRef.get();
+        
+        if (teamDoc.exists) {
+          const teamData = teamDoc.data()!;
+          const members = teamData.members || [];
+          
+          // Add user to team if not already a member
+          if (!members.includes(userId)) {
+            await teamRef.update({
+              members: [...members, userId],
+              updatedAt: new Date(),
+            });
+          }
+        }
+      } catch (teamError: any) {
+        console.error("Error adding user to team:", teamError);
+        // Don't fail the registration if team update fails, just log it
+      }
+    }
 
     if ("attendee" in result) {
       return res.status(200).json({
@@ -2432,6 +2485,7 @@ router.get("/:eventId/attendees", async (req: Request, res: Response) => {
         if (it.email) hay.push(String(it.email).toLowerCase());
         if (it.firstName) hay.push(String(it.firstName).toLowerCase());
         if (it.lastName) hay.push(String(it.lastName).toLowerCase());
+        if (it.teamName) hay.push(String(it.teamName).toLowerCase());
         if (Array.isArray(it.formAnswers)) {
           for (const a of it.formAnswers) {
             if (a && a.value) hay.push(String(a.value).toLowerCase());
@@ -2596,6 +2650,333 @@ router.post("/:eventId/registrations/:registrationId/review", async (req: Reques
   } catch (error: any) {
     console.error("Error reviewing registration:", error);
     return res.status(500).json({ error: "Failed to review registration", details: error.message });
+  }
+});
+
+// ============================================================
+// TEAM MANAGEMENT ENDPOINTS
+// ============================================================
+
+/**
+ * POST /events/:eventId/teams
+ * Create a new team for an event
+ * Requires: authenticated user
+ */
+router.post("/:eventId/teams", async (req: Request, res: Response) => {
+  try {
+    const { eventId } = req.params;
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const eventContext = await loadEventContext(res, eventId);
+    if (!eventContext) return;
+
+    const { resolvedEventId } = eventContext;
+
+    // Validate team data
+    const teamSchema = z.object({
+      name: z.string().min(1).max(100, "Team name must be less than 100 characters"),
+    });
+
+    const validationResult = teamSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({
+        error: "Invalid team data",
+        details: validationResult.error.errors,
+      });
+    }
+
+    const { name } = validationResult.data;
+    const teamsRef = db.collection("events").doc(resolvedEventId).collection("teams");
+    
+    // Create new team
+    const teamDocRef = teamsRef.doc();
+    await teamDocRef.set({
+      id: teamDocRef.id,
+      name,
+      maxSize: 10, // Default max size (can be customized per team in future)
+      members: [userId], // Creator is first member
+      createdBy: userId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        id: teamDocRef.id,
+        name,
+        maxSize: 10,
+        members: [userId],
+        createdBy: userId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      message: "Team created successfully",
+    });
+  } catch (error: any) {
+    console.error("Error creating team:", error);
+    return res.status(500).json({ error: "Failed to create team", details: error.message });
+  }
+});
+
+/**
+ * GET /events/:eventId/teams
+ * List all teams for an event with member counts
+ */
+router.get("/:eventId/teams", async (req: Request, res: Response) => {
+  try {
+    const { eventId } = req.params;
+    const eventContext = await loadEventContext(res, eventId);
+    if (!eventContext) return;
+
+    const { resolvedEventId } = eventContext;
+    const teamsRef = db.collection("events").doc(resolvedEventId).collection("teams");
+    
+    const teamsSnapshot = await teamsRef.get();
+    const teams = teamsSnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        name: data.name,
+        maxSize: data.maxSize,
+        members: data.members || [],
+        memberCount: (data.members || []).length,
+        createdBy: data.createdBy,
+        createdAt: data.createdAt?.toDate?.().toISOString() || data.createdAt,
+        updatedAt: data.updatedAt?.toDate?.().toISOString() || data.updatedAt,
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: teams,
+    });
+  } catch (error: any) {
+    console.error("Error fetching teams:", error);
+    return res.status(500).json({ error: "Failed to fetch teams", details: error.message });
+  }
+});
+
+/**
+ * GET /events/:eventId/teams/:teamId
+ * Get team details with members
+ */
+router.get("/:eventId/teams/:teamId", async (req: Request, res: Response) => {
+  try {
+    const { eventId, teamId } = req.params;
+    const eventContext = await loadEventContext(res, eventId);
+    if (!eventContext) return;
+
+    const { resolvedEventId } = eventContext;
+    const teamDoc = await db.collection("events").doc(resolvedEventId).collection("teams").doc(teamId).get();
+    
+    if (!teamDoc.exists) {
+      return res.status(404).json({ error: "Team not found" });
+    }
+
+    const data = teamDoc.data()!;
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: teamDoc.id,
+        name: data.name,
+        maxSize: data.maxSize,
+        members: data.members || [],
+        memberCount: (data.members || []).length,
+        createdBy: data.createdBy,
+        createdAt: data.createdAt?.toDate?.().toISOString() || data.createdAt,
+        updatedAt: data.updatedAt?.toDate?.().toISOString() || data.updatedAt,
+      },
+    });
+  } catch (error: any) {
+    console.error("Error fetching team:", error);
+    return res.status(500).json({ error: "Failed to fetch team", details: error.message });
+  }
+});
+
+/**
+ * POST /events/:eventId/teams/:teamId/join
+ * Join an existing team (add user to team members)
+ * Requires: authenticated user
+ */
+router.post("/:eventId/teams/:teamId/join", async (req: Request, res: Response) => {
+  try {
+    const { eventId, teamId } = req.params;
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const eventContext = await loadEventContext(res, eventId);
+    if (!eventContext) return;
+
+    const { resolvedEventId } = eventContext;
+    const teamRef = db.collection("events").doc(resolvedEventId).collection("teams").doc(teamId);
+    
+    const teamDoc = await teamRef.get();
+    if (!teamDoc.exists) {
+      return res.status(404).json({ error: "Team not found" });
+    }
+
+    const teamData = teamDoc.data()!;
+    const members = teamData.members || [];
+
+    // Check if user is already member
+    if (members.includes(userId)) {
+      return res.status(200).json({
+        success: true,
+        data: teamData,
+        message: "User is already member of this team",
+      });
+    }
+
+    // Check if team is at capacity
+    if (members.length >= teamData.maxSize) {
+      return res.status(400).json({
+        error: "Team is at maximum capacity",
+        message: `Team can have maximum ${teamData.maxSize} members`,
+      });
+    }
+
+    // Add user to team
+    await teamRef.update({
+      members: [...members, userId],
+      updatedAt: new Date(),
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        ...teamData,
+        members: [...members, userId],
+        updateAt: new Date().toISOString(),
+      },
+      message: "User joined team successfully",
+    });
+  } catch (error: any) {
+    console.error("Error joining team:", error);
+    return res.status(500).json({ error: "Failed to join team", details: error.message });
+  }
+});
+
+/**
+ * POST /events/:eventId/teams/:teamId/leave
+ * Remove user from team
+ * Requires: authenticated user
+ */
+router.post("/:eventId/teams/:teamId/leave", async (req: Request, res: Response) => {
+  try {
+    const { eventId, teamId } = req.params;
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const eventContext = await loadEventContext(res, eventId);
+    if (!eventContext) return;
+
+    const { resolvedEventId } = eventContext;
+    const teamRef = db.collection("events").doc(resolvedEventId).collection("teams").doc(teamId);
+    
+    const teamDoc = await teamRef.get();
+    if (!teamDoc.exists) {
+      return res.status(404).json({ error: "Team not found" });
+    }
+
+    const teamData = teamDoc.data()!;
+    const members = (teamData.members || []).filter((m: string) => m !== userId);
+
+    // Remove user from team
+    await teamRef.update({
+      members,
+      updatedAt: new Date(),
+    });
+
+    // Also remove teamId from registration if user is in this team
+    const registrationsQuery = await db
+      .collection("events")
+      .doc(resolvedEventId)
+      .collection("registrations")
+      .where("userId", "==", userId)
+      .where("teamId", "==", teamId)
+      .get();
+
+    const batch = db.batch();
+    registrationsQuery.docs.forEach(doc => {
+      batch.update(doc.ref, {
+        teamId: null,
+        teamName: null,
+        updatedAt: new Date(),
+      });
+    });
+    await batch.commit();
+
+    return res.status(200).json({
+      success: true,
+      message: "User left team successfully",
+    });
+  } catch (error: any) {
+    console.error("Error leaving team:", error);
+    return res.status(500).json({ error: "Failed to leave team", details: error.message });
+  }
+});
+
+/**
+ * DELETE /events/:eventId/teams/:teamId
+ * Delete a team (only team creator or admin can delete)
+ * Requires: authenticated user (must be team creator)
+ */
+router.delete("/:eventId/teams/:teamId", async (req: Request, res: Response) => {
+  try {
+    const { eventId, teamId } = req.params;
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const eventContext = await loadEventContext(res, eventId);
+    if (!eventContext) return;
+
+    const { resolvedEventId } = eventContext;
+    const teamRef = db.collection("events").doc(resolvedEventId).collection("teams").doc(teamId);
+    
+    const teamDoc = await teamRef.get();
+    if (!teamDoc.exists) {
+      return res.status(404).json({ error: "Team not found" });
+    }
+
+    const teamData = teamDoc.data()!;
+
+    // Only team creator can delete
+    if (teamData.createdBy !== userId) {
+      return res.status(403).json({
+        error: "Only team creator can delete the team",
+      });
+    }
+
+    // Remove teamId from all registrations in this team
+    const registrationsQuery = await db
+      .collection("events")
+      .doc(resolvedEventId)
+      .collection("registrations")
+      .where("teamId", "==", teamId)
+      .get();
+
+    const batch = db.batch();
+    registrationsQuery.docs.forEach(doc => {
+      batch.update(doc.ref, {
+        teamId: null,
+        teamName: null,
+        updatedAt: new Date(),
+      });
+    });
+    await batch.commit();
+
+    // Delete team
+    await teamRef.delete();
+
+    return res.status(200).json({
+      success: true,
+      message: "Team deleted successfully",
+    });
+  } catch (error: any) {
+    console.error("Error deleting team:", error);
+    return res.status(500).json({ error: "Failed to delete team", details: error.message });
   }
 });
 
