@@ -400,7 +400,7 @@ export default function EventDetailPage() {
                             </div>
                         )}
 
-                        {event.requiresApproval && <Separator />}
+x                        {event.requiresApproval && <Separator />}
                         {/* Awards */}
                         <EventAwardsDisplay awards={awards} loading={loadingAwards} />
 
