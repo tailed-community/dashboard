@@ -31,7 +31,6 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { useAuth } from "@/hooks/use-auth";
@@ -63,6 +62,7 @@ const eventSchema = z.object({
     communityId: z.string().optional(),
     customHostName: z.string().optional(),
     heroImage: z.instanceof(File).optional(),
+    scheduleImage: z.instanceof(File).optional(),
     capacity: z.string().optional(),
 }).refine((data) => {
     // If mode is In Person or Hybrid, location and city are required
@@ -147,6 +147,7 @@ export default function CreateEventPage() {
     const [communities, setCommunities] = useState<Community[]>([]);
     const [loadingCommunities, setLoadingCommunities] = useState(true);
     const [heroImagePreview, setHeroImagePreview] = useState<string | null>(null);
+    const [scheduleImagePreview, setScheduleImagePreview] = useState<string | null>(null);
 
     const form = useForm<EventFormData>({
         resolver: zodResolver(eventSchema),
@@ -257,6 +258,11 @@ export default function CreateEventPage() {
             // Append optional hero image
             if (data.heroImage) {
                 formData.append("heroImage", data.heroImage);
+            }
+
+            // Append optional schedule image
+            if (data.scheduleImage) {
+                formData.append("scheduleImage", data.scheduleImage);
             }
 
             // Call API endpoint (always uses multipart/form-data)
@@ -837,6 +843,53 @@ export default function CreateEventPage() {
                                             </FormControl>
                                             <FormDescription>
                                                 Upload a cover image for your event (optional)
+                                            </FormDescription>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+
+                                {/* Schedule Image Upload */}
+                                <FormField
+                                    control={form.control}
+                                    name="scheduleImage"
+                                    render={({ field: { value, onChange, ...field } }) => (
+                                        <FormItem>
+                                            <FormLabel>Schedule Image</FormLabel>
+                                            <FormControl>
+                                                <div className="space-y-4">
+                                                    <div className="flex items-center gap-4">
+                                                        <Input
+                                                            type="file"
+                                                            accept="image/*"
+                                                            onChange={(e) => {
+                                                                const file = e.target.files?.[0];
+                                                                if (file) {
+                                                                    onChange(file);
+                                                                    const reader = new FileReader();
+                                                                    reader.onloadend = () => {
+                                                                        setScheduleImagePreview(reader.result as string);
+                                                                    };
+                                                                    reader.readAsDataURL(file);
+                                                                }
+                                                            }}
+                                                            {...field}
+                                                        />
+                                                        <Upload className="h-5 w-5 text-slate-400" />
+                                                    </div>
+                                                    {scheduleImagePreview && (
+                                                        <div className="relative w-full h-full rounded-lg overflow-hidden border">
+                                                            <img
+                                                                src={scheduleImagePreview}
+                                                                alt="Schedule preview"
+                                                                className="w-full h-full object-cover"
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </FormControl>
+                                            <FormDescription>
+                                                Upload a schedule image for your event (optional)
                                             </FormDescription>
                                             <FormMessage />
                                         </FormItem>
