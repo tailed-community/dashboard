@@ -43,6 +43,7 @@ type EventData = {
     communityName?: string;
     customHostName?: string;
     heroImage?: string;
+    scheduleImage?: string;
     capacity?: number;
     attendees: number;
     createdBy: string;
@@ -67,6 +68,7 @@ export default function EventDetailPage() {
     const [event, setEvent] = useState<EventData | null>(null);
     const [community, setCommunity] = useState<CommunityData | null>(null);
     const [heroImageUrl, setHeroImageUrl] = useState<string | null>(null);
+    const [scheduleImageUrl, setScheduleImageUrl] = useState<string | null>(null);
     const [communityLogoUrl, setCommunityLogoUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [isRegistered, setIsRegistered] = useState(false);
@@ -128,6 +130,17 @@ export default function EventDetailPage() {
                     } catch (error) {
                         console.error("Failed to load hero image:", error);
                         setHeroImageUrl(null);
+                    }
+                }
+
+                // Load schedule image from Firebase Storage if available
+                if (eventData.scheduleImage) {
+                    try {
+                        const imageUrl = await getFileUrl(eventData.scheduleImage);
+                        setScheduleImageUrl(imageUrl);
+                    } catch (error) {
+                        console.error("Failed to load schedule image:", error);
+                        setScheduleImageUrl(null);
                     }
                 }
             } catch (error) {
@@ -323,6 +336,22 @@ export default function EventDetailPage() {
                                 </div>
                             )}
                         </div>
+
+                        {scheduleImageUrl && (
+                            <>
+                                <Separator />
+                                <div className="space-y-4">
+                                    <h2 className="text-xl font-semibold text-slate-900">Schedule</h2>
+                                    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                                        <img
+                                            src={scheduleImageUrl}
+                                            alt={`${event.title} schedule`}
+                                            className="w-full h-auto object-contain"
+                                        />
+                                    </div>
+                                </div>
+                            </>
+                        )}
 
                         <Separator />
 
