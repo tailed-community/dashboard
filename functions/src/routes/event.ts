@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { DateTime } from "luxon";
 import { db, storage } from "../lib/firebase";
 import { sendCommunityWelcomeEmail } from "../lib/email-service";
 import { upsertStudentUser } from "../lib/user-management";
@@ -1391,3 +1392,75 @@ router.get("/:eventId/attendees", async (req: Request, res: Response) => {
 });
 
 export default router;
+
+/**
+ * GET /events/:eventId/ics
+ * Public endpoint that returns a minimal .ics file for the event
+ */
+router.get('/:eventId/ics', async (req: Request, res: Response) => {
+  try {
+    const { eventId } = req.params;
+
+    // Resolve event by ID or slug
+    const eventDoc = await resolveEvent(eventId);
+    if (!eventDoc || !eventDoc.exists) {
+      return res.status(404).send('Event not found');
+    }
+
+    const eventData: any = { id: eventDoc.id, ...eventDoc.data() };
+
+    // Build DTSTART / DTEND in UTC format YYYYMMDDTHHMMSSZ
+    const startIso = `${eventData.startDate}T${eventData.startTime}`;
+    const startDT = DateTime.fromISO(startIso);
+
+    if (!startDT.isValid) {
+      return res.status(500).send('Invalid event start date/time');
+    }
+
+    let endDT: DateTime;
+
+    if (eventData.endDate && eventData.endTime) {
+      const endIso = `${eventData.endDate}T${eventData.endTime}`;
+      endDT = DateTime.fromISO(endIso);
+
+      if (!endDT.isValid) {
+        return res.status(500).send('Invalid event end date/time');
+      }
+    } else {
+      return res.status(500).send('Missing event end date/time');
+    }
+
+    if (endDT < startDT) {
+      return res.status(500).send('Event end time is before start time');
+    }
+
+    const dtStart = startDT.toUTC().toFormat("yyyyLLdd'T'HHmmss'Z'");
+    const dtEnd = endDT.toUTC().toFormat("yyyyLLdd'T'HHmmss'Z'");
+    const summary = (eventData.title || 'Event').toString().replace(/\r?\n/g, ' ');
+    const description = (eventData.description || '').toString().replace(/\r?\n/g, '\\n').replace(/[,;]/g, '');
+    const location = (eventData.location || eventData.digitalLink || '').toString().replace(/\r?\n/g, ' ');
+
+    const ics = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Tailed//EN',
+      'BEGIN:VEVENT',
+      `UID:${eventData.id}@tailed`,
+      `SUMMARY:${summary}`,
+      `DTSTART:${dtStart}`,
+      `DTEND:${dtEnd}`,
+      `DESCRIPTION:${description}`,
+      `LOCATION:${location}`,
+      `URL:${process.env.WEB_APP_URL || 'https://app.tailed.ca'}/events/${eventData.id}`,
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].join('\r\n');
+
+    res.setHeader('Content-Type', 'text/calendar');
+    res.setHeader('Content-Disposition', `attachment; filename="${(eventData.title || 'event').replace(/[^a-z0-9]/gi, '_').toLowerCase()}.ics"`);
+    return res.status(200).send(ics);
+  } catch (error: any) {
+    console.error('Error generating ICS:', error);
+    return res.status(500).send('Failed to generate calendar file');
+  }
+});

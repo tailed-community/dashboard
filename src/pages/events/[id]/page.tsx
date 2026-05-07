@@ -457,6 +457,18 @@ export default function EventDetailPage() {
                                         Event Ended
                                     </Button>
                                 )}
+                                    {/* Add to calendar - downloads .ics file */}
+                                    {!isPastEvent && (
+                                        <Button
+                                            variant="outline"
+                                            onClick={() => window.open(`${import.meta.env.VITE_API_URL}/events/${id}/ics`, "_blank")}
+                                            className="w-full rounded-lg"
+                                            size="lg"
+                                        >
+                                            <CalendarDays className="h-4 w-4 mr-2" />
+                                            Add to calendar
+                                        </Button>
+                                    )}
                                 <div className="flex gap-2">
                                     <Button
                                         variant="outline"
