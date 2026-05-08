@@ -359,20 +359,20 @@ const awardBaseSchema = z.object({
   prizeDescription: z.string().max(200).optional(),
   recipientIds: z.array(z.string().min(1)).min(1).optional(),
 });
-const participantSchema = z.object({
-  profileId: z.string(),
-  id: z.string(),
-  role: z.string(),
-  status: z.enum([
-    "pending",
-    "confirmed",
-    "rejected",
-    "cancelled",
-    "waitlisted",
-    "attended",
-    "no-show",
-  ]),
-});
+// const participantSchema = z.object({
+//   profileId: z.string(),
+//   id: z.string(),
+//   role: z.string(),
+//   status: z.enum([
+//     "pending",
+//     "confirmed",
+//     "rejected",
+//     "cancelled",
+//     "waitlisted",
+//     "attended",
+//     "no-show",
+//   ]),
+// });
 
 
 const createAwardSchema = awardBaseSchema;
@@ -1365,6 +1365,9 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
   try {
     const { eventId } = req.params;
     const userId = req.user?.uid;
+    if(!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
 
     const eventContext = await loadEventContext(res, eventId);
     if (!eventContext) return;
