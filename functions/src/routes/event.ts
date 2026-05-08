@@ -466,7 +466,7 @@ router.get("/:identifier", async (req: Request, res: Response) => {
     const { identifier } = req.params;
 
     const eventContext = await loadEventContext(res, identifier);
-    if (!eventContext) return;
+    if (!eventContext) return null;
 
     const { eventDoc, eventData } = eventContext;
 
@@ -527,10 +527,10 @@ router.post("/:eventId/awards", async (req: Request, res: Response) => {
   try {
     const { eventId } = req.params;
     const userId = requireUserId(req, res);
-    if (!userId) return;
+    if (!userId) return null;
 
     const eventContext = await loadEventContext(res, eventId);
-    if (!eventContext) return;
+    if (!eventContext) return null;
 
     const { eventDoc, eventData } = eventContext;
 
@@ -539,10 +539,10 @@ router.post("/:eventId/awards", async (req: Request, res: Response) => {
       eventData,
       "Awards can only be added to community events"
     );
-    if (!communityContext) return;
+    if (!communityContext) return null;
 
     if (!ensureCommunityAdmin(res, userId, communityContext.admins, "Only community admins can add awards")) {
-      return;
+      return null;
     }
 
     const validationResult = createAwardSchema.safeParse(req.body);
@@ -595,10 +595,10 @@ router.patch("/:eventId/awards/:awardId", async (req: Request, res: Response) =>
   try {
     const { eventId, awardId } = req.params;
     const userId = requireUserId(req, res);
-    if (!userId) return;
+    if (!userId) return null;
 
     const eventContext = await loadEventContext(res, eventId);
-    if (!eventContext) return;
+    if (!eventContext) return null;
 
     const { eventDoc, eventData } = eventContext;
 
@@ -607,10 +607,10 @@ router.patch("/:eventId/awards/:awardId", async (req: Request, res: Response) =>
       eventData,
       "Awards can only be updated for community events"
     );
-    if (!communityContext) return;
+    if (!communityContext) return null;
 
     if (!ensureCommunityAdmin(res, userId, communityContext.admins, "Only community admins can update awards")) {
-      return;
+      return null;
     }
 
     const validationResult = updateAwardSchema.safeParse(req.body);
@@ -667,7 +667,7 @@ router.get("/:eventId/awards", async (req: Request, res: Response) => {
     const userId = req.user?.uid;
 
     const eventContext = await loadEventContext(res, eventId);
-    if (!eventContext) return;
+    if (!eventContext) return null;
 
     const { eventDoc, eventData } = eventContext;
 
@@ -688,7 +688,7 @@ router.get("/:eventId/awards", async (req: Request, res: Response) => {
         eventData,
         "Event is not associated with a community"
       );
-      if (!communityContext) return;
+      if (!communityContext) return null;
 
       const canView =
         eventData.createdBy === userId || communityContext.admins.includes(userId);
@@ -724,10 +724,10 @@ router.delete("/:eventId/awards/:awardId", async (req: Request, res: Response) =
   try {
     const { eventId, awardId } = req.params;
     const userId = requireUserId(req, res);
-    if (!userId) return;
+    if (!userId) return null;
 
     const eventContext = await loadEventContext(res, eventId);
-    if (!eventContext) return;
+    if (!eventContext) return null;
 
     const { eventDoc, eventData } = eventContext;
 
@@ -736,10 +736,10 @@ router.delete("/:eventId/awards/:awardId", async (req: Request, res: Response) =
       eventData,
       "Awards can only be deleted for community events"
     );
-    if (!communityContext) return;
+    if (!communityContext) return null;
 
     if (!ensureCommunityAdmin(res, userId, communityContext.admins, "Only community admins can delete awards")) {
-      return;
+      return null;
     }
 
     const awardRef = db
@@ -776,7 +776,7 @@ router.delete("/:eventId/awards/:awardId", async (req: Request, res: Response) =
 router.post("/", async (req: Request, res: Response) => {
   try {
     const userId = requireUserId(req, res);
-    if (!userId) return;
+    if (!userId) return null;
 
     // Always process as multipart (files are optional)
     const { fields, files } = await uploadEventImages(req, userId);
@@ -819,10 +819,10 @@ router.patch("/:eventId", async (req: Request, res: Response) => {
   try {
     const { eventId } = req.params;
     const userId = requireUserId(req, res);
-    if (!userId) return;
+    if (!userId) return null;
 
     const eventContext = await loadEventContext(res, eventId);
-    if (!eventContext) return;
+    if (!eventContext) return null;
 
     const { resolvedEventId, eventData } = eventContext;
 
@@ -832,7 +832,7 @@ router.patch("/:eventId", async (req: Request, res: Response) => {
       eventData,
       "Only event creators or community admins can update event details"
     );
-    if (!isAuthorized) return;
+    if (!isAuthorized) return null;
 
     // Parse request body — multipart/form-data or JSON
     let fields: any;
@@ -923,10 +923,10 @@ router.delete("/:eventId", async (req: Request, res: Response) => {
   try {
     const { eventId } = req.params;
     const userId = requireUserId(req, res);
-    if (!userId) return;
+    if (!userId) return null;
 
     const eventContext = await loadEventContext(res, eventId);
-    if (!eventContext) return;
+    if (!eventContext) return null;
 
     const { resolvedEventId, eventData } = eventContext;
 
@@ -936,7 +936,7 @@ router.delete("/:eventId", async (req: Request, res: Response) => {
       eventData,
       "Only event creators or community admins can delete events"
     );
-    if (!isAuthorized) return;
+    if (!isAuthorized) return null;
 
     // Soft delete by setting status to cancelled
     await db.collection("events").doc(resolvedEventId).update({
@@ -990,7 +990,7 @@ router.post("/:eventId/import-attendees", async (req: Request, res: Response) =>
   try {
     const { eventId } = req.params;
     const userId = requireUserId(req, res);
-    if (!userId) return;
+    if (!userId) return null;
 
     // Validate request body
     const validationResult = importAttendeesSchema.safeParse(req.body);
@@ -1004,7 +1004,7 @@ router.post("/:eventId/import-attendees", async (req: Request, res: Response) =>
     const { attendees } = validationResult.data;
 
     const eventContext = await loadEventContext(res, eventId);
-    if (!eventContext) return;
+    if (!eventContext) return null;
 
     const { resolvedEventId, eventData } = eventContext;
 
@@ -1013,11 +1013,11 @@ router.post("/:eventId/import-attendees", async (req: Request, res: Response) =>
       eventData,
       "Event is not associated with a community"
     );
-    if (!communityContext) return;
+    if (!communityContext) return null;
 
     const { communityData, admins } = communityContext;
     if (!ensureCommunityAdmin(res, userId, admins, "Only community admins can import registrations")) {
-      return;
+      return null;
     }
 
     const results = {
@@ -1207,10 +1207,10 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
   try {
     const { eventId } = req.params;
     const userId = requireUserId(req, res);
-    if (!userId) return;
+    if (!userId) return null;
 
     const eventContext = await loadEventContext(res, eventId);
-    if (!eventContext) return;
+    if (!eventContext) return null;
 
     const { resolvedEventId, eventData } = eventContext;
 
@@ -1237,7 +1237,7 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
         eventData,
         "Event is not associated with a community"
       );
-      if (!communityContext) return;
+      if (!communityContext) return null;
     }
 
     const eventRef = db.collection("events").doc(resolvedEventId);
@@ -1348,10 +1348,10 @@ router.get("/:eventId/attendees", async (req: Request, res: Response) => {
   try {
     const { eventId } = req.params;
     const userId = requireUserId(req, res);
-    if (!userId) return;
+    if (!userId) return null;
 
     const eventContext = await loadEventContext(res, eventId);
-    if (!eventContext) return;
+    if (!eventContext) return null;
 
     const { resolvedEventId, eventData } = eventContext;
 
@@ -1361,7 +1361,7 @@ router.get("/:eventId/attendees", async (req: Request, res: Response) => {
       eventData,
       "Access denied"
     );
-    if (!canAccess) return;
+    if (!canAccess) return null;
 
     // Get registrations
     const registrationsSnapshot = await db
