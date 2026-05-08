@@ -390,6 +390,17 @@ const updateEventSchema = eventBaseSchema
     removeScheduleImage: z.boolean().optional(),
   });
 
+const safeDeleteStorageFile = async (filePath?: string): Promise<void> => {
+  if (!filePath) return;
+
+  try {
+    await storage.bucket().file(filePath).delete({ ignoreNotFound: true });
+  } catch (error) {
+    console.error("Failed to delete storage file:", filePath, error);
+  }
+};
+
+
 /**
  * GET /events
  * Get all events with optional filtering
