@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Search, Plus, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
-import { apiFetch } from "@/lib/fetch";
+import { getCommunities, parseApiError } from "@/lib/api";
 import { getFileUrl } from "@/lib/firebase-client";
 
 const categories = [
@@ -39,14 +39,8 @@ export default function CommunityPage() {
         setIsLoading(true);
         setError(null);
         
-        const response = await apiFetch("/public/communities");
-        const data = await response.json();
-        
-        if (!response.ok) {
-          throw new Error(data.error || "Failed to fetch communities");
-        }
-        
-        const fetchedcommunities: Community[] = data.communities.map((comm: any) => ({
+        const communitiesData = await getCommunities();
+        const fetchedcommunities: Community[] = communitiesData.map((comm: any) => ({
           id: comm.id,
           name: comm.name,
           description: comm.description,
@@ -87,7 +81,8 @@ export default function CommunityPage() {
         setcommunities(communitiesWithUrls);
       } catch (err) {
         console.error("Error fetching communities:", err);
-        setError("Failed to load communities. Please try again.");
+        const apiErr = parseApiError(err);
+        setError(apiErr.message || "Failed to load communities. Please try again.");
       } finally {
         setIsLoading(false);
       }

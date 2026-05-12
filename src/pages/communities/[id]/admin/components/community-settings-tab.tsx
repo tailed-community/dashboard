@@ -2,8 +2,10 @@ import { useState, useRef, useEffect } from "react";
 import { Timestamp } from "firebase/firestore";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { Loader2, Save, Upload, X } from "lucide-react";
+import { updateCommunity, parseApiError } from "@/lib/api";
+import { updateCommunityFormSchema, type UpdateCommunityFormData } from "@/lib/api/schemas/community";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,8 +26,6 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
-import { toast } from "sonner";
-import { apiFetch } from "@/lib/fetch";
 import { getFileUrl } from "@/lib/firebase-client";
 
 type CommunityData = {
@@ -58,15 +58,6 @@ const CATEGORIES = [
     "Social",
     "Professional",
 ];
-
-const communitySchema = z.object({
-    name: z.string().min(3, "Name must be at least 3 characters").max(100),
-    shortDescription: z.string().min(10, "Short description must be at least 10 characters").max(200).optional(),
-    description: z.string().min(10, "Description must be at least 10 characters").max(5000),
-    category: z.string().min(1, "Please select a category"),
-});
-
-type CommunityFormData = z.infer<typeof communitySchema>;
 
 interface CommunitySettingsTabProps {
     community: CommunityData;
@@ -124,8 +115,8 @@ export default function CommunitySettingsTab({ community, onUpdate }: Readonly<C
         if (bannerInputRef.current) bannerInputRef.current.value = "";
     };
 
-    const form = useForm<CommunityFormData>({
-        resolver: zodResolver(communitySchema),
+    const form = useForm<UpdateCommunityFormData>({
+        resolver: zodResolver(updateCommunityFormSchema),
         defaultValues: {
             name: community.name,
             shortDescription: community.shortDescription || "",
@@ -134,43 +125,37 @@ export default function CommunitySettingsTab({ community, onUpdate }: Readonly<C
         },
     });
 
-    const onSubmit = async (data: CommunityFormData) => {
+    const onSubmit = async (data: UpdateCommunityFormData) => {
         try {
             setIsSubmitting(true);
 
-            // Always use FormData so we can attach optional image files
-            const formData = new FormData();
-            formData.append("name", data.name);
-            formData.append("category", data.category);
-            if (data.shortDescription) formData.append("shortDescription", data.shortDescription);
-            formData.append("description", data.description);
-            if (logoFile) formData.append("logo", logoFile);
-            if (bannerFile) formData.append("banner", bannerFile);
-
-            const response = await apiFetch(`/communities/${community.id}`, {
-                method: "PATCH",
-                body: formData,
+            // Call typed API function with form data and optional files
+            await updateCommunity(community.id, {
+                name: data.name,
+                shortDescription: data.shortDescription,
+                description: data.description,
+                category: data.category,
+                websiteUrl: data.websiteUrl,
+                discordUrl: data.discordUrl,
+                linkedinUrl: data.linkedinUrl,
+                instagramUrl: data.instagramUrl,
+                logo: logoFile || undefined,
+                banner: bannerFile || undefined,
             });
 
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(result.error || "Failed to update community");
-            }
-
-            // Resolve new storage paths → download URLs if the backend returned them
+            // Resolve new storage paths → download URLs if files were uploaded
             let newLogoUrl = community.logoUrl;
             let newBannerUrl = community.bannerUrl;
             let newLogo = community.logo;
             let newBanner = community.banner;
 
-            if (result.logo) {
-                newLogo = result.logo;
-                try { newLogoUrl = await getFileUrl(result.logo); } catch { /* keep old */ }
+            if (logoFile) {
+                newLogo = `communities/${community.id}/${logoFile.name}`;
+                try { newLogoUrl = await getFileUrl(newLogo); } catch { /* keep old */ }
             }
-            if (result.banner) {
-                newBanner = result.banner;
-                try { newBannerUrl = await getFileUrl(result.banner); } catch { /* keep old */ }
+            if (bannerFile) {
+                newBanner = `communities/${community.id}/${bannerFile.name}`;
+                try { newBannerUrl = await getFileUrl(newBanner); } catch { /* keep old */ }
             }
 
             // Clear pending file selections now that they're saved
@@ -192,7 +177,10 @@ export default function CommunitySettingsTab({ community, onUpdate }: Readonly<C
             toast.success("Community updated successfully!");
         } catch (error) {
             console.error("Error updating community:", error);
-            toast.error("Failed to update community");
+            const apiErr = parseApiError(error);
+            toast.error("Failed to update community", {
+                description: apiErr.message,
+            });
         } finally {
             setIsSubmitting(false);
         }

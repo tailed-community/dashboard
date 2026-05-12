@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { DateTime } from "luxon";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/fetch";
+import { getCommunity, parseApiError } from "@/lib/api";
 import { getFileUrl } from "@/lib/firebase-client";
 import {
     Users,
@@ -73,25 +74,17 @@ export default function CommunityDetailPage() {
 
         const fetchCommunity = async () => {
             try {
-                const response = await apiFetch(`/public/communities/${slug}`);
-                const data = await response.json();
-
-                if (!response.ok) {
-                    toast.error(data.error || "Community not found");
-                    navigate("/communities");
-                    return;
-                }
-
+                const communityResponse = await getCommunity(slug);
                 // Convert date fields to Date objects
                 const communityData = {
-                    ...data.community,
-                    createdAt: data.community.createdAt?._seconds 
-                        ? DateTime.fromSeconds(data.community.createdAt._seconds).toJSDate()
+                    ...communityResponse,
+                    createdAt: communityResponse.createdAt
+                        ? new Date(communityResponse.createdAt)
                         : DateTime.now().toJSDate(),
-                    updatedAt: data.community.updatedAt?._seconds 
-                        ? DateTime.fromSeconds(data.community.updatedAt._seconds).toJSDate()
+                    updatedAt: communityResponse.updatedAt
+                        ? new Date(communityResponse.updatedAt)
                         : DateTime.now().toJSDate(),
-                } as CommunityData;
+                } as unknown as CommunityData;
 
                 // Fetch logo and banner URLs from Firebase Storage
                 if (communityData.logo) {
@@ -117,6 +110,9 @@ export default function CommunityDetailPage() {
                     setIsMember(true);
                 }
             } catch (error) {
+                const apiErr = parseApiError(error);
+                toast.error(apiErr.message || "Community not found");
+                navigate("/communities");
                 console.error("Error fetching community:", error);
                 toast.error("Failed to load community");
             } finally {

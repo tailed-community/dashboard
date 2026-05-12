@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/use-auth";
 import { ArrowLeft, Loader2, Settings, Users, UserCog } from "lucide-react";
-import { apiFetch } from "@/lib/fetch";
+import { getCommunityAdmin, parseApiError } from "@/lib/api";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import CommunitySettingsTab from "./components/community-settings-tab.tsx";
@@ -44,42 +44,37 @@ export default function CommunityAdminPage() {
 
         const fetchCommunity = async () => {
             try {
-                // Fetch community via API (supports both slug and ID)
-                const response = await apiFetch(`/communities/${slug}`);
-                const result = await response.json();
+                // Fetch community via typed API function
+                const communityData = await getCommunityAdmin(slug);
 
-                if (!response.ok) {
-                    // Handle 403 Forbidden - not creator
-                    if (response.status === 403) {
-                        toast.error("You don't have permission to access this page");
-                        navigate(`/communities/${slug}`);
-                        return;
-                    }
-                    
-                    // Handle 404 Not Found
-                    if (response.status === 404) {
-                        toast.error("Community not found");
-                        navigate("/communities");
-                        return;
-                    }
+                const community = {
+                    ...communityData,
+                    createdAt: new Date(communityData.createdAt),
+                    updatedAt: new Date(communityData.updatedAt),
+                } as unknown as CommunityData;
 
-                    throw new Error(result.error || "Failed to load community");
-                }
-
-                const communityData = {
-                    ...result.community,
-                    createdAt: new Date(result.community.createdAt),
-                    updatedAt: new Date(result.community.updatedAt),
-                } as CommunityData;
-
-                setCommunity(communityData);
+                setCommunity(community);
 
                 // Backend already validates creator access via authentication
                 // If we get here, user is authorized
                 setIsCreator(true);
             } catch (error) {
+                const apiErr = parseApiError(error);
                 console.error("Error fetching community:", error);
-                toast.error("Failed to load community");
+                
+                // Handle specific error codes
+                if (apiErr.code === 'FORBIDDEN') {
+                    toast.error("You don't have permission to access this page");
+                    navigate(`/communities/${slug}`);
+                } else if (apiErr.code === 'NOT_FOUND') {
+                    toast.error("Community not found");
+                    navigate("/communities");
+                } else {
+                    toast.error("Failed to load community", {
+                        description: apiErr.message,
+                    });
+                    navigate("/communities");
+                }
                 navigate("/communities");
             } finally {
                 setLoading(false);

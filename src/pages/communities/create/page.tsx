@@ -2,10 +2,10 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { toast } from "sonner";
-import { Users, Loader2, Upload, Image as ImageIcon } from "lucide-react";
-import { apiFetch } from "@/lib/fetch";
+import { Users, Loader2 } from "lucide-react";
+import { createCommunity, parseApiError } from "@/lib/api";
+import { createCommunityFormSchema, type CreateCommunityFormData } from "@/lib/api/schemas/community";
 import { Button } from "@/components/ui/button";
 import {
     Card,
@@ -35,22 +35,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { useAuth } from "@/hooks/use-auth";
 
-// Zod schema for community validation
-const communitieschema = z.object({
-    name: z.string().min(3, "Name must be at least 3 characters").max(100, "Name must be less than 100 characters"),
-    slug: z.string()
-        .min(3, "Slug must be at least 3 characters")
-        .max(100, "Slug must be less than 100 characters")
-        .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Slug must be lowercase letters, numbers, and hyphens only"),
-    shortDescription: z.string().min(10, "Short description must be at least 10 characters").max(200, "Short description must be less than 200 characters"),
-    description: z.string().min(10, "Description must be at least 10 characters").max(5000, "Description must be less than 5000 characters"),
-    category: z.string().min(1, "Category is required"),
-    logo: z.instanceof(File).optional(),
-    banner: z.instanceof(File).optional(),
-});
-
-type CommunityFormData = z.infer<typeof communitieschema>;
-
 const categories = [
     "Academic",
     "Technology",
@@ -69,14 +53,18 @@ export default function CreateCommunityPage() {
     const [logoPreview, setLogoPreview] = useState<string | null>(null);
     const [bannerPreview, setBannerPreview] = useState<string | null>(null);
 
-    const form = useForm<CommunityFormData>({
-        resolver: zodResolver(communitieschema),
+    const form = useForm<CreateCommunityFormData>({
+        resolver: zodResolver(createCommunityFormSchema),
         defaultValues: {
             name: "",
             slug: "",
             shortDescription: "",
             description: "",
             category: "",
+            websiteUrl: "",
+            discordUrl: "",
+            linkedinUrl: "",
+            instagramUrl: "",
         },
     });
 
@@ -90,7 +78,7 @@ export default function CreateCommunityPage() {
             .replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
     };
 
-    const onSubmit = async (data: CommunityFormData) => {
+    const onSubmit = async (data: CreateCommunityFormData) => {
         if (!user) {
             toast.error("You must be signed in to create a community");
             return;
@@ -99,36 +87,20 @@ export default function CreateCommunityPage() {
         setIsSubmitting(true);
 
         try {
-            // Build FormData for multipart/form-data request
-            const formData = new FormData();
-            
-            // Append all text fields
-            formData.append("name", data.name);
-            formData.append("slug", data.slug);
-            formData.append("shortDescription", data.shortDescription);
-            formData.append("description", data.description);
-            formData.append("category", data.category);
-
-            // Append optional file fields
-            if (data.logo) {
-                formData.append("logo", data.logo);
-            }
-            if (data.banner) {
-                formData.append("banner", data.banner);
-            }
-
-            // Call API endpoint (always uses multipart/form-data)
-            const response = await apiFetch("/communities", {
-                method: "POST",
-                body: formData,
-                // Don't set Content-Type header - browser sets it with boundary
+            // Call typed API function with form data
+            await createCommunity({
+                name: data.name,
+                slug: data.slug,
+                shortDescription: data.shortDescription,
+                description: data.description,
+                category: data.category,
+                websiteUrl: data.websiteUrl,
+                discordUrl: data.discordUrl,
+                linkedinUrl: data.linkedinUrl,
+                instagramUrl: data.instagramUrl,
+                logo: data.logo,
+                banner: data.banner,
             });
-
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(result.error || "Failed to create community");
-            }
 
             toast.success("Community created successfully!", {
                 description: "Your community has been published.",
@@ -137,8 +109,9 @@ export default function CreateCommunityPage() {
             navigate("/communities");
         } catch (error) {
             console.error("Error creating community:", error);
+            const apiErr = parseApiError(error);
             toast.error("Failed to create community", {
-                description: error instanceof Error ? error.message : "Please try again",
+                description: apiErr.message,
             });
         } finally {
             setIsSubmitting(false);
