@@ -761,7 +761,7 @@ router.post("/:communityId/import-members", async (req: Request, res: Response) 
           
           // Send welcome email to new users
           try {
-            const loginLink = `${process.env.WEB_APP_URL || 'https://community.tailed.ca'}/login`;
+            const loginLink = `${process.env.FRONTEND_URL || 'https://community.tailed.ca'}/login`;
             await sendCommunityWelcomeEmail(
               emailLower,
               member.firstName || emailLower.split("@")[0],
