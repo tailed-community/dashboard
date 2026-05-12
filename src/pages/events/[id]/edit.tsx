@@ -6,6 +6,7 @@ import { z } from "zod";
 import { toast } from "sonner";
 import { CalendarDays, MapPin, Users, Loader2, Upload, Link as LinkIcon, ArrowLeft } from "lucide-react";
 import { apiFetch } from "@/lib/fetch";
+import { getCommunitiesForSelection, parseApiError } from "@/lib/api";
 import { getFileUrl } from "@/lib/firebase-client";
 import { Button } from "@/components/ui/button";
 import { EventAwardsEditor, toMainPlaceNumber, getMainPlaceTitle } from "@/components/events/awards";
@@ -283,18 +284,17 @@ export default function EditEventPage() {
     useEffect(() => {
         const fetchCommunities = async () => {
             try {
-                const response = await apiFetch("/communities?limit=100");
-                const result = await response.json();
-                if (!response.ok) throw new Error(result.error);
+                const commData = await getCommunitiesForSelection(100);
                 setCommunities(
-                    result.communities.map((c: any) => ({
+                    commData.map((c: any) => ({
                         id: c.id,
                         name: c.name || "Unnamed Community",
                         acronym: c.acronym,
                     }))
                 );
-            } catch {
-                toast.error("Failed to load communities");
+            } catch (err) {
+                const apiErr = parseApiError(err);
+                toast.error(apiErr.message || "Failed to load communities");
             } finally {
                 setLoadingCommunities(false);
             }

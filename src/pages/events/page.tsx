@@ -11,9 +11,9 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "@/lib/fetch";
+import { getCommunity} from "@/lib/api";
 import { getFileUrl } from "@/lib/firebase-client";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
     Card,
     CardDescription,
@@ -358,10 +358,9 @@ export default function EventsPage() {
                 if (communityIds.length > 0) {
                     for (const communityId of communityIds) {
                         try {
-                            const communityResponse = await apiFetch(`/public/communities/${communityId}`);
-                            const communityData = await communityResponse.json();
-                            if (communityResponse.ok && communityData.community?.logo) {
-                                communityLogos[communityId] = communityData.community.logo;
+                            const communityData = await getCommunity(communityId);
+                            if (communityData?.logo) {
+                                communityLogos[communityId] = communityData.logo;
                             }
                         } catch (error) {
                             console.error(`Error fetching community ${communityId}:`, error);

@@ -6,6 +6,8 @@ import { z } from "zod";
 import { toast } from "sonner";
 import { CalendarDays, MapPin, Users, Loader2, Upload, Link as LinkIcon } from "lucide-react";
 import { apiFetch } from "@/lib/fetch";
+
+import { getCommunitiesForSelection, parseApiError } from "@/lib/api";
 import { EventAwardsEditor, toMainPlaceNumber, getMainPlaceTitle } from "@/components/events/awards";
 import { Button } from "@/components/ui/button";
 import {
@@ -241,14 +243,8 @@ export default function CreateEventPage() {
     useEffect(() => {
         const fetchCommunities = async () => {
             try {
-                const response = await apiFetch("/communities?limit=100");
-                const result = await response.json();
-                
-                if (!response.ok) {
-                    throw new Error(result.error || "Failed to fetch communities");
-                }
-                
-                const fetchedCommunities: Community[] = result.communities.map((c: any) => ({
+                const commData = await getCommunitiesForSelection(100);
+                const fetchedCommunities: Community[] = commData.map((c: any) => ({
                     id: c.id,
                     name: c.name || "Unnamed Community",
                     acronym: c.acronym,
@@ -256,8 +252,8 @@ export default function CreateEventPage() {
 
                 setCommunities(fetchedCommunities);
             } catch (error) {
-                console.error("Error fetching communities:", error);
-                toast.error("Failed to load communities");
+                const apiErr = parseApiError(error);
+                toast.error(apiErr.message || "Failed to load communities");
             } finally {
                 setLoadingCommunities(false);
             }
