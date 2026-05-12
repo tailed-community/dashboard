@@ -431,20 +431,6 @@ const awardBaseSchema = z.object({
   prizeDescription: z.string().max(200).optional(),
   recipientIds: z.array(z.string().min(1)).optional(),
 });
-const participantSchema = z.object({
-  profileId: z.string(),
-  id: z.string(),
-  role: z.string(),
-  status: z.enum([
-    "pending",
-    "confirmed",
-    "rejected",
-    "cancelled",
-    "waitlisted",
-    "attended",
-    "no-show",
-  ]),
-});
 
 
 
@@ -581,17 +567,6 @@ const safeDeleteStorageFile = async (filePath?: string): Promise<void> => {
     console.error("Failed to delete storage file:", filePath, error);
   }
 };
-
-const safeDeleteStorageFile = async (filePath?: string): Promise<void> => {
-  if (!filePath) return;
-
-  try {
-    await storage.bucket().file(filePath).delete({ ignoreNotFound: true });
-  } catch (error) {
-    console.error("Failed to delete storage file:", filePath, error);
-  }
-};
-
 /**
  * GET /events
  * Get all events with optional filtering
