@@ -8,12 +8,13 @@ import {
     DialogDescription,
     DialogFooter,
 } from "@/components/ui/dialog";
-import { useForm } from "react-hook-form";
+import { useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { CalendarDays, MapPin, Users, Loader2, Upload, Link as LinkIcon } from "lucide-react";
 import { apiFetch } from "@/lib/fetch";
+import { EventAwardsEditor, toMainPlaceNumber, getMainPlaceTitle } from "@/components/events/awards";
 import { Button } from "@/components/ui/button";
 import {
     Card,
@@ -43,6 +44,34 @@ import { Switch } from "@/components/ui/switch";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { useAuth } from "@/hooks/use-auth";
 
+const awardSchema = z.object({
+    type: z.enum(["main_place", "special"]),
+    place: z.preprocess(
+        (value) => {
+            if (value === "" || value === undefined || value === null) {
+                return null;
+            }
+
+            if (value === "1" || value === 1) return 1;
+            if (value === "2" || value === 2) return 2;
+            if (value === "3" || value === 3) return 3;
+
+            return value;
+        },
+        z.union([z.literal(1), z.literal(2), z.literal(3), z.null()])
+    ),
+    title: z.string().min(1, "Award title is required").max(120, "Title must be less than 120 characters"),
+    prizeDescription: z.string().max(200, "Prize description must be less than 200 characters").optional(),
+}).superRefine((value, ctx) => {
+    if (value.type === "main_place" && value.place === null) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Place is required for main place awards",
+            path: ["place"],
+        });
+    }
+});
+
 // Zod schema for event validation
 const eventSchema = z.object({
     title: z.string().min(3, "Title must be at least 3 characters").max(200, "Title must be less than 200 characters"),
@@ -70,6 +99,7 @@ const eventSchema = z.object({
     }),
     communityId: z.string().optional(),
     customHostName: z.string().optional(),
+    awards: z.array(awardSchema).max(20, "You can add up to 20 awards").optional(),
     heroImage: z.instanceof(File).optional(),
     scheduleImage: z.instanceof(File).optional(),
     capacity: z.string().optional(),
@@ -181,12 +211,33 @@ export default function CreateEventPage() {
             hostType: "custom",
             communityId: "",
             customHostName: user?.displayName || "",
+            awards: [],
             capacity: "",
         },
     });
 
+    const { fields: awardFields, append: appendAward, remove: removeAward, replace: replaceAwards } = useFieldArray({
+        control: form.control,
+        name: "awards",
+    });
+
+    const [removedAwardIds, setRemovedAwardIds] = useState<string[]>([]);
+
     const watchMode = form.watch("mode");
     const watchHostType = form.watch("hostType");
+    const watchAwards = form.watch("awards") || [];
+    const takenMainPlaces = new Set(
+        watchAwards
+            .map((award) => {
+                if (award?.type !== "main_place") {
+                    return null;
+                }
+
+                return toMainPlaceNumber(award.place);
+            })
+            .filter((place): place is 1 | 2 | 3 => place !== null)
+    );
+    const nextAvailableMainPlace = ([1, 2, 3] as const).find((place) => !takenMainPlaces.has(place)) ?? null;
 
     // Auto-generate slug from title
     const generateSlug = (title: string) => {
@@ -266,6 +317,10 @@ export default function CreateEventPage() {
             }
             if (data.hostType === "custom" && data.customHostName) {
                 formData.append("customHostName", data.customHostName);
+            }
+
+            if (data.awards && data.awards.length > 0) {
+                formData.append("awards", JSON.stringify(data.awards));
             }
 
             // Append optional hero image
@@ -888,6 +943,20 @@ export default function CreateEventPage() {
                                         )}
                                     />
                                 )}
+
+                                {/* Awards */}
+                                <EventAwardsEditor
+                                    form={form}
+                                    awardFields={awardFields}
+                                    appendAward={appendAward}
+                                    removeAward={removeAward}
+                                    replaceAwards={replaceAwards}
+                                    watchAwards={watchAwards}
+                                    registrations={[]}
+                                    loadingRegistrations={false}
+                                    removedAwardIds={removedAwardIds}
+                                    setRemovedAwardIds={setRemovedAwardIds}
+                                />
 
                                 {/* Hero Image Upload */}
                                 <FormField

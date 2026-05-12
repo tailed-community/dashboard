@@ -5,6 +5,7 @@ import { sendCommunityWelcomeEmail, sendEventApprovalEmail } from "../lib/email-
 import { upsertStudentUser } from "../lib/user-management";
 import { z } from "zod";
 import Busboy from "busboy";
+import { FieldValue } from "firebase-admin/firestore";
 
 const router = Router();
 
@@ -40,7 +41,46 @@ const eventBaseSchema = z.object({
 const createEventSchema = eventBaseSchema.extend({
   slug: z.string().min(3).max(200).regex(/^[a-z0-9-]+$/),
   communityId: z.string().optional(),
+  awards: z.array(
+    z.object({
+      type: z.enum(["main_place", "special"]),
+      place: z.union([z.literal(1), z.literal(2), z.literal(3), z.null()]),
+      title: z.string().min(1).max(120),
+      prizeDescription: z.string().max(200).optional(),
+      recipientIds: z.array(z.string().min(1)).min(1).optional(),
+    }).superRefine((value, ctx) => {
+      if (value.type === "main_place" && value.place === null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["place"],
+          message: "Main place awards require place",
+        });
+      }
+    })
+  ).max(20).optional(),
 });
+
+const parseAwardsFieldIfPresent = (fields: Record<string, unknown>): void => {
+  if (typeof fields.awards !== "string") {
+    return;
+  }
+
+  const rawAwards = fields.awards.trim();
+  if (!rawAwards) {
+    fields.awards = [];
+    return;
+  }
+
+  try {
+    const parsedAwards = JSON.parse(rawAwards);
+    fields.awards = parsedAwards;
+  } catch {
+    throw {
+      status: 400,
+      error: "Invalid awards payload",
+    };
+  }
+};
 
 /**
  * Helper: Upload images to Firebase Storage for events
@@ -160,6 +200,7 @@ const createEventInDB = async (
   }
 
   const validatedData = validationResult.data;
+  const awards = validatedData.awards || [];
 
   // Check if slug is unique
   const existingSlug = await db
@@ -185,16 +226,28 @@ const createEventInDB = async (
       };
     }
 
+    const communityData = communityDoc.data() || {};
+    const admins = Array.isArray(communityData.admins) ? communityData.admins : [];
+
+    if (!admins.includes(userId)) {
+      throw {
+        status: 403,
+        error: "Only community admins can create events for this community",
+      };
+    }
+
     // Increment community event count
     await db.collection("communities").doc(validatedData.communityId).update({
-      eventCount: (communityDoc.data()?.eventCount || 0) + 1,
+      eventCount: (communityData.eventCount || 0) + 1,
       updatedAt: new Date(),
     });
   }
 
+  const { awards: _awards, ...eventPayload } = validatedData;
+
   // Create event document
   const eventRef = await db.collection("events").add({
-    ...validatedData,
+    ...eventPayload,
     heroImage: heroImageUrl,
     scheduleImage: scheduleImageUrl,
     createdBy: userId,
@@ -214,6 +267,25 @@ const createEventInDB = async (
       events: [...events, eventRef.id],
       updatedAt: new Date(),
     });
+  }
+
+  if (awards.length > 0) {
+    const batch = db.batch();
+    const eventAwardsCollection = db.collection("events").doc(eventRef.id).collection("awards");
+
+    for (const award of awards) {
+      const awardRef = eventAwardsCollection.doc();
+      batch.set(awardRef, {
+        ...award,
+        eventId: eventRef.id,
+        communityId: validatedData.communityId || null,
+        createdBy: userId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    }
+
+    await batch.commit();
   }
 
   return eventRef.id;
@@ -364,8 +436,24 @@ const awardBaseSchema = z.object({
   place: z.union([z.literal(1), z.literal(2), z.literal(3), z.null()]),
   title: z.string().min(1).max(120),
   prizeDescription: z.string().max(200).optional(),
-  recipientIds: z.array(z.string().min(1)).min(1).optional(),
+  recipientIds: z.array(z.string().min(1)).optional(),
 });
+// const participantSchema = z.object({
+//   profileId: z.string(),
+//   id: z.string(),
+//   role: z.string(),
+//   status: z.enum([
+//     "pending",
+//     "confirmed",
+//     "rejected",
+//     "cancelled",
+//     "waitlisted",
+//     "attended",
+//     "no-show",
+//   ]),
+// });
+
+
 
 const createAwardSchema = awardBaseSchema;
 
@@ -381,6 +469,115 @@ const updateEventSchema = eventBaseSchema
     stand: z.array(z.object({ id: z.string() })).optional(),
     removeScheduleImage: z.boolean().optional(),
   });
+
+type AwardRecipientSummary = {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  initials: string;
+  displayName: string;
+  email?: string;
+};
+
+type AwardDocument = {
+  recipientIds?: string[];
+  [key: string]: unknown;
+};
+
+const normalizeRecipientIds = (recipientIds: unknown): string[] => {
+  if (!Array.isArray(recipientIds)) {
+    return [];
+  }
+
+  return [...new Set(
+    recipientIds
+      .filter((recipientId): recipientId is string => typeof recipientId === "string")
+      .map((recipientId) => recipientId.trim())
+      .filter((recipientId) => recipientId.length > 0)
+  )];
+};
+
+const partitionRecipientChanges = (
+  previousRecipientIds: string[],
+  finalRecipientIds: string[]
+): { addedRecipientIds: string[]; removedRecipientIds: string[] } => {
+  const previousSet = new Set(previousRecipientIds);
+  const finalSet = new Set(finalRecipientIds);
+
+  const addedRecipientIds = finalRecipientIds.filter((recipientId) => !previousSet.has(recipientId));
+  const removedRecipientIds = previousRecipientIds.filter((recipientId) => !finalSet.has(recipientId));
+
+  return { addedRecipientIds, removedRecipientIds };
+};
+
+const queueProfileWinsSync = (
+  batch: FirebaseFirestore.WriteBatch,
+  eventId: string,
+  addedRecipientIds: string[],
+  removedRecipientIds: string[]
+): void => {
+  const now = new Date();
+
+  for (const recipientId of addedRecipientIds) {
+    batch.update(db.collection("profiles").doc(recipientId), {
+      wins: FieldValue.arrayUnion(eventId),
+      updatedAt: now,
+    });
+  }
+
+  for (const recipientId of removedRecipientIds) {
+    batch.update(db.collection("profiles").doc(recipientId), {
+      wins: FieldValue.arrayRemove(eventId),
+      updatedAt: now,
+    });
+  }
+};
+
+const buildDisplayName = (firstName: string, lastName: string, fallback: string): string => {
+  const name = `${firstName} ${lastName}`.trim();
+  return name || fallback;
+};
+
+const fetchRecipientProfiles = async (recipientIds: string[]): Promise<AwardRecipientSummary[]> => {
+  const uniqueRecipientIds = [...new Set(recipientIds)].filter((recipientId) => recipientId.trim().length > 0);
+
+  if (uniqueRecipientIds.length === 0) {
+    return [];
+  }
+
+  const batchSize = 10;
+  const recipientProfiles = new Map<string, AwardRecipientSummary>();
+
+  for (let i = 0; i < uniqueRecipientIds.length; i += batchSize) {
+    const batch = uniqueRecipientIds.slice(i, i + batchSize);
+    const profilesSnapshot = await db
+      .collection("profiles")
+      .where("userId", "in", batch)
+      .get();
+
+    profilesSnapshot.forEach((doc) => {
+      const data = doc.data();
+      const firstName = typeof data.firstName === "string" ? data.firstName : "";
+      const lastName = typeof data.lastName === "string" ? data.lastName : "";
+      const initials = typeof data.initials === "string" && data.initials.trim().length > 0
+        ? data.initials
+        : `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase() || "U";
+
+      recipientProfiles.set(doc.id, {
+        userId: doc.id,
+        firstName,
+        lastName,
+        initials,
+        displayName: buildDisplayName(firstName, lastName, "Community Member"),
+        email: typeof data.email === "string" ? data.email : undefined,
+      });
+    });
+  }
+
+  return uniqueRecipientIds
+    .map((recipientId) => recipientProfiles.get(recipientId))
+    .filter((recipient): recipient is AwardRecipientSummary => recipient !== undefined);
+};
 
 const safeDeleteStorageFile = async (filePath?: string): Promise<void> => {
   if (!filePath) return;
@@ -561,18 +758,26 @@ router.post("/:eventId/awards", async (req: Request, res: Response) => {
     }
 
     const awardData = validationResult.data;
-    const awardRef = await db
+    const recipientIds = normalizeRecipientIds(awardData.recipientIds);
+    const awardRef = db
       .collection("events")
       .doc(eventDoc.id)
       .collection("awards")
-      .add({
-        ...awardData,
-        eventId: eventDoc.id,
-        communityId: communityContext.communityId,
-        createdBy: userId,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+      .doc();
+
+    const batch = db.batch();
+    batch.set(awardRef, {
+      ...awardData,
+      recipientIds,
+      eventId: eventDoc.id,
+      communityId: communityContext.communityId,
+      createdBy: userId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    queueProfileWinsSync(batch, eventDoc.id, recipientIds, []);
+    await batch.commit();
 
     return res.status(201).json({
       success: true,
@@ -639,11 +844,28 @@ router.patch("/:eventId/awards/:awardId", async (req: Request, res: Response) =>
       return res.status(404).json({ error: "Award not found" });
     }
 
+    const previousAwardData = (awardDoc.data() || {}) as AwardDocument;
+    const previousRecipientIds = normalizeRecipientIds(previousAwardData.recipientIds);
+
     const awardData = validationResult.data;
-    await awardRef.update({
+    const mergedAwardData: AwardDocument = {
+      ...previousAwardData,
       ...awardData,
+    };
+    const finalRecipientIds = normalizeRecipientIds(mergedAwardData.recipientIds);
+    const { addedRecipientIds, removedRecipientIds } = partitionRecipientChanges(
+      previousRecipientIds,
+      finalRecipientIds
+    );
+
+    const batch = db.batch();
+    batch.update(awardRef, {
+      ...awardData,
+      recipientIds: finalRecipientIds,
       updatedAt: new Date(),
     });
+    queueProfileWinsSync(batch, eventDoc.id, addedRecipientIds, removedRecipientIds);
+    await batch.commit();
 
     return res.status(200).json({
       success: true,
@@ -652,6 +874,7 @@ router.patch("/:eventId/awards/:awardId", async (req: Request, res: Response) =>
         id: awardDoc.id,
         ...awardDoc.data(),
         ...awardData,
+        recipientIds: finalRecipientIds,
         updatedAt: new Date(),
       },
     });
@@ -671,12 +894,11 @@ router.patch("/:eventId/awards/:awardId", async (req: Request, res: Response) =>
 router.get("/:eventId/awards", async (req: Request, res: Response) => {
   try {
     const { eventId } = req.params;
-    const userId = req.user?.uid;
 
     const eventContext = await loadEventContext(res, eventId);
     if (!eventContext) return null;
 
-    const { eventDoc, eventData } = eventContext;
+    const { eventDoc } = eventContext;
 
     const awardsSnapshot = await db
       .collection("events")
@@ -685,34 +907,32 @@ router.get("/:eventId/awards", async (req: Request, res: Response) => {
       .orderBy("createdAt", "desc")
       .get();
 
-    if (eventData.communityId) {
-      if (!userId) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-
-      const communityContext = await requireCommunityContext(
-        res,
-        eventData,
-        "Event is not associated with a community"
-      );
-      if (!communityContext) return null;
-
-      const canView =
-        eventData.createdBy === userId || communityContext.admins.includes(userId);
-      if (!canView) {
-        return res.status(403).json({ error: "Access denied" });
-      }
-    }
-
     const awards = awardsSnapshot.docs.map((doc) => ({
       id: doc.id,
-      ...doc.data(),
+      ...(doc.data() as AwardDocument),
+    }));
+
+    const recipientIds = awards.flatMap((award) =>
+      Array.isArray(award.recipientIds) ? award.recipientIds : []
+    );
+    const recipientProfiles = await fetchRecipientProfiles(recipientIds);
+    const recipientProfileMap = new Map(
+      recipientProfiles.map((recipient) => [recipient.userId, recipient])
+    );
+
+    const enrichedAwards = awards.map((award) => ({
+      ...award,
+      recipientProfiles: Array.isArray(award.recipientIds)
+        ? award.recipientIds
+            .map((recipientId) => recipientProfileMap.get(recipientId))
+            .filter((recipient): recipient is AwardRecipientSummary => recipient !== undefined)
+        : [],
     }));
 
     return res.status(200).json({
       success: true,
-      awards,
-      count: awards.length,
+      awards: enrichedAwards,
+      count: enrichedAwards.length,
     });
   } catch (error: any) {
     console.error("Error fetching awards:", error);
@@ -760,7 +980,13 @@ router.delete("/:eventId/awards/:awardId", async (req: Request, res: Response) =
       return res.status(404).json({ error: "Award not found" });
     }
 
-    await awardRef.delete();
+    const awardData = (awardDoc.data() || {}) as AwardDocument;
+    const recipientIds = normalizeRecipientIds(awardData.recipientIds);
+
+    const batch = db.batch();
+    batch.delete(awardRef);
+    queueProfileWinsSync(batch, eventDoc.id, [], recipientIds);
+    await batch.commit();
 
     return res.status(200).json({
       success: true,
@@ -787,6 +1013,7 @@ router.post("/", async (req: Request, res: Response) => {
 
     // Always process as multipart (files are optional)
     const { fields, files } = await uploadEventImages(req, userId);
+    parseAwardsFieldIfPresent(fields);
 
     // Create event with optional file URL
     const eventId = await createEventInDB(
@@ -1583,6 +1810,148 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
         attendee: result.attendee,
         registrations: result.registrations,
         status: result.status,
+      });
+    }
+    else{
+      return res.status(500).json({
+        error: "Failed to join event",
+      });
+    }
+  } catch (error: any) {
+    console.error("Error joining event:", error);
+
+    if (error.status) {
+      return res.status(error.status).json({
+        error: error.error,
+      });
+    }
+
+    return res.status(500).json({
+      error: "Failed to join event",
+      details: error.message,
+    });
+  }
+});
+
+/**
+ * POST /events/:eventId/join
+ * Join an event and sync the event onto the user's profile
+ * Requires the user to be logged in and to provide a role (mentor, judge, participant)
+ */
+router.post("/:eventId/join", async (req: Request, res: Response) => {
+  try {
+    const { eventId } = req.params;
+    const userId = req.user?.uid;
+    if (!userId) return;
+
+    const eventContext = await loadEventContext(res, eventId);
+    if (!eventContext) return;
+
+    const { resolvedEventId, eventData } = eventContext;
+
+    if (eventData.status && eventData.status !== "published") {
+      return res.status(400).json({ error: "Event is not open for joining" });
+    }
+
+    const validationResult = z.object({
+      role: z.string().min(1).max(50),
+    }).safeParse(req.body);
+
+    if (!validationResult.success) {
+      return res.status(400).json({
+        error: "Invalid request data",
+        details: validationResult.error.errors,
+      });
+    }
+
+    const { role } = validationResult.data;
+
+    if (eventData.communityId) {
+      const communityContext = await requireCommunityContext(
+        res,
+        eventData,
+        "Event is not associated with a community"
+      );
+      if (!communityContext) return;
+    }
+
+    const eventRef = db.collection("events").doc(resolvedEventId);
+    const profileRef = db.collection("profiles").doc(userId);
+
+    const result = await db.runTransaction(async (transaction) => {
+      const [freshEventDoc, profileDoc] = await Promise.all([
+        transaction.get(eventRef),
+        transaction.get(profileRef),
+      ]);
+
+      if (!freshEventDoc.exists) {
+        return res.status(400).json({ error: "Event not found" });
+      }
+
+      const freshEventData = freshEventDoc.data();
+      if (!freshEventData) {
+        return res.status(400).json({ error: "Event data not found" });
+      }
+
+      const profileEvents = profileDoc.exists && Array.isArray(profileDoc.data()?.events)
+        ? profileDoc.data()?.events
+        : [];
+
+      const registrationsRef = eventRef.collection("registrations");
+      const existingRegistrationQuery = registrationsRef
+        .where("userId", "==", userId)
+        .where("role", "==", role)
+        .limit(1);
+      const existingRegistrationSnapshot = await transaction.get(existingRegistrationQuery);
+
+      if (!existingRegistrationSnapshot.empty) {
+        return res.status(400).json({ error: "Already joined this event with this role" });
+      }
+
+      const attendeeEntry = createAttendeeSchema.parse({
+        userId,
+        email: profileDoc.data()?.email || "",
+        firstName: profileDoc.data()?.firstName,
+        lastName: profileDoc.data()?.lastName,
+        role,
+        status: "confirmed",
+      });
+
+      const registrationRef = registrationsRef.doc();
+
+      transaction.set(registrationRef, {
+        ...attendeeEntry,
+        eventId: resolvedEventId,
+        registeredAt: new Date(),
+        registeredBy: userId,
+        source: "self-join",
+        communityId: eventData.communityId,
+      });
+
+      if (existingRegistrationSnapshot.empty) {
+        transaction.set(
+          profileRef,
+          {
+            events: [...profileEvents, resolvedEventId],
+            updatedAt: new Date(),
+          },
+          { merge: true }
+        );
+      }
+
+      return {
+        attendee: attendeeEntry,
+        registrations: 1,
+        joined: true,
+      };
+    });
+
+    if ("attendee" in result) {
+      return res.status(200).json({
+        success: true,
+        message: "Successfully joined event",
+        attendee: result.attendee,
+        registrations: result.registrations,
       });
     }
     else{

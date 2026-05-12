@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useForm } from "react-hook-form";
+import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -8,6 +8,7 @@ import { CalendarDays, MapPin, Users, Loader2, Upload, Link as LinkIcon, ArrowLe
 import { apiFetch } from "@/lib/fetch";
 import { getFileUrl } from "@/lib/firebase-client";
 import { Button } from "@/components/ui/button";
+import { EventAwardsEditor, toMainPlaceNumber, getMainPlaceTitle } from "@/components/events/awards";
 import {
     Card,
     CardContent,
@@ -61,7 +62,9 @@ const editEventSchema = z.object({
     status: z.enum(["draft", "published", "cancelled"]).default("published"),
 });
 
-type EditEventFormData = z.infer<typeof editEventSchema>;
+// EditEventFormData is inferred from schema when needed
+
+// (form data extension intentionally not exported as a strict type here)
 
 type Community = { id: string; name: string; acronym?: string };
 
@@ -101,6 +104,7 @@ const cities = [
     { name: "Tokyo", region: "Asia & Pacific" },
 ];
 
+
 export default function EditEventPage() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
@@ -115,7 +119,7 @@ export default function EditEventPage() {
     const [currentScheduleImagePath, setCurrentScheduleImagePath] = useState<string | null>(null);
     const [forbidden, setForbidden] = useState(false);
 
-    const form = useForm<EditEventFormData>({
+    const form = useForm<any>({
         resolver: zodResolver(editEventSchema),
         defaultValues: {
             title: "",
@@ -140,6 +144,16 @@ export default function EditEventPage() {
             status: "published",
         },
     });
+
+    const { fields: awardFields, append: appendAward, remove: removeAward, replace: replaceAwards } = useFieldArray({
+        control: form.control,
+        name: "awards",
+    });
+
+    const watchAwards = form.watch("awards") || [];
+    const [registrations, setRegistrations] = useState<any[]>([]);
+    const [loadingRegistrations, setLoadingRegistrations] = useState(false);
+    const [removedAwardIds, setRemovedAwardIds] = useState<string[]>([]);
 
     const watchMode = form.watch("mode");
     const watchHostType = form.watch("hostType");
@@ -218,6 +232,44 @@ export default function EditEventPage() {
                     capacity: event.capacity ? String(event.capacity) : "",
                     status: event.status || "published",
                 });
+
+                // Fetch awards for this event and set into the form
+                (async () => {
+                    try {
+                        const aRes = await apiFetch(`/events/${id}/awards`);
+                        const aJson = await aRes.json();
+                        if (aRes.ok && Array.isArray(aJson.awards)) {
+                            const mapped = aJson.awards.map((a: any) => ({
+                                id: a.id,
+                                type: a.type,
+                                place: a.place ?? null,
+                                title: a.title ?? "",
+                                prizeDescription: a.prizeDescription ?? "",
+                                recipientIds: Array.isArray(a.recipientIds) ? a.recipientIds : [],
+                            }));
+                            // replace field array
+                            replaceAwards(mapped);
+                        }
+                    } catch (e) {
+                        console.error("Failed to load awards:", e);
+                    }
+                })();
+
+                // Fetch attendees for assignment (use attendees route)
+                (async () => {
+                    setLoadingRegistrations(true);
+                    try {
+                        const rRes = await apiFetch(`/events/${id}/attendees`);
+                        const rJson = await rRes.json();
+                        if (rRes.ok && Array.isArray(rJson.registrations)) {
+                            setRegistrations(rJson.registrations || []);
+                        }
+                    } catch (e) {
+                        console.error("Failed to load attendees:", e);
+                    } finally {
+                        setLoadingRegistrations(false);
+                    }
+                })();
             } catch (error) {
                 console.error("Error fetching event:", error);
                 toast.error("Failed to load event");
@@ -253,7 +305,7 @@ export default function EditEventPage() {
         fetchCommunities();
     }, []);
 
-    const onSubmit = async (data: EditEventFormData) => {
+    const onSubmit = async (data: any) => {
         if (!user) {
             toast.error("You must be signed in to edit an event");
             return;
@@ -311,6 +363,57 @@ export default function EditEventPage() {
             }
 
             toast.success("Event updated successfully!");
+            // After event update, process awards (create/update/delete)
+            try {
+                const awards = form.getValues("awards") || [];
+
+                // Create or update awards
+                for (const award of awards) {
+                    const payload = {
+                        type: award.type,
+                        place: award.place === null ? null : award.place,
+                        title: award.title,
+                        prizeDescription: award.prizeDescription || undefined,
+                        recipientIds: Array.isArray(award.recipientIds) ? award.recipientIds : undefined,
+                    };
+
+                    if (award.id) {
+                        // update existing award
+                        try {
+                            await apiFetch(`/events/${id}/awards/${award.id}`, {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify(payload),
+                            });
+                        } catch (e) {
+                            console.error(`Failed to update award ${award.id}:`, e);
+                        }
+                    } else {
+                        // create new award
+                        try {
+                            await apiFetch(`/events/${id}/awards`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify(payload),
+                            });
+                        } catch (e) {
+                            console.error("Failed to create award:", e);
+                        }
+                    }
+                }
+
+                // Delete removed awards
+                for (const aid of removedAwardIds) {
+                    try {
+                        await apiFetch(`/events/${id}/awards/${aid}`, { method: "DELETE" });
+                    } catch (e) {
+                        console.error(`Failed to delete award ${aid}:`, e);
+                    }
+                }
+            } catch (e) {
+                console.error("Error processing awards:", e);
+            }
+
             navigate(`/events/${id}`);
         } catch (error) {
             console.error("Error updating event:", error);
@@ -818,6 +921,20 @@ export default function EditEventPage() {
                                             <FormMessage />
                                         </FormItem>
                                     )}
+                                />
+
+                                {/* Awards */}
+                                <EventAwardsEditor
+                                    form={form}
+                                    awardFields={awardFields}
+                                    appendAward={appendAward}
+                                    removeAward={removeAward}
+                                    replaceAwards={replaceAwards}
+                                    watchAwards={watchAwards}
+                                    registrations={registrations}
+                                    loadingRegistrations={loadingRegistrations}
+                                    removedAwardIds={removedAwardIds}
+                                    setRemovedAwardIds={setRemovedAwardIds}
                                 />
 
                                 {/* Hero Image */}

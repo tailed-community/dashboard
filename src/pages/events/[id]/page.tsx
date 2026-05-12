@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { apiFetch } from "@/lib/fetch";
 import { getFileUrl } from "@/lib/firebase-client";
+import EventAwardsDisplay from "@/components/events/awards";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -54,6 +55,25 @@ type EventData = {
     community?: CommunityData; // Populated by backend
 };
 
+type AwardRecipient = {
+    userId: string;
+    firstName: string;
+    lastName: string;
+    initials: string;
+    displayName: string;
+    email?: string;
+};
+
+type EventAward = {
+    id: string;
+    type: "main_place" | "special";
+    place?: 1 | 2 | 3 | null;
+    title: string;
+    prizeDescription?: string;
+    recipientIds?: string[];
+    recipientProfiles?: AwardRecipient[];
+};
+
 type CommunityData = {
     name: string;
     logo?: string;
@@ -67,11 +87,13 @@ export default function EventDetailPage() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const [event, setEvent] = useState<EventData | null>(null);
+    const [awards, setAwards] = useState<EventAward[]>([]);
     const [community, setCommunity] = useState<CommunityData | null>(null);
     const [heroImageUrl, setHeroImageUrl] = useState<string | null>(null);
     const [scheduleImageUrl, setScheduleImageUrl] = useState<string | null>(null);
     const [communityLogoUrl, setCommunityLogoUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
+    const [loadingAwards, setLoadingAwards] = useState(false);
 
     useEffect(() => {
         if (!id) {
@@ -111,9 +133,9 @@ export default function EventDetailPage() {
                     setCommunity(eventData.community);
                     
                     // Load community logo from Firebase Storage if available
-                    if (eventData.community.logo) {
+                    if (eventData.community.logoUrl) {
                         try {
-                            const logoUrl = await getFileUrl(eventData.community.logo);
+                            const logoUrl = await getFileUrl(eventData.community.logoUrl);
                             setCommunityLogoUrl(logoUrl);
                         } catch (error) {
                             console.error("Failed to load community logo:", error);
@@ -142,6 +164,23 @@ export default function EventDetailPage() {
                         console.error("Failed to load schedule image:", error);
                         setScheduleImageUrl(null);
                     }
+                }
+
+                try {
+                    setLoadingAwards(true);
+                    const awardsResponse = await apiFetch(`/events/${id}/awards`);
+                    const awardsResult = await awardsResponse.json();
+
+                    if (awardsResponse.ok && Array.isArray(awardsResult.awards)) {
+                        setAwards(awardsResult.awards);
+                    } else {
+                        setAwards([]);
+                    }
+                } catch (error) {
+                    console.error("Failed to load awards:", error);
+                    setAwards([]);
+                } finally {
+                    setLoadingAwards(false);
                 }
             } catch (error) {
                 console.error("Error fetching event:", error);
@@ -362,6 +401,10 @@ export default function EventDetailPage() {
                         )}
 
                         {event.requiresApproval && <Separator />}
+                        {/* Awards */}
+                        <EventAwardsDisplay awards={awards} loading={loadingAwards} />
+
+                        <Separator />
 
                         {/* Host */}
                         <div className="space-y-4">
