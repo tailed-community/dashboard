@@ -490,3 +490,55 @@ Questions? Contact us at community@tailed.ca
   return transport.sendMail(mailOptions);
 };
 
+/**
+ * Send an approval email when an event organizer confirms a participation request.
+ */
+export const sendEventApprovalEmail = async (
+  email: string,
+  firstName: string,
+  eventTitle: string,
+  eventLink: string
+) => {
+  if (process.env.NODE_ENV === "development") {
+    console.log(
+      `Approval email sent to ${email} params: ${JSON.stringify({
+        firstName,
+        eventTitle,
+        eventLink,
+      })}`
+    );
+    return Promise.resolve();
+  }
+
+  const mailOptions = {
+    from: process.env.EMAIL_FROM || "Tail'ed <no-reply@tailed.ca>",
+    sender: "no-reply@tailed.ca",
+    to: email,
+    subject: `Your request to join ${eventTitle} has been approved`,
+    html: `
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
+        <div style="background: linear-gradient(135deg, #EB7A24 0%, #FFD37D 100%); padding: 40px 20px; text-align: center;">
+          <h1 style="color: #ffffff; margin: 0; font-size: 30px; font-weight: 600;">You're approved</h1>
+        </div>
+
+        <div style="padding: 40px 30px;">
+          <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">Hi ${firstName || "there"},</p>
+          <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">Your request to join <strong style="color: #EB7A24;">${eventTitle}</strong> has been approved by the organizer.</p>
+          <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 30px 0;">You can now access the event page and any future event-specific experiences from your Tail'ed dashboard.</p>
+
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${eventLink}" style="display: inline-block; padding: 14px 32px; background: #EB7A24; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 6px rgba(235, 122, 36, 0.25);">View Event</a>
+          </div>
+        </div>
+
+        <div style="background-color: #FFF9F0; padding: 25px 30px; text-align: center; border-top: 1px solid #FFD37D;">
+          <p style="color: #999999; font-size: 13px; margin: 0;">© ${new Date().getFullYear()} Tail'ed. All rights reserved.</p>
+        </div>
+      </div>
+    ",
+    text: Hi ${firstName || "there"},\n\nYour request to join ${eventTitle} has been approved by the organizer.\n\nView the event: ${eventLink}\n\n© ${new Date().getFullYear()} Tail'ed. All rights reserved.`,
+  };
+
+  return transport.sendMail(mailOptions);
+};
+

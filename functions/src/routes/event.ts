@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { DateTime } from "luxon";
 import { db, storage } from "../lib/firebase";
-import { sendCommunityWelcomeEmail } from "../lib/email-service";
+import { sendCommunityWelcomeEmail, sendEventApprovalEmail } from "../lib/email-service";
 import { upsertStudentUser } from "../lib/user-management";
 import { z } from "zod";
 import Busboy from "busboy";
@@ -26,6 +26,7 @@ const eventBaseSchema = z.object({
   registrationLink: z.string().url().optional().or(z.literal("")),
   digitalLink: z.string().url().optional().or(z.literal("")),
   status: z.enum(["draft", "published", "cancelled"]).default("published"),
+  requiresApproval: z.boolean().default(false),
   schedule: z.string().optional(),
   helpSearch: z.array(
     z.object({
@@ -61,6 +62,8 @@ const uploadEventImages = (
         fields[fieldname] = parseInt(val, 10);
       } else if (fieldname === "isPaid") {
         // Parse boolean from FormData string
+        fields[fieldname] = val === "true";
+      } else if (fieldname === "requiresApproval") {
         fields[fieldname] = val === "true";
       } else if (fieldname === "removeScheduleImage") {
         fields[fieldname] = val === "true";
@@ -297,8 +300,12 @@ const requireCommunityContext = async (
 
   const communityDoc = await db.collection("communities").doc(communityId).get();
   if (!communityDoc.exists) {
-    res.status(404).json({ error: "Community not found" });
-    return null;
+    console.warn(`Community ${communityId} not found; treating as no-admins`);
+    return {
+      communityId,
+      communityData: {},
+      admins: [],
+    };
   }
 
   const communityData = communityDoc.data() || {};
@@ -812,6 +819,211 @@ router.post("/", async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /events/:eventId/registration-form
+ * Create a default registration form schema for an event.
+ * For now this creates the default form (name + email) that will be
+ * autofilled from participant profile when they open the registration form.
+ */
+router.post("/:eventId/registration-form", async (req: Request, res: Response) => {
+  try {
+    const { eventId } = req.params;
+    const userId = req.user?.uid;
+
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    // Resolve event (by id or slug)
+    const eventDoc = await resolveEvent(eventId);
+    if (!eventDoc) {
+      return res.status(404).json({ error: "Event not found" });
+    }
+
+    const resolvedEventId = eventDoc.id;
+    const eventData = eventDoc.data();
+    if (!eventData) {
+      return res.status(404).json({ error: "Event data not found" });
+    }
+
+    // Only allow event creator or community admin to create the form
+    let isAuthorized = eventData.createdBy === userId;
+    if (!isAuthorized && eventData.communityId) {
+      const communityDoc = await db.collection("communities").doc(eventData.communityId).get();
+      const admins = communityDoc.data()?.admins || [];
+      isAuthorized = admins.includes(userId);
+    }
+
+    if (!isAuthorized) {
+      return res.status(403).json({ error: "Only event creators or community admins can create registration forms" });
+    }
+
+    // Default fields: First name, Last name and Email (autofill from profile)
+    const defaultFields = [
+      {
+        question: "First name",
+        label: "First name",
+        type: "text",
+        autofillSource: "profile.firstName",
+        required: true,
+      },
+      {
+        question: "Last name",
+        label: "Last name",
+        type: "text",
+        autofillSource: "profile.lastName",
+        required: true,
+      },
+      {
+        question: "Email address",
+        label: "Email",
+        type: "email",
+        autofillSource: "profile.email",
+        required: true,
+      },
+    ];
+
+    // Allow callers to provide a specific formId and/or an explicit fields array
+    // If no fields provided, we create the default form. If no formId provided
+    // the document id will be 'default' to preserve existing behaviour.
+    const body = req.body || {};
+    const requestedFormId = typeof body.formId === "string" && body.formId ? body.formId : "default";
+    const providedFields = Array.isArray(body.fields) ? body.fields : null;
+
+    const fieldsToSave = providedFields || defaultFields;
+
+    // Use a single transaction to atomically create the form and update the event.
+    // This prevents the form from being created without the event pointing to it.
+    try {
+      const eventRef = db.collection("events").doc(resolvedEventId);
+      const formRef = eventRef.collection("registrationForms").doc(requestedFormId);
+
+      await db.runTransaction(async (tx) => {
+        const [evSnap, formSnap] = await Promise.all([tx.get(eventRef), tx.get(formRef)]);
+
+        if (!evSnap.exists) {
+          const e: any = new Error("Event not found when creating registration form");
+          e.status = 404;
+          throw e;
+        }
+
+        // Prevent overwriting an existing form document
+        if (formSnap.exists) {
+          const e: any = new Error("Registration form already exists");
+          e.status = 409;
+          throw e;
+        }
+
+        tx.set(formRef, {
+          fields: fieldsToSave,
+          createdAt: new Date(),
+          createdBy: userId,
+        });
+
+        tx.update(eventRef, {
+          registrationFormId: requestedFormId,
+          updatedAt: new Date(),
+        });
+      });
+    } catch (err: any) {
+      console.error("Failed to create registration form transaction:", err);
+      if ((err as any).status === 409) {
+        return res.status(409).json({ error: "Registration form already exists" });
+      }
+      if ((err as any).status === 404) {
+        return res.status(404).json({ error: "Event not found when creating registration form" });
+      }
+      return res.status(500).json({ error: "Failed to create registration form", details: err.message });
+    }
+
+    // Verification: re-fetch event and confirm registrationFormId was set
+    try {
+      const refreshedEvent = await db.collection("events").doc(resolvedEventId).get();
+      const refreshedData = refreshedEvent.exists ? refreshedEvent.data() || {} : {};
+      if (refreshedData.registrationFormId !== requestedFormId) {
+        console.error("Post-transaction verification: registrationFormId not set on event", {
+          eventId: resolvedEventId,
+          expected: requestedFormId,
+          actual: refreshedData.registrationFormId,
+        });
+      } else {
+        console.info("Post-transaction verification: registrationFormId set on event", {
+          eventId: resolvedEventId,
+          formId: requestedFormId,
+        });
+      }
+    } catch (verifyErr) {
+      console.error("Failed to verify event after creating registration form:", verifyErr);
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: "Registration form saved",
+      formId: requestedFormId,
+    });
+  } catch (error: any) {
+    console.error("Error creating registration form:", error);
+    return res.status(500).json({ error: "Failed to create registration form", details: error.message });
+  }
+});
+
+/**
+ * GET /events/:eventId/registration-form
+ * Return the default or custom registration form schema for an event
+ */
+router.get("/:eventId/registration-form", async (req: Request, res: Response) => {
+  try {
+    const { eventId } = req.params;
+
+    const eventDoc = await resolveEvent(eventId);
+    if (!eventDoc) return res.status(404).json({ error: "Event not found" });
+
+    const resolvedEventId = eventDoc.id;
+
+    // Deterministic priority:
+    // 1) explicit ?formId
+    // 2) event.registrationFormId
+    // 3) 'default'
+    // 4) hardcoded fallback
+
+    const explicitFormId = typeof req.query.formId === "string" && req.query.formId ? req.query.formId : null;
+
+    const eventData = eventDoc.data() || {};
+    const eventDefinedFormId = typeof eventData.registrationFormId === "string" && eventData.registrationFormId ? eventData.registrationFormId : null;
+
+    let tryOrder: (string | null)[] = [explicitFormId, eventDefinedFormId, "default"];
+
+    // Iterate through priority list and return first existing form
+    for (const id of tryOrder) {
+      if (!id) continue;
+      const formRef = db
+        .collection("events")
+        .doc(resolvedEventId)
+        .collection("registrationForms")
+        .doc(id);
+
+      const formDoc = await formRef.get();
+      if (formDoc.exists) {
+        return res.status(200).json({ success: true, form: formDoc.data() || {}, formId: id });
+      }
+    }
+
+    // Hardcoded fallback
+    const fallback = {
+      fields: [
+        { question: "First name", label: "First name", type: "text", autofillSource: "profile.firstName", required: true },
+        { question: "Last name", label: "Last name", type: "text", autofillSource: "profile.lastName", required: true },
+        { question: "Email address", label: "Email", type: "email", autofillSource: "profile.email", required: true },
+      ],
+    };
+
+    return res.status(200).json({ success: true, form: fallback, formId: "default" });
+  } catch (error: any) {
+    console.error("Error fetching registration form:", error);
+    return res.status(500).json({ error: "Failed to fetch registration form", details: error.message });
+  }
+});
+
+/**
  * PATCH /events/:eventId
  * Update an event (supports both JSON and multipart/form-data for hero/schedule images)
  */
@@ -1137,7 +1349,7 @@ router.post("/:eventId/import-attendees", async (req: Request, res: Response) =>
               registeredAt: new Date(),
               registeredBy: userId,
               source: "admin-import",
-              communityId: eventData.communityId,
+              communityId: eventData.communityId || null,
             });
 
           results.registered.push(emailLower);
@@ -1183,7 +1395,8 @@ router.post("/:eventId/import-attendees", async (req: Request, res: Response) =>
 
 const createAttendeeSchema = z.object({
   userId: z.string(),
-  email: z.string().email(),
+  // Email moved to formAnswers — optional at top-level
+  email: z.string().email().optional(),
   firstName: z.string().min(1).optional(),
   lastName: z.string().min(1).optional(),
   role: z.enum(["mentor", "judge", "participant"]).default("participant"),
@@ -1197,6 +1410,25 @@ const createAttendeeSchema = z.object({
     "no-show",
   ]).default("pending"),
 });
+
+const getAnswerByLabels = (
+  answers: Array<{ questionId?: string | null; label: string; value: unknown }>,
+  labels: string[]
+): string | undefined => {
+  const normalizedLabels = labels.map((label) => label.toLowerCase());
+  const match = answers.find((answer) => {
+    const questionId = typeof answer.questionId === "string" ? answer.questionId.toLowerCase() : "";
+    const label = answer.label.toLowerCase();
+    return normalizedLabels.includes(questionId) || normalizedLabels.includes(label);
+  });
+
+  if (!match || match.value === null || match.value === undefined) {
+    return undefined;
+  }
+
+  const value = String(match.value).trim();
+  return value.length > 0 ? value : undefined;
+};
 
 /**
  * POST /events/:eventId/join
@@ -1218,10 +1450,21 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Event is not open for joining" });
     }
 
-    const validationResult = z.object({
+    // Accept role, optional account info, optional form metadata and answers
+    const joinSchema = z.object({
       role: z.string().min(1).max(50),
-    }).safeParse(req.body);
+      answers: z
+        .array(
+          z.object({
+            questionId: z.string().optional(),
+            label: z.string().min(1),
+            value: z.any(),
+          })
+        )
+        .optional(),
+    });
 
+    const validationResult = joinSchema.safeParse(req.body);
     if (!validationResult.success) {
       return res.status(400).json({
         error: "Invalid request data",
@@ -1229,7 +1472,14 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
       });
     }
 
-    const { role } = validationResult.data;
+    const { role, answers } = validationResult.data;
+    const normalizedAnswers = Array.isArray(answers)
+      ? answers.map((a: any) => ({
+        questionId: a.questionId || null,
+        label: a.label,
+        value: a.value,
+      }))
+      : [];
 
     if (eventData.communityId) {
       const communityContext = await requireCommunityContext(
@@ -1261,6 +1511,13 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
       const profileEvents = profileDoc.exists && Array.isArray(profileDoc.data()?.events)
         ? profileDoc.data()?.events
         : [];
+      const profileData = profileDoc.exists ? (profileDoc.data() || {}) : {};
+
+      const extractedEmail = getAnswerByLabels(normalizedAnswers, ["email", "email address"]) || profileData.email || "";
+      const extractedFirstName = getAnswerByLabels(normalizedAnswers, ["first name", "firstname", "first_name"]) || profileData.firstName || "";
+      const extractedLastName = getAnswerByLabels(normalizedAnswers, ["last name", "lastname", "last_name"]) || profileData.lastName || "";
+      const requiresApproval = Boolean(freshEventData.requiresApproval);
+      const initialStatus = requiresApproval ? "pending" : "confirmed";
 
       const registrationsRef = eventRef.collection("registrations");
       const existingRegistrationQuery = registrationsRef
@@ -1273,13 +1530,14 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
         return res.status(400).json({ error: "Already joined this event with this role" });
       }
 
+      // Create attendee entry with only technical fields; personal PII is stored in formAnswers
       const attendeeEntry = createAttendeeSchema.parse({
         userId,
-        email: profileDoc.data()?.email || "",
-        firstName: profileDoc.data()?.firstName,
-        lastName: profileDoc.data()?.lastName,
+        email: extractedEmail || undefined,
+        firstName: extractedFirstName || undefined,
+        lastName: extractedLastName || undefined,
         role,
-        status: "confirmed",
+        status: initialStatus,
       });
 
       const registrationRef = registrationsRef.doc();
@@ -1289,11 +1547,15 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
         eventId: resolvedEventId,
         registeredAt: new Date(),
         registeredBy: userId,
-        source: "self-join",
-        communityId: eventData.communityId,
+        source: normalizedAnswers.length > 0 ? "form" : "self-join",
+        communityId: eventData.communityId || null,
+        formId: null,
+        formLabel: null,
+        formAnswers: normalizedAnswers,
+        approvedAt: initialStatus === "confirmed" ? new Date() : null,
       });
 
-      if (existingRegistrationSnapshot.empty) {
+      if (existingRegistrationSnapshot.empty && initialStatus === "confirmed") {
         transaction.set(
           profileRef,
           {
@@ -1308,15 +1570,19 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
         attendee: attendeeEntry,
         registrations: 1,
         joined: true,
+        status: initialStatus,
       };
     });
 
     if ("attendee" in result) {
       return res.status(200).json({
         success: true,
-        message: "Successfully joined event",
+        message: result.status === "pending"
+          ? "Request submitted for organizer approval"
+          : "Successfully joined event",
         attendee: result.attendee,
         registrations: result.registrations,
+        status: result.status,
       });
     }
     else{
@@ -1363,23 +1629,103 @@ router.get("/:eventId/attendees", async (req: Request, res: Response) => {
     );
     if (!canAccess) return null;
 
-    // Get registrations
-    const registrationsSnapshot = await db
-      .collection("events")
-      .doc(resolvedEventId)
-      .collection("registrations")
-      .orderBy("registeredAt", "desc")
-      .get();
+    // Query parameters: page, limit, q (search), status, sortBy, order
+    const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
+    const limit = Math.min(200, Math.max(1, parseInt((req.query.limit as string) || "50", 10)));
+    const q = typeof req.query.q === "string" && req.query.q.trim() ? req.query.q.trim().toLowerCase() : null;
+    const statusFilter = typeof req.query.status === "string" && req.query.status ? req.query.status : null;
+    const sortBy = typeof req.query.sortBy === "string" && req.query.sortBy ? req.query.sortBy : "registeredAt";
+    const order = (typeof req.query.order === "string" && req.query.order === "asc") ? "asc" : "desc";
 
-    const registrations = registrationsSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    const registrationsRef = db.collection("events").doc(resolvedEventId).collection("registrations");
+
+    // If no free-text search is requested and sorting is by registeredAt, do efficient query with offset.
+    if (!q && (sortBy === "registeredAt" || !sortBy)) {
+      let query: FirebaseFirestore.Query = registrationsRef;
+
+      if (statusFilter) {
+        query = query.where("status", "==", statusFilter);
+      }
+
+      query = query.orderBy("registeredAt", order as FirebaseFirestore.OrderByDirection).offset((page - 1) * limit).limit(limit);
+
+      const snapshot = await query.get();
+      const registrations = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+
+      // Get total count for meta (note: this does a collection scan - consider a counter field for heavy loads)
+      let total = 0;
+      if (!statusFilter) {
+        const allSnap = await registrationsRef.get();
+        total = allSnap.size;
+      } else {
+        const statusSnap = await registrationsRef.where("status", "==", statusFilter).get();
+        total = statusSnap.size;
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: registrations,
+        meta: {
+          total,
+          page,
+          limit,
+          hasMore: (page * limit) < total,
+        },
+      });
+    }
+
+    // Otherwise (search requested or sorting by other fields), fetch a reasonable cap and perform in-memory filtering/sorting.
+    const CAP = 1000; // safety cap to avoid very large reads
+    let snapshot = await registrationsRef.limit(CAP).get();
+    let items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as any));
+
+    if (statusFilter) {
+      items = items.filter((it) => it.status === statusFilter);
+    }
+
+    if (q) {
+      items = items.filter((it: any) => {
+        const hay: string[] = [];
+        if (it.email) hay.push(String(it.email).toLowerCase());
+        if (it.firstName) hay.push(String(it.firstName).toLowerCase());
+        if (it.lastName) hay.push(String(it.lastName).toLowerCase());
+        if (Array.isArray(it.formAnswers)) {
+          for (const a of it.formAnswers) {
+            if (a && a.value) hay.push(String(a.value).toLowerCase());
+            if (a && a.label) hay.push(String(a.label).toLowerCase());
+          }
+        }
+        const haystack = hay.join(" ");
+        return haystack.includes(q);
+      });
+    }
+
+    // Sorting in-memory for supported fields
+    const direction = order === "asc" ? 1 : -1;
+    items.sort((a: any, b: any) => {
+      if (sortBy === "firstName") {
+        return direction * ((String(a.firstName || "").localeCompare(String(b.firstName || ""))));
+      }
+      if (sortBy === "lastName") {
+        return direction * ((String(a.lastName || "").localeCompare(String(b.lastName || ""))));
+      }
+      if (sortBy === "status") {
+        return direction * ((String(a.status || "").localeCompare(String(b.status || ""))));
+      }
+      // Default: registeredAt
+      const ta = a.registeredAt ? new Date(a.registeredAt).getTime() : 0;
+      const tb = b.registeredAt ? new Date(b.registeredAt).getTime() : 0;
+      return direction * (ta - tb as any);
+    });
+
+    const total = items.length;
+    const start = (page - 1) * limit;
+    const paged = items.slice(start, start + limit);
 
     return res.status(200).json({
       success: true,
-      registrations,
-      count: registrations.length,
+      data: paged,
+      meta: { total, page, limit, hasMore: (start + paged.length) < total },
     });
 
   } catch (error: any) {
@@ -1388,6 +1734,125 @@ router.get("/:eventId/attendees", async (req: Request, res: Response) => {
       error: "Failed to fetch attendees",
       details: error.message,
     });
+  }
+});
+
+/**
+ * POST /events/:eventId/registrations/:registrationId/review
+ * Review (approve/reject) a registration. Requires event creator or community admin.
+ */
+router.post("/:eventId/registrations/:registrationId/review", async (req: Request, res: Response) => {
+  try {
+    const { eventId, registrationId } = req.params;
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const eventContext = await loadEventContext(res, eventId);
+    if (!eventContext) return;
+
+    const { resolvedEventId, eventData } = eventContext;
+
+    const canAccess = await ensureEventCreatorOrCommunityAdmin(
+      res,
+      userId,
+      eventData,
+      "Access denied"
+    );
+    if (!canAccess) return;
+
+    const bodySchema = z.object({
+      status: z.enum(["pending", "confirmed", "rejected", "cancelled", "waitlisted", "attended", "no-show"]),
+      reviewNotes: z.string().optional().nullable(),
+    });
+
+    const parsed = bodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request data", details: parsed.error.errors });
+    }
+
+    const { status, reviewNotes } = parsed.data;
+
+    const regRef = db.collection("events").doc(resolvedEventId).collection("registrations").doc(registrationId);
+    const regDoc = await regRef.get();
+    if (!regDoc.exists) {
+      return res.status(404).json({ error: "Registration not found" });
+    }
+
+    const regData = regDoc.data() || {};
+    const previousStatus = regData.status;
+
+    const updateObj: any = {
+      status,
+      reviewedBy: userId,
+      reviewedAt: new Date(),
+      reviewNotes: reviewNotes || null,
+      updatedAt: new Date(),
+    };
+
+    if (status === "confirmed") {
+      updateObj.approvedAt = new Date();
+    }
+
+    await regRef.update(updateObj);
+
+    if (status === "confirmed" && regData.userId) {
+      const profileRef = db.collection("profiles").doc(String(regData.userId));
+      const profileDoc = await profileRef.get();
+      const currentEvents = profileDoc.exists && Array.isArray(profileDoc.data()?.events)
+        ? profileDoc.data()?.events
+        : [];
+
+      if (!currentEvents.includes(resolvedEventId)) {
+        await profileRef.set(
+          {
+            events: [...currentEvents, resolvedEventId],
+            updatedAt: new Date(),
+          },
+          { merge: true }
+        );
+      }
+    }
+
+    if (status === "confirmed" && previousStatus !== "confirmed" && regData.email) {
+      try {
+        const eventLink = `${process.env.WEB_APP_URL || "https://community.tailed.ca"}/events/${resolvedEventId}`;
+        await sendEventApprovalEmail(
+          String(regData.email),
+          String(regData.firstName || "there"),
+          String(eventData.title || "your event"),
+          eventLink
+        );
+      } catch (emailError) {
+        console.error("Failed to send approval email:", emailError);
+      }
+    }
+
+    // Update event-level attendee count if status changed to/from a positive attending state
+    try {
+      const regs = await db.collection("events").doc(resolvedEventId).collection("registrations").get();
+      await db.collection("events").doc(resolvedEventId).update({ attendees: regs.size, updatedAt: new Date() });
+    } catch (e) {
+      console.error("Failed to update event attendee count after review:", e);
+    }
+
+    // Optionally: write an activity/audit log
+    try {
+      await db.collection("events").doc(resolvedEventId).collection("activity").add({
+        type: "registration.review",
+        registrationId,
+        status,
+        reviewNotes: reviewNotes || null,
+        performedBy: userId,
+        performedAt: new Date(),
+      });
+    } catch (e) {
+      console.error("Failed to write activity log for registration review:", e);
+    }
+
+    return res.status(200).json({ success: true, message: "Registration updated" });
+  } catch (error: any) {
+    console.error("Error reviewing registration:", error);
+    return res.status(500).json({ error: "Failed to review registration", details: error.message });
   }
 });
 

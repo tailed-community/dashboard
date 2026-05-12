@@ -8,7 +8,6 @@ import {
     Clock,
     ArrowLeft,
     Share2,
-    Bookmark,
     ExternalLink,
     Loader2,
     Pencil,
@@ -36,6 +35,7 @@ type EventData = {
     digitalLink?: string;
     mode: "Online" | "In Person" | "Hybrid";
     isPaid: boolean;
+    requiresApproval?: boolean;
     registrationLink?: string;
     category: string;
     hostType: "community" | "custom";
@@ -56,6 +56,7 @@ type EventData = {
 
 type CommunityData = {
     name: string;
+    logo?: string;
     logoUrl?: string;
     description?: string;
     shortDescription?: string;
@@ -71,7 +72,6 @@ export default function EventDetailPage() {
     const [scheduleImageUrl, setScheduleImageUrl] = useState<string | null>(null);
     const [communityLogoUrl, setCommunityLogoUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
-    const [isRegistered, setIsRegistered] = useState(false);
 
     useEffect(() => {
         if (!id) {
@@ -204,11 +204,6 @@ export default function EventDetailPage() {
         }
     };
 
-    const handleRegister = () => {
-        setIsRegistered(!isRegistered);
-        toast.success(isRegistered ? "Registration cancelled" : "Successfully registered!");
-    };
-
     return (
         <div className="min-h-screen">
             {/* Main Content */}
@@ -252,6 +247,11 @@ export default function EventDetailPage() {
                                 <Badge variant="outline" className="rounded-full">
                                     {event.mode}
                                 </Badge>
+                                {event.requiresApproval && (
+                                    <Badge variant="outline" className="rounded-full border-amber-200 bg-amber-50 text-amber-700">
+                                        Approval required
+                                    </Badge>
+                                )}
                                 <Badge variant="outline" className={cn(
                                     "rounded-full",
                                     !event.isPaid && "bg-emerald-50 text-emerald-700 border-emerald-200"
@@ -355,6 +355,14 @@ export default function EventDetailPage() {
 
                         <Separator />
 
+                        {event.requiresApproval && (
+                            <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 text-sm text-amber-900">
+                                Participants submit a request to join this event. Organizer approval is required before access is granted.
+                            </div>
+                        )}
+
+                        {event.requiresApproval && <Separator />}
+
                         {/* Host */}
                         <div className="space-y-4">
                             <h2 className="text-xl font-semibold text-slate-900">
@@ -429,18 +437,37 @@ export default function EventDetailPage() {
                             {/* Action Buttons */}
                             <div className="space-y-3">
                                 {event.canEdit && (
-                                    <Button
-                                        variant="outline"
-                                        onClick={() => navigate(`/events/${id}/edit`)}
-                                        className="w-full rounded-lg"
-                                        size="sm"
-                                    >
-                                        <Pencil className="h-4 w-4 mr-2" />
-                                        Edit Event
-                                    </Button>
+                                    <>
+                                        <Button
+                                            variant="outline"
+                                            onClick={() => navigate(`/events/${id}/manage`)}
+                                            className="w-full rounded-lg"
+                                            size="sm"
+                                        >
+                                            <Users className="h-4 w-4 mr-2" />
+                                            Manage Attendees
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            onClick={() => navigate(`/events/${id}/edit`)}
+                                            className="w-full rounded-lg"
+                                            size="sm"
+                                        >
+                                            <Pencil className="h-4 w-4 mr-2" />
+                                            Edit Event
+                                        </Button>
+                                    </>
                                 )}
                                 {!isPastEvent ? (
-                                    event.registrationLink ? (
+                                    event.requiresApproval ? (
+                                        <Button
+                                            onClick={() => navigate(`/events/${id}/register`)}
+                                            className="w-full bg-slate-900 hover:bg-slate-800 rounded-lg"
+                                            size="lg"
+                                        >
+                                            Request to Join
+                                        </Button>
+                                    ) : event.registrationLink ? (
                                         <Button
                                             onClick={() => window.open(event.registrationLink, "_blank")}
                                             className="w-full bg-slate-900 hover:bg-slate-800 rounded-lg"
@@ -450,7 +477,13 @@ export default function EventDetailPage() {
                                             <ExternalLink className="h-4 w-4 ml-2" />
                                         </Button>
                                     ) : (
-                                        <>  </>
+                                        <Button
+                                            onClick={() => navigate(`/events/${id}/register`)}
+                                            className="w-full bg-slate-900 hover:bg-slate-800 rounded-lg"
+                                            size="lg"
+                                        >
+                                            Register
+                                        </Button>
                                     )
                                 ) : (
                                     <Button disabled className="w-full rounded-lg" size="lg">

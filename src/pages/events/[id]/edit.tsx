@@ -48,6 +48,7 @@ const editEventSchema = z.object({
     digitalLink: z.string().url("Must be a valid URL").optional().or(z.literal("")),
     mode: z.enum(["Online", "In Person", "Hybrid"], { required_error: "Please select event mode" }),
     isPaid: z.boolean().default(false),
+    requiresApproval: z.boolean().default(false),
     registrationLink: z.string().url("Must be a valid URL").optional().or(z.literal("")),
     category: z.string().min(1, "Category is required"),
     hostType: z.enum(["community", "custom"], { required_error: "Please select host type" }),
@@ -128,6 +129,7 @@ export default function EditEventPage() {
             digitalLink: "",
             mode: undefined,
             isPaid: false,
+            requiresApproval: false,
             registrationLink: "",
             category: "",
             hostType: "custom",
@@ -206,6 +208,7 @@ export default function EditEventPage() {
                     digitalLink: event.digitalLink || "",
                     mode: event.mode,
                     isPaid: event.isPaid ?? false,
+                    requiresApproval: event.requiresApproval ?? false,
                     registrationLink: event.registrationLink || "",
                     category: event.category || "",
                     hostType: event.hostType || "custom",
@@ -266,9 +269,10 @@ export default function EditEventPage() {
             formData.append("startTime", data.startTime);
             formData.append("mode", data.mode);
             formData.append("isPaid", String(data.isPaid));
+            formData.append("requiresApproval", String(data.requiresApproval));
             formData.append("category", data.category);
             formData.append("hostType", data.hostType);
-            formData.append("status", data.status);
+            formData.append("status", data.status || "published");
 
             if (data.endDate) formData.append("endDate", data.endDate);
             if (data.endTime) formData.append("endTime", data.endTime);
@@ -632,6 +636,25 @@ export default function EditEventPage() {
                                             </FormItem>
                                         )}
                                     />
+
+                                    <FormField
+                                        control={form.control}
+                                        name="requiresApproval"
+                                        render={({ field }) => (
+                                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                                                <div className="space-y-0.5">
+                                                    <FormLabel className="text-base">Require Approval</FormLabel>
+                                                    <FormDescription>
+                                                        New participants submit requests and wait for organizer approval before access is granted.
+                                                    </FormDescription>
+                                                </div>
+                                                <FormControl>
+                                                    <Switch checked={field.value} onCheckedChange={field.onChange} />
+                                                </FormControl>
+                                            </FormItem>
+                                        )}
+                                    />
+
                                     <FormField
                                         control={form.control}
                                         name="capacity"
