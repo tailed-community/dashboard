@@ -48,7 +48,7 @@ const AUTO_FIELDS: { key: string; template: Omit<FormField, "id"> }[] = [
 ];
 
 function generateId() {
-  return `f_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    return crypto.randomUUID();
 }
 
 export default function CustomFormPage() {
