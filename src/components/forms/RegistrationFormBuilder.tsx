@@ -123,7 +123,7 @@ export default function RegistrationFormBuilder({ eventId, fields = defaultField
             name={`f_${i}`}
             render={({ field }) => (
               <FormItem className="mb-3">
-                <FormLabel>{f.label}</FormLabel>
+                <FormLabel>{f.question ?? f.label}</FormLabel>
                 <FormControl>
                   <Input {...field} type={f.type || "text"} placeholder={f.label} />
                 </FormControl>
