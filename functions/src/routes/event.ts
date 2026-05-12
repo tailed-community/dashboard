@@ -1842,10 +1842,10 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
   try {
     const { eventId } = req.params;
     const userId = req.user?.uid;
-    if (!userId) return;
+    if (!userId) return null;
 
     const eventContext = await loadEventContext(res, eventId);
-    if (!eventContext) return;
+    if (!eventContext) return null;
 
     const { resolvedEventId, eventData } = eventContext;
 
@@ -1872,7 +1872,7 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
         eventData,
         "Event is not associated with a community"
       );
-      if (!communityContext) return;
+      if (!communityContext) return null;
     }
 
     const eventRef = db.collection("events").doc(resolvedEventId);
@@ -2114,10 +2114,10 @@ router.post("/:eventId/registrations/:registrationId/review", async (req: Reques
   try {
     const { eventId, registrationId } = req.params;
     const userId = requireUserId(req, res);
-    if (!userId) return;
+    if (!userId) return null;
 
     const eventContext = await loadEventContext(res, eventId);
-    if (!eventContext) return;
+    if (!eventContext) return null;
 
     const { resolvedEventId, eventData } = eventContext;
 
@@ -2127,7 +2127,7 @@ router.post("/:eventId/registrations/:registrationId/review", async (req: Reques
       eventData,
       "Access denied"
     );
-    if (!canAccess) return;
+    if (!canAccess) return null;
 
     const bodySchema = z.object({
       status: z.enum(["pending", "confirmed", "rejected", "cancelled", "waitlisted", "attended", "no-show"]),
