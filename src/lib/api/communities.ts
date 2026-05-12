@@ -96,9 +96,6 @@ export async function getCommunityAdmin(idOrSlug: string): Promise<CommunityResp
 export async function createCommunity(payload: CreateCommunityFormData): Promise<string> {
   try {
     const { logo, banner, ...fields } = payload;
-    if(payload){
-        console.log('Creating community with payload:', fields);
-    }
     const body: Record<string, any> = { ...fields };
     if (logo) body.logo = logo;
     if (banner) body.banner = banner;

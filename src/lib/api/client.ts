@@ -56,7 +56,15 @@ export async function apiRequest<T>(
 
   let response: Response;
   try {
-    response = await apiFetch(endpoint, fetchOptions, isPublic);
+    // Always use the default API URL. Passing a third param to `apiFetch`
+    // previously selected an alternate companies API and caused network
+    // errors when used for public endpoints. Keep apiFetch two-arg here.
+    const base = import.meta.env.VITE_API_URL as string | undefined;
+    if (!base) {
+      throw new Error('Missing VITE_API_URL environment variable (api base url)');
+    }
+
+    response = await apiFetch(endpoint, fetchOptions);
   } catch (err) {
     throw {
       success: false,
