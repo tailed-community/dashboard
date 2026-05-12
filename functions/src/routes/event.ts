@@ -1264,7 +1264,7 @@ router.post("/:eventId/import-attendees", async (req: Request, res: Response) =>
           
           // Send welcome email to new users
           try {
-            const loginLink = `${process.env.WEB_APP_URL || 'https://community.tailed.ca'}/login`;
+            const loginLink = `${process.env.FRONTEND_URL || 'https://community.tailed.ca'}/login`;
             await sendCommunityWelcomeEmail(
               emailLower,
               attendee.firstName || emailLower.split("@")[0],
@@ -1916,7 +1916,7 @@ router.get('/:eventId/ics', async (req: Request, res: Response) => {
       `DTEND:${dtEnd}`,
       `DESCRIPTION:${description}`,
       `LOCATION:${location}`,
-      `URL:${process.env.WEB_APP_URL || 'https://app.tailed.ca'}/events/${eventData.id}`,
+      `URL:${process.env.FRONTEND_URL || 'https://app.tailed.ca'}/events/${eventData.id}`,
       'END:VEVENT',
       'END:VCALENDAR',
     ].join('\r\n');
