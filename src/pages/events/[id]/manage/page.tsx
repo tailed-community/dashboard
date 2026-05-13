@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Users } from "lucide-react";
+import { ArrowLeft, Users, Settings } from "lucide-react";
 import { apiFetch } from "@/lib/fetch";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,7 @@ import { AttendeeFilters } from "@/components/events/AttendeeFilters";
 import { AttendeeTable } from "@/components/events/AttendeeTable";
 import { AttendeeDetailsDrawer } from "@/components/events/AttendeeDetailsDrawer";
 import type { Registration, AttendeeListResponse, SortByField } from "@/types/registration";
+import type { Team } from "@/types/events";
 
 export default function EventManageAttendeesPage() {
   const { id } = useParams<{ id: string }>();
@@ -20,6 +21,7 @@ export default function EventManageAttendeesPage() {
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [teamCount, setTeamCount] = useState(0);
 
   // Filter state
@@ -60,7 +62,9 @@ export default function EventManageAttendeesPage() {
         const teamsResp = await apiFetch(`/events/${id}/teams`);
         if (teamsResp.ok) {
           const teamsBody = await teamsResp.json();
-          setTeamCount(Array.isArray(teamsBody.data) ? teamsBody.data.length : 0);
+          const teamsList = Array.isArray(teamsBody.data) ? teamsBody.data : [];
+          setTeams(teamsList);
+          setTeamCount(teamsList.length);
         }
       } catch (teamError) {
         console.error("Error fetching teams:", teamError);
@@ -141,6 +145,46 @@ export default function EventManageAttendeesPage() {
         <Badge variant="secondary">{teamCount} teams</Badge>
         <Badge variant="secondary">Search includes team names</Badge>
       </div>
+
+      {/* Teams Section */}
+      {teams.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold">Teams</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {teams.map((team) => (
+              <div
+                key={team.id}
+                className="rounded border p-4 hover:bg-muted/50 transition-colors cursor-pointer"
+                onClick={() => navigate(`/events/${id}/teams/${team.id}/manage`)}
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex-1">
+                    <h3 className="font-medium text-sm">{team.name}</h3>
+                    <p className="text-xs text-muted-foreground">
+                      {team.members.length}/{team.maxSize} members
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/events/${id}/teams/${team.id}/manage`);
+                    }}
+                  >
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="flex gap-1 flex-wrap">
+                  <Badge variant="outline" className="text-xs">
+                    Captain: {team.captainId?.substring(0, 8)}...
+                  </Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <AttendeeFilters

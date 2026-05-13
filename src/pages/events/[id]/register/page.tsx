@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { apiFetch } from "@/lib/fetch";
 import RegistrationFormBuilder from "@/components/forms/RegistrationFormBuilder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+import { apiFetch } from "@/lib/fetch";
 
 type FieldDef = {
   question?: string;

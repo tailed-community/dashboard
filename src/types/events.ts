@@ -69,3 +69,42 @@ export interface TeamMemberInfo extends Team {
   memberCount: number;
   isFull: boolean;
 }
+
+export interface TeamJoinRequest {
+  id: string;
+  eventId: string;
+  teamId: string;
+  teamName: string;
+  userId: string;
+  email: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  displayName: string;
+  source: string;
+  status: "pending" | "approved" | "rejected";
+  requestedAt: string | Date;
+  requestedBy: string;
+  reviewedBy: string | null;
+  reviewedAt?: string | Date | null;
+  reviewNotes?: string | null;
+}
+
+export interface TeamRequestsListResponse {
+  success: boolean;
+  data: TeamJoinRequest[];
+  team: {
+    id: string;
+    name: string;
+  };
+  event: {
+    id: string;
+    title: string;
+  };
+}
+
+export interface TeamManagementResponse {
+  success: boolean;
+  message: string;
+  data?: Record<string, unknown>;
+  teamJoinStatus?: string;
+}

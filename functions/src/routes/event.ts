@@ -571,6 +571,14 @@ const fetchRecipientProfiles = async (recipientIds: string[]): Promise<AwardReci
     .map((recipientId) => recipientProfiles.get(recipientId))
     .filter((recipient): recipient is AwardRecipientSummary => recipient !== undefined);
 };
+const updateTeamSchema = z.object({
+  name: z.string().min(1).max(100),
+});
+
+const teamRequestReviewSchema = z.object({
+  decision: z.enum(["approve", "reject"]),
+  reviewNotes: z.string().max(500).optional().nullable(),
+});
 
 const safeDeleteStorageFile = async (filePath?: string): Promise<void> => {
   if (!filePath) return;
@@ -580,6 +588,166 @@ const safeDeleteStorageFile = async (filePath?: string): Promise<void> => {
   } catch (error) {
     console.error("Failed to delete storage file:", filePath, error);
   }
+};
+
+const normalizeStringArray = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((item): item is string => typeof item === "string");
+};
+
+const chunkArray = <T,>(items: T[], size: number): T[][] => {
+  if (items.length === 0) {
+    return [];
+  }
+
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+
+  return chunks;
+};
+
+const toDateValue = (value: unknown): Date => {
+  if (value instanceof Date) {
+    return value;
+  }
+
+  if (typeof value === "string" || typeof value === "number") {
+    return new Date(value);
+  }
+
+  if (
+    value && 
+    typeof value === "object" &&
+    "toDate" in value &&
+    typeof (value as { toDate?: () => Date }).toDate === "function"
+  ) {
+    return (value as { toDate: () => Date }).toDate();
+  }
+
+  return new Date(0);
+};
+
+const buildTeamRequestPayload = (
+  params: {  
+    requestId: string;
+    eventId: string;
+    teamId: string;
+    teamName: string;
+    userId: string;
+    email?: string;
+    firstName?: string;
+    lastName?: string;
+    source: string;
+  }
+) => {
+  const displayName = [params.firstName, params.lastName]
+    .filter((part) => typeof part === "string" && part.trim().length > 0)
+    .join(" ")
+    .trim();
+
+  return {
+    id: params.requestId,
+    eventId: params.eventId,
+    teamId: params.teamId,
+    teamName: params.teamName,
+    userId: params.userId,
+    email: params.email || null,
+    firstName: params.firstName || null,
+    lastName: params.lastName || null,
+    displayName: displayName || params.email || params.userId,
+    source: params.source,
+    status: "pending",
+    requestedAt: new Date(),
+    requestedBy: params.userId,
+    reviewedBy: null,
+    reviewedAt: null,
+    reviewNotes: null,
+  };
+};
+
+const updateRegistrationDocs = async (
+  query: FirebaseFirestore.Query,
+  updates: Record<string, unknown>
+): Promise<void> => {
+  const snapshot = await query.get();
+  if (snapshot.empty) {
+    return;
+  }
+
+  for (const chunk of chunkArray(snapshot.docs, 450)) {
+    const batch = db.batch();
+    for (const doc of chunk) {
+      batch.update(doc.ref, {
+        ...updates,
+        updatedAt: new Date(),
+      });
+    }
+    await batch.commit();
+  }
+};
+
+const ensureTeamManagementAccess = async (
+  res: Response,
+  userId: string,
+  eventData: FirebaseFirestore.DocumentData,
+  teamData: FirebaseFirestore.DocumentData,
+  forbiddenMessage: string
+): Promise<boolean> => {
+  const captainId = typeof teamData.captainId === "string" ? teamData.captainId : null;
+  const createdBy = typeof teamData.createdBy === "string" ? teamData.createdBy : null;
+
+  if (captainId === userId || createdBy === userId || eventData.createdBy === userId) {
+    return true;
+  }
+
+  if (eventData.communityId) {
+    const communityContext = await requireCommunityContext(
+      res,
+      eventData,
+      "Event is not associated with a community"
+    );
+
+    if (communityContext?.admins.includes(userId)) {
+      return true;
+    }
+  }
+
+  res.status(403).json({ error: forbiddenMessage });
+  return false;
+};
+
+/**
+ * Helper: Check if user is already in another team for an event
+ * Returns team info if user is in a team, null otherwise
+ */
+const checkUserInAnotherTeam = async (
+  eventId: string,
+  userId: string,
+  excludeTeamId?: string
+): Promise<{ inTeam: boolean; teamId?: string; teamName?: string }> => {
+  const teamsSnapshot = await db.collection("events").doc(eventId).collection("teams").get();
+  
+  for (const teamDoc of teamsSnapshot.docs) {
+    if (excludeTeamId && teamDoc.id === excludeTeamId) continue;
+    
+    const teamData = teamDoc.data();
+    const members = normalizeStringArray(teamData.members);
+    
+    if (members.includes(userId)) {
+      return {
+        inTeam: true,
+        teamId: teamDoc.id,
+        teamName: String(teamData.name || ""),
+      };
+    }
+  }
+  
+  return { inTeam: false };
 };
 
 /**
@@ -2241,6 +2409,8 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
     const profileRef = db.collection("profiles").doc(userId);
 
     // Validate and prepare team data if teamId is provided
+    let teamJoinStatus: "pending" | "already-member" | null = null;
+    let teamDataForJoin: FirebaseFirestore.DocumentData | null = null;
     if (teamId) {
       const teamRef = db.collection("events").doc(resolvedEventId).collection("teams").doc(teamId);
       const teamDoc = await teamRef.get();
@@ -2250,19 +2420,19 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
       }
       
       const teamData = teamDoc.data()!;
-      const members = teamData.members || [];
-      
-      // Check if user is already in team
+      teamDataForJoin = teamData;
+      const members = normalizeStringArray(teamData.members);
+
+      // If the user is already on the team, keep the registration flowing and avoid creating a new team request.
       if (members.includes(userId)) {
-        return res.status(400).json({ error: "You are already a member of this team" });
-      }
-      
-      // Check if team is at capacity
-      if (members.length >= teamData.maxSize) {
+        teamJoinStatus = "already-member";
+      } else if (members.length >= Number(teamData.maxSize || 0)) {
         return res.status(400).json({ 
           error: "Team is at maximum capacity",
           message: `This team can have maximum ${teamData.maxSize} members`,
         });
+      } else {
+        teamJoinStatus = "pending";
       }
       
     }
@@ -2348,22 +2518,56 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
       };
     });
 
-    // Add user to team if teamId was provided
-    if (teamId && "attendee" in result) {
+    // Add user to team request workflow only when they are not already a member.
+    if (teamId && "attendee" in result && teamJoinStatus === "pending" && teamDataForJoin) {
       try {
         const teamRef = db.collection("events").doc(resolvedEventId).collection("teams").doc(teamId);
         const teamDoc = await teamRef.get();
         
         if (teamDoc.exists) {
           const teamData = teamDoc.data()!;
-          const members = teamData.members || [];
+          const members = normalizeStringArray(teamData.members);
           
           // Add user to team if not already a member
           if (!members.includes(userId)) {
-            await teamRef.update({
-              members: [...members, userId],
-              updatedAt: new Date(),
+            const requestRef = teamRef.collection("requests").doc();
+            const profileDoc = await db.collection("profiles").doc(userId).get();
+            const profileData = profileDoc.exists ? (profileDoc.data() || {}) : {};
+
+            const requestData = buildTeamRequestPayload({
+              requestId: requestRef.id,
+              eventId: resolvedEventId,
+              teamId,
+              teamName: String(teamData.name || ""),
+              userId,
+              email: typeof profileData.email === "string" ? profileData.email : undefined,
+              firstName: typeof profileData.firstName === "string" ? profileData.firstName : undefined,
+              lastName: typeof profileData.lastName === "string" ? profileData.lastName : undefined,
+              source: "event-join",
             });
+
+            await requestRef.set(requestData);
+
+            await db.collection("events").doc(resolvedEventId).collection("registrations")
+              .where("eventId", "==", resolvedEventId)
+              .where("userId", "==", userId)
+              .get()
+              .then(async (snapshot) => {
+                if (snapshot.empty) return;
+                const batch = db.batch();
+                snapshot.docs.forEach((doc) => {
+                  batch.update(doc.ref, {
+                    requestedTeamId: teamId,
+                    requestedTeamName: String(teamData.name || ""),
+                    teamJoinStatus: "pending",
+                    updatedAt: new Date(),
+                  });
+                });
+                await batch.commit();
+              })
+              .catch((error) => {
+                console.error("Failed to mark registration with pending team request:", error);
+              });
           }
         }
       } catch (teamError: any) {
@@ -2381,6 +2585,7 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
         attendee: result.attendee,
         registrations: result.registrations,
         status: result.status,
+        teamJoinStatus: teamJoinStatus || undefined,
       });
     }
     else{
@@ -2633,21 +2838,6 @@ router.post("/:eventId/registrations/:registrationId/review", async (req: Reques
     } catch (e) {
       console.error("Failed to update event attendee count after review:", e);
     }
-
-    // Optionally: write an activity/audit log
-    try {
-      await db.collection("events").doc(resolvedEventId).collection("activity").add({
-        type: "registration.review",
-        registrationId,
-        status,
-        reviewNotes: reviewNotes || null,
-        performedBy: userId,
-        performedAt: new Date(),
-      });
-    } catch (e) {
-      console.error("Failed to write activity log for registration review:", e);
-    }
-
     return res.status(200).json({ success: true, message: "Registration updated" });
   } catch (error: any) {
     console.error("Error reviewing registration:", error);
@@ -2698,7 +2888,7 @@ router.post("/:eventId/teams", async (req: Request, res: Response) => {
       id: teamDocRef.id,
       name,
       maxSize,
-      members: [userId], // Creator is first member
+      members: [], // Do not auto-add creator as a member; they remain captain and must register separately
       captainId: userId,
       createdBy: userId,
       createdAt: new Date(),
@@ -2711,7 +2901,7 @@ router.post("/:eventId/teams", async (req: Request, res: Response) => {
         id: teamDocRef.id,
         name,
         maxSize,
-        members: [userId],
+        members: [],
         captainId: userId,
         createdBy: userId,
         createdAt: new Date().toISOString(),
@@ -2782,14 +2972,15 @@ router.get("/:eventId/teams/:teamId", async (req: Request, res: Response) => {
     }
 
     const data = teamDoc.data()!;
+    const members = normalizeStringArray(data.members);
     return res.status(200).json({
       success: true,
       data: {
         id: teamDoc.id,
         name: data.name,
         maxSize: data.maxSize,
-        members: data.members || [],
-        memberCount: (data.members || []).length,
+        members,
+        memberCount: members.length,
         captainId: data.captainId || data.createdBy,
         createdBy: data.createdBy,
         createdAt: data.createdAt?.toDate?.().toISOString() || data.createdAt,
@@ -2799,6 +2990,462 @@ router.get("/:eventId/teams/:teamId", async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error("Error fetching team:", error);
     return res.status(500).json({ error: "Failed to fetch team", details: error.message });
+  }
+});
+
+/**
+ * POST /events/:eventId/teams/:teamId/requests
+ * Create a pending join request for a team.
+ */
+router.post("/:eventId/teams/:teamId/requests", async (req: Request, res: Response) => {
+  try {
+    const { eventId, teamId } = req.params;
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const eventContext = await loadEventContext(res, eventId);
+    if (!eventContext) return;
+
+    const { resolvedEventId, eventData } = eventContext;
+    const teamRef = db.collection("events").doc(resolvedEventId).collection("teams").doc(teamId);
+    const teamDoc = await teamRef.get();
+
+    if (!teamDoc.exists) {
+      return res.status(404).json({ error: "Team not found" });
+    }
+
+    const teamData = teamDoc.data() || {};
+    const members = normalizeStringArray(teamData.members);
+
+    if (members.includes(userId)) {
+      return res.status(400).json({ error: "You are already a member of this team" });
+    }
+
+    // Check if user is already in another team for this event
+    const otherTeamCheck = await checkUserInAnotherTeam(resolvedEventId, userId, teamId);
+    if (otherTeamCheck.inTeam) {
+      return res.status(400).json({
+        error: "You are already a member of another team for this event",
+        details: `You are already in team: ${otherTeamCheck.teamName}`,
+      });
+    }
+
+    const requestsRef = teamRef.collection("requests");
+    const pendingRequestSnapshot = await requestsRef
+      .where("userId", "==", userId)
+      .where("status", "==", "pending")
+      .limit(1)
+      .get();
+
+    if (!pendingRequestSnapshot.empty) {
+      return res.status(409).json({ error: "You already have a pending request for this team" });
+    }
+
+    if (members.length >= Number(teamData.maxSize || 0)) {
+      return res.status(400).json({
+        error: "Team is at maximum capacity",
+        message: `This team can have maximum ${teamData.maxSize} members`,
+      });
+    }
+
+    const profileDoc = await db.collection("profiles").doc(userId).get();
+    const profileData = profileDoc.exists ? (profileDoc.data() || {}) : {};
+    const requestRef = requestsRef.doc();
+
+    const requestData = buildTeamRequestPayload({
+      requestId: requestRef.id,
+      eventId: resolvedEventId,
+      teamId,
+      teamName: String(teamData.name || ""),
+      userId,
+      email: typeof profileData.email === "string" ? profileData.email : req.body?.email,
+      firstName: typeof profileData.firstName === "string" ? profileData.firstName : req.body?.firstName,
+      lastName: typeof profileData.lastName === "string" ? profileData.lastName : req.body?.lastName,
+      source: "manual-request",
+    });
+
+    await requestRef.set(requestData);
+
+    return res.status(201).json({
+      success: true,
+      message: "Team request submitted",
+      data: requestData,
+      teamJoinStatus: "pending",
+      canApprove: Boolean(eventData.createdBy === userId),
+    });
+  } catch (error: any) {
+    console.error("Error creating team request:", error);
+    return res.status(500).json({ error: "Failed to create team request", details: error.message });
+  }
+});
+
+/**
+ * GET /events/:eventId/teams/:teamId/requests
+ * List team join requests, defaulting to pending requests.
+ */
+router.get("/:eventId/teams/:teamId/requests", async (req: Request, res: Response) => {
+  try {
+    const { eventId, teamId } = req.params;
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const eventContext = await loadEventContext(res, eventId);
+    if (!eventContext) return;
+
+    const { eventDoc, resolvedEventId, eventData } = eventContext;
+    const teamRef = db.collection("events").doc(resolvedEventId).collection("teams").doc(teamId);
+    const teamDoc = await teamRef.get();
+
+    if (!teamDoc.exists) {
+      return res.status(404).json({ error: "Team not found" });
+    }
+
+    const teamData = teamDoc.data() || {};
+    const canManage = await ensureTeamManagementAccess(
+      res,
+      userId,
+      eventData,
+      teamData,
+      "Only the team captain or event admins can view requests"
+    );
+
+    if (!canManage) return;
+
+    const statusFilter = typeof req.query.status === "string" && req.query.status
+      ? req.query.status
+      : "pending";
+
+    const requestsSnapshot = await teamRef.collection("requests").get();
+    const requests = requestsSnapshot.docs
+      .map((doc) => ({ id: doc.id, ...(doc.data() as FirebaseFirestore.DocumentData) })) as Array<{
+        id: string;
+        status?: string;
+        requestedAt?: unknown;
+      }>;
+
+    const filteredRequests = requests
+      .filter((request) => {
+        if (!statusFilter) return true;
+        return String(request.status || "") === statusFilter;
+      })
+      .sort((left, right) => {
+        return toDateValue(left.requestedAt).getTime() - toDateValue(right.requestedAt).getTime();
+      });
+
+    return res.status(200).json({
+      success: true,
+      data: filteredRequests,
+      team: {
+        id: teamDoc.id,
+        name: teamData.name,
+      },
+      event: {
+        id: eventDoc.id,
+        title: eventData.title,
+      },
+    });
+  } catch (error: any) {
+    console.error("Error fetching team requests:", error);
+    return res.status(500).json({ error: "Failed to fetch team requests", details: error.message });
+  }
+});
+
+/**
+ * POST /events/:eventId/teams/:teamId/requests/:requestId/review
+ * Approve or reject a pending team request.
+ */
+router.post("/:eventId/teams/:teamId/requests/:requestId/review", async (req: Request, res: Response) => {
+  try {
+    const { eventId, teamId, requestId } = req.params;
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const eventContext = await loadEventContext(res, eventId);
+    if (!eventContext) return;
+
+    const { resolvedEventId, eventData } = eventContext;
+    const teamRef = db.collection("events").doc(resolvedEventId).collection("teams").doc(teamId);
+    const teamDoc = await teamRef.get();
+
+    if (!teamDoc.exists) {
+      return res.status(404).json({ error: "Team not found" });
+    }
+
+    const teamData = teamDoc.data() || {};
+    const canManage = await ensureTeamManagementAccess(
+      res,
+      userId,
+      eventData,
+      teamData,
+      "Only the team captain or event admins can review requests"
+    );
+
+    if (!canManage) return;
+
+    const validationResult = teamRequestReviewSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({
+        error: "Invalid request data",
+        details: validationResult.error.errors,
+      });
+    }
+
+    const { decision, reviewNotes } = validationResult.data;
+    const requestRef = teamRef.collection("requests").doc(requestId);
+    const teamMembers = normalizeStringArray(teamData.members);
+    const requestSnapshot = await requestRef.get();
+
+    if (!requestSnapshot.exists) {
+      return res.status(404).json({ error: "Team request not found" });
+    }
+
+    const requestData = requestSnapshot.data() || {};
+    if (requestData.status !== "pending") {
+      return res.status(409).json({ error: "Request has already been reviewed" });
+    }
+
+    if (decision === "approve") {
+      if (!teamMembers.includes(requestData.userId) && teamMembers.length >= Number(teamData.maxSize || 0)) {
+        return res.status(400).json({ error: "Team is at maximum capacity" });
+      }
+
+      // Check if user is already in another team for this event
+      const otherTeamCheck = await checkUserInAnotherTeam(resolvedEventId, requestData.userId, teamId);
+      if (otherTeamCheck.inTeam) {
+        return res.status(400).json({
+          error: "User is already a member of another team for this event",
+          details: `User is already in team: ${otherTeamCheck.teamName}`,
+        });
+      }
+
+      await db.runTransaction(async (tx) => {
+        const freshTeamSnapshot = await tx.get(teamRef);
+        const freshRequestSnapshot = await tx.get(requestRef);
+
+        if (!freshTeamSnapshot.exists) {
+          const notFoundError: any = new Error("Team not found");
+          notFoundError.status = 404;
+          throw notFoundError;
+        }
+
+        if (!freshRequestSnapshot.exists) {
+          const requestError: any = new Error("Team request not found");
+          requestError.status = 404;
+          throw requestError;
+        }
+
+        const freshTeamData = freshTeamSnapshot.data() || {};
+        const freshMembers = normalizeStringArray(freshTeamData.members);
+
+        if (freshRequestSnapshot.data()?.status !== "pending") {
+          const alreadyReviewedError: any = new Error("Request has already been reviewed");
+          alreadyReviewedError.status = 409;
+          throw alreadyReviewedError;
+        }
+
+        if (!freshMembers.includes(requestData.userId) && freshMembers.length >= Number(freshTeamData.maxSize || 0)) {
+          const capacityError: any = new Error("Team is at maximum capacity");
+          capacityError.status = 400;
+          throw capacityError;
+        }
+
+        tx.update(teamRef, {
+          members: freshMembers.includes(requestData.userId) ? freshMembers : [...freshMembers, requestData.userId],
+          updatedAt: new Date(),
+        });
+
+        tx.update(requestRef, {
+          status: "approved",
+          reviewedBy: userId,
+          reviewedAt: new Date(),
+          reviewNotes: reviewNotes || null,
+          updatedAt: new Date(),
+        });
+      });
+
+      await updateRegistrationDocs(
+        db.collection("events")
+          .doc(resolvedEventId)
+          .collection("registrations")
+          .where("eventId", "==", resolvedEventId)
+          .where("userId", "==", String(requestData.userId)),
+        {
+          teamId,
+          teamName: String(teamData.name || requestData.teamName || ""),
+          requestedTeamId: null,
+          requestedTeamName: null,
+        }
+      );
+
+      return res.status(200).json({
+        success: true,
+        message: "Team request approved",
+        teamJoinStatus: "approved",
+      });
+    }
+
+    await requestRef.update({
+      status: "rejected",
+      reviewedBy: userId,
+      reviewedAt: new Date(),
+      reviewNotes: reviewNotes || null,
+      updatedAt: new Date(),
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Team request rejected",
+      teamJoinStatus: "rejected",
+    });
+  } catch (error: any) {
+    console.error("Error reviewing team request:", error);
+    return res.status(500).json({ error: "Failed to review team request", details: error.message });
+  }
+});
+
+/**
+ * PATCH /events/:eventId/teams/:teamId
+ * Update team metadata such as its name.
+ */
+router.patch("/:eventId/teams/:teamId", async (req: Request, res: Response) => {
+  try {
+    const { eventId, teamId } = req.params;
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const eventContext = await loadEventContext(res, eventId);
+    if (!eventContext) return;
+
+    const { resolvedEventId, eventData } = eventContext;
+    const teamRef = db.collection("events").doc(resolvedEventId).collection("teams").doc(teamId);
+    const teamDoc = await teamRef.get();
+
+    if (!teamDoc.exists) {
+      return res.status(404).json({ error: "Team not found" });
+    }
+
+    const teamData = teamDoc.data() || {};
+    const canManage = await ensureTeamManagementAccess(
+      res,
+      userId,
+      eventData,
+      teamData,
+      "Only the team captain or event admins can update team details"
+    );
+
+    if (!canManage) return;
+
+    const validationResult = updateTeamSchema.partial().safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({
+        error: "Invalid request data",
+        details: validationResult.error.errors,
+      });
+    }
+
+    const updates = validationResult.data;
+    if (!updates.name) {
+      return res.status(400).json({ error: "Team name is required" });
+    }
+
+    await teamRef.update({
+      name: updates.name,
+      updatedAt: new Date(),
+    });
+
+    await updateRegistrationDocs(
+      db.collection("events")
+        .doc(resolvedEventId)
+        .collection("registrations")
+        .where("eventId", "==", resolvedEventId)
+        .where("teamId", "==", teamId),
+      {
+        teamName: updates.name,
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Team updated successfully",
+      data: {
+        id: teamId,
+        name: updates.name,
+      },
+    });
+  } catch (error: any) {
+    console.error("Error updating team:", error);
+    return res.status(500).json({ error: "Failed to update team", details: error.message });
+  }
+});
+
+/**
+ * DELETE /events/:eventId/teams/:teamId/members/:memberId
+ * Remove a member from a team.
+ */
+router.delete("/:eventId/teams/:teamId/members/:memberId", async (req: Request, res: Response) => {
+  try {
+    const { eventId, teamId, memberId } = req.params;
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const eventContext = await loadEventContext(res, eventId);
+    if (!eventContext) return;
+
+    const { resolvedEventId, eventData } = eventContext;
+    const teamRef = db.collection("events").doc(resolvedEventId).collection("teams").doc(teamId);
+    const teamDoc = await teamRef.get();
+
+    if (!teamDoc.exists) {
+      return res.status(404).json({ error: "Team not found" });
+    }
+
+    const teamData = teamDoc.data() || {};
+    const canManage = await ensureTeamManagementAccess(
+      res,
+      userId,
+      eventData,
+      teamData,
+      "Only the team captain or event admins can remove members"
+    );
+
+    if (!canManage) return;
+
+    if (memberId === teamData.captainId || memberId === teamData.createdBy) {
+      return res.status(400).json({ error: "Captain cannot be removed from the team" });
+    }
+
+    const members = normalizeStringArray(teamData.members);
+    if (!members.includes(memberId)) {
+      return res.status(404).json({ error: "Member not found in team" });
+    }
+
+    await teamRef.update({
+      members: members.filter((member) => member !== memberId),
+      updatedAt: new Date(),
+    });
+
+    await updateRegistrationDocs(
+      db.collection("events")
+        .doc(resolvedEventId)
+        .collection("registrations")
+        .where("eventId", "==", resolvedEventId)
+        .where("userId", "==", memberId)
+        .where("teamId", "==", teamId),
+      {
+        teamId: null,
+        teamName: null,
+        requestedTeamId: null,
+        requestedTeamName: null,
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Member removed from team",
+    });
+  } catch (error: any) {
+    console.error("Error removing team member:", error);
+    return res.status(500).json({ error: "Failed to remove team member", details: error.message });
   }
 });
 
@@ -2825,7 +3472,7 @@ router.post("/:eventId/teams/:teamId/join", async (req: Request, res: Response) 
     }
 
     const teamData = teamDoc.data()!;
-    const members = teamData.members || [];
+    const members = normalizeStringArray(teamData.members);
 
     // Check if user is already member
     if (members.includes(userId)) {
@@ -2833,6 +3480,15 @@ router.post("/:eventId/teams/:teamId/join", async (req: Request, res: Response) 
         success: true,
         data: teamData,
         message: "User is already member of this team",
+      });
+    }
+
+    // Check if user is already in another team for this event
+    const otherTeamCheck = await checkUserInAnotherTeam(resolvedEventId, userId, teamId);
+    if (otherTeamCheck.inTeam) {
+      return res.status(400).json({
+        error: "You are already a member of another team for this event",
+        details: `You are already in team: ${otherTeamCheck.teamName}`,
       });
     }
 
@@ -2844,20 +3500,67 @@ router.post("/:eventId/teams/:teamId/join", async (req: Request, res: Response) 
       });
     }
 
-    // Add user to team
-    await teamRef.update({
-      members: [...members, userId],
-      updatedAt: new Date(),
+    const requestsRef = teamRef.collection("requests");
+    const existingRequestSnapshot = await requestsRef
+      .where("userId", "==", userId)
+      .where("status", "==", "pending")
+      .limit(1)
+      .get();
+
+    if (!existingRequestSnapshot.empty) {
+      return res.status(409).json({
+        error: "You already have a pending request for this team",
+      });
+    }
+
+    const profileDoc = await db.collection("profiles").doc(userId).get();
+    const profileData = profileDoc.exists ? (profileDoc.data() || {}) : {};
+    const requestRef = requestsRef.doc();
+    const requestData = buildTeamRequestPayload({
+      requestId: requestRef.id,
+      eventId: resolvedEventId,
+      teamId,
+      teamName: String(teamData.name || ""),
+      userId,
+      email: typeof profileData.email === "string" ? profileData.email : undefined,
+      firstName: typeof profileData.firstName === "string" ? profileData.firstName : undefined,
+      lastName: typeof profileData.lastName === "string" ? profileData.lastName : undefined,
+      source: "event-join",
     });
+
+    // Save the pending request instead of adding the user to the team immediately.
+    await requestRef.set(requestData);
+
+    await db.collection("events").doc(resolvedEventId).collection("registrations")
+      .where("eventId", "==", resolvedEventId)
+      .where("userId", "==", userId)
+      .get()
+      .then(async (snapshot) => {
+        if (snapshot.empty) return;
+        const batch = db.batch();
+        snapshot.docs.forEach((doc) => {
+          batch.update(doc.ref, {
+            requestedTeamId: teamId,
+            requestedTeamName: String(teamData.name || ""),
+            teamJoinStatus: "pending",
+            updatedAt: new Date(),
+          });
+        });
+        await batch.commit();
+      })
+      .catch((error) => {
+        console.error("Failed to mark registration with pending team request:", error);
+      });
 
     return res.status(200).json({
       success: true,
       data: {
         ...teamData,
-        members: [...members, userId],
-        updateAt: new Date().toISOString(),
+        members,
+        teamJoinStatus: "pending",
+        teamRequestId: requestRef.id,
       },
-      message: "User joined team successfully",
+      message: "Team request submitted successfully",
     });
   } catch (error: any) {
     console.error("Error joining team:", error);
