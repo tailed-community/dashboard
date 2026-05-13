@@ -29,6 +29,8 @@ export interface Registration {
   approvedAt?: string | Date;
   reviewNotes?: string | null;
   updatedAt?: string | Date;
+  teamId?: string | null; // Team participant is assigned to
+  teamName?: string; // Denormalized team name for convenience
 }
 
 export interface AttendeeListResponse {
