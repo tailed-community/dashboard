@@ -1,7 +1,6 @@
-import { getApp, getApps, initializeApp } from "@firebase/app";
+import { getApp, getApps, initializeApp } from "firebase/app";
 import {
   getAuth,
-  sendSignInLinkToEmail,
   signInWithEmailLink,
   isSignInWithEmailLink,
   GithubAuthProvider,
@@ -25,20 +24,29 @@ if (!getApps().length) {
 }
 
 const app = getApp();
+const auth = getAuth(app);
+
+const useFirebaseEmulators =
+  import.meta.env.DEV && import.meta.env.VITE_USE_FIREBASE_EMULATORS !== "false";
+const authEmulatorHost =
+  import.meta.env.VITE_AUTH_EMULATOR_HOST || "127.0.0.1:9100";
+const authEmulatorUrl = authEmulatorHost.startsWith("http")
+  ? authEmulatorHost
+  : `http://${authEmulatorHost}`;
+
+if (useFirebaseEmulators && !auth.emulatorConfig) {
+  connectAuthEmulator(auth, authEmulatorUrl);
+}
 
 export const TENANT_IDS = {
   STUDENTS: import.meta.env.VITE_TENANT_ID,
 } as const;
 
 export const getAuthForTenant = (tenantId: string) => {
-  const auth = getAuth(app);
-
-  if (import.meta.env.VITE_FIREBASE_PROJECT_ID?.startsWith("demo-")) {
-    // Connect to the emulator
-    connectAuthEmulator(auth, "http://localhost:9100");
-  }
   if (tenantId) {
     auth.tenantId = tenantId;
+  } else {
+    auth.tenantId = null;
   }
   return auth;
 };
@@ -48,30 +56,42 @@ export const sendLoginLink = async (
   tenantId = TENANT_IDS.STUDENTS,
   redirectUrl?: string // Add optional redirectUrl
 ) => {
-  const authDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN;
-  const isCustomDomain =
-    authDomain &&
-    !authDomain.endsWith(".web.app") &&
-    !authDomain.endsWith(".firebaseapp.com");
+  const apiBaseUrl = import.meta.env.VITE_API_URL;
+  const endpoint = `${apiBaseUrl}/auth/send-login-link`;
 
-  const actionCodeSettings = {
-    url: `${
-      window.location.origin
-    }/auth/callback?${tenantId ? `tenantId=${tenantId}` : ""}&redirectUrl=${encodeURIComponent(
-      redirectUrl || ""
-    )}`, // Include tenantId in redirect URL
-    handleCodeInApp: true,
-    ...(isCustomDomain ? { linkDomain: authDomain } : {}),
-  };
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email,
+        tenantId,
+        redirectUrl,
+      }),
+    });
 
-  const auth = tenantId ? getAuthForTenant(tenantId) : studentAuth;
-  await sendSignInLinkToEmail(auth, email, actionCodeSettings);
+    if (!response.ok) {
+      let message = "Failed to send sign-in link";
+      try {
+        const data = await response.json();
+        message = data?.message || data?.error || message;
+      } catch {
+        // Keep default message when response is not JSON
+      }
+      throw new Error(message);
+    }
+  } catch (error: any) {
+    throw error;
+  }
+
   localStorage.setItem("emailForSignIn", email); // Store email temporarily
   localStorage.setItem("tenantIdForSignIn", tenantId); // Store tenantId for later
 };
 
 export const completeSignIn = async () => {
-  if (isSignInWithEmailLink(getAuth(), window.location.href)) {
+  if (isSignInWithEmailLink(auth, window.location.href)) {
     const email =
       localStorage.getItem("emailForSignIn") ||
       window.prompt("Enter your email:");

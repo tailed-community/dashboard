@@ -1,0 +1,27 @@
+{
+  "name": "@tailed-community/tailed-community",
+  "version": "1.0.0",
+  "description": "Streamline the installation of the public repo of tail'ed community",
+  "keywords": [
+    "tailed",
+    "community",
+    "github",
+    "repo",
+    "installation"
+  ],
+  "license": "ISC",
+  "author": "lpp",
+  "type": "commonjs",
+  "main": "main.js",
+  "bin": {
+    "tailed": "./cli.js"
+  },
+  "scripts": {
+    "seed": "node ./src/seeds/firestore.seed.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.8.0",
+    "yargs": "^18.0.0"
+  }
+}

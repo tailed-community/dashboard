@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const server = process.env.EMAIL_SERVER;
+const shouldBypassEmailDelivery = process.env.EMAIL_DISABLE_DELIVERY === "true";
 
 const transport = createTransport(server);
 
@@ -14,7 +15,7 @@ export const sendVerificationEmail = async (
   email: string,
   verificationLink: string
 ) => {
-  if (process.env.NODE_ENV === "development") {
+  if (shouldBypassEmailDelivery) {
     console.log(
       `Email sent to ${email} params: ${JSON.stringify({ verificationLink })}`
     );
@@ -57,7 +58,7 @@ export const sendInvitationEmail = async (
   inviterName: string,
   inviteLink: string
 ) => {
-  if (process.env.NODE_ENV === "development") {
+  if (shouldBypassEmailDelivery) {
     console.log(
       `Email sent to ${email} params: ${JSON.stringify({
         inviteLink,
@@ -105,7 +106,7 @@ export const sendJobApplicationInviteEmail = async (
   jobTitle: string,
   applicationLink: string
 ) => {
-  if (process.env.NODE_ENV === "development") {
+  if (shouldBypassEmailDelivery) {
     console.log(
       `Email sent to ${email} params: ${JSON.stringify({
         applicationLink,
@@ -151,7 +152,7 @@ export const sendJobApplicationConfirmationEmail = async (
   jobTitle: string,
   organizationName: string
 ) => {
-  if (process.env.NODE_ENV === "development") {
+  if (shouldBypassEmailDelivery) {
     console.log(
       `Email sent to ${email} params: ${JSON.stringify({
         jobTitle,
@@ -191,7 +192,7 @@ export async function sendNotificationEmail(
   subject: string,
   htmlContent: string
 ): Promise<void> {
-  if (process.env.NODE_ENV === "development") {
+  if (shouldBypassEmailDelivery) {
     console.log(
       `Email sent to ${to} params: ${JSON.stringify({ subject, htmlContent })}`
     );
@@ -274,7 +275,7 @@ export const sendEmail = async ({
   html: string;
   text?: string;
 }) => {
-  if (process.env.NODE_ENV === "development") {
+  if (shouldBypassEmailDelivery) {
     console.log(
       `Email sent to ${to} params: ${JSON.stringify({ subject, html, text })}`
     );
@@ -303,7 +304,7 @@ export const sendCommunityWelcomeEmail = async (
   eventTitle: string | null | undefined,
   loginLink: string
 ) => {
-  if (process.env.NODE_ENV === "development") {
+  if (shouldBypassEmailDelivery) {
     console.log(
       `Welcome email sent to ${email} params: ${JSON.stringify({
         firstName,

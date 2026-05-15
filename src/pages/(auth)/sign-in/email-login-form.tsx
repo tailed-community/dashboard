@@ -76,6 +76,15 @@ export function EmailLoginForm({
                 return;
             }
 
+            if (checkResult.pendingAuthSync) {
+                toast.error("Auth emulator required", {
+                    description:
+                        "This account is created locally, but the Firebase Auth emulator is not running on port 9100. Start it and try again.",
+                });
+                setIsLoading(false);
+                return;
+            }
+
             // If the account exists, send the login link
             await sendLoginLink(
                 data.email,
@@ -105,6 +114,11 @@ export function EmailLoginForm({
                     toast.error("Too many requests", {
                         description: "Please wait a moment before trying again",
                     });
+                } else if (errorCode === "auth/network-request-failed") {
+                    toast.error("Auth emulator unavailable", {
+                        description:
+                            "Firebase Auth emulator is not reachable on port 9100.",
+                    });
                 } else {
                     toast.error("Login failed", {
                         description: "An error occurred during login",
@@ -112,7 +126,10 @@ export function EmailLoginForm({
                 }
             } else {
                 toast.error("Login failed", {
-                    description: "An unexpected error occurred",
+                    description:
+                        error instanceof Error
+                            ? error.message
+                            : "An unexpected error occurred",
                 });
             }
         } finally {
