@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const readline = require("readline");
+const readline = require("node:readline");
 const yargs = require("yargs")
 const {hideBin} = require("yargs/helpers")
 const command = require("./src/command.js")

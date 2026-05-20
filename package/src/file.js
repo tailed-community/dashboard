@@ -27,8 +27,8 @@ const env = function (project = "dashboard", values = {}) {
     VITE_AUTH_EMULATOR_HOST: "127.0.0.1:9100",
   };
 
-  const appValues = { ...appDefaults, ...(values.app || {}) };
-  const functionValues = { ...functionsDefaults, ...(values.functions || {}) };
+  const appValues = { ...appDefaults, ...(values.app) };
+  const functionValues = { ...functionsDefaults, ...(values.functions) };
 
   const appContent = Object.entries(appValues)
     .map(([key, value]) => `${key}=${value}`)

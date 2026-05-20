@@ -47,7 +47,6 @@ async function init({ project = "dashboard", signal } = {}) {
             file.env();
 
             /*** Start project Section  ***/
-            // store.startEmulator({ cwd: dir });
             setup.openTerminal("firebase emulators:start --project demo-tailed1", { cwd: dir });
             setup.openTerminal("npm run dev", { cwd: path.join(dir, "functions") })
 
@@ -72,13 +71,8 @@ async function init({ project = "dashboard", signal } = {}) {
 async function test() {
     const dir = path.join(process.cwd(), "dashboard")
     console.log(`
-            ✅ Testing new features
-        `)
-
-
-    await setup.executeCommand("cd " + dir);
-
-
+            ✅ Testing new command
+        `);
 }
 
 module.exports = {

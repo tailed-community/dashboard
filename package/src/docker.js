@@ -32,7 +32,7 @@ const composeUp = async (file) => {
         return false;
     }
 
-    var command = `docker compose -f "${composePath}" up -d`;
+    let command = `docker compose -f "${composePath}" up -d`;
     return setup.executeCommand(command);
 }
 
@@ -41,11 +41,8 @@ const run = async (cmd) => {
 }
 
 const pull = async (img, version) => {
-    if (version != null) {
-        return setup.executeCommand(`docker pull ${img}/${version}`)
-    } else {
-        return setup.executeCommand(`docker pull ${img}/latest`)
-    }
+    return setup.executeCommand(`docker pull ${img}/${version}`)
+
 }
 
 module.exports = {

@@ -1,8 +1,8 @@
-const readline = require("readline");
-const { execSync, spawn } = require("child_process");
+const readline = require("node:readline");
+const { execSync, spawn } = require("node:child_process");
 const net = require("node:net")
 const os = require("node:os")
-var getos = require("getos")
+const getos = require("getos")
 
 const activeChildren = new Set();
 

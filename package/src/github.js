@@ -3,7 +3,7 @@ const os = require("node:os")
 const setup = require('./setup.js');
 const yargs = require("yargs/yargs");
 const { hideBin } = require("yargs/helpers");
-var getos = require("getos")
+const getos = require("getos")
 
 
 const githubApiEndpoint = "https://api.github.com/orgs/tailed-community/repos";
@@ -101,7 +101,7 @@ const login = async () => {
     let isLogin = setup.executeCommand(cmd, { throwOnError: false, logOnError: false })
     if (!isLogin) {
         const command = "gh auth login"
-        isLogin = setup.executeCommand(command)
+        setup.executeCommand(command)
     }
 }
 
@@ -123,64 +123,5 @@ module.exports = {
     install,
     login,
     fork
-}
-
-
-
-const installCliOnOS = async () => {
-    const currentOS = os.platform()
-    var command = ""
-    switch (currentOS) {
-        case "win32":
-            command = "winget install --id GitHub.cli --exact --source winget --accept-source-agreements --accept-package-agreements"
-            const wingetInstallOk = setup.executeCommand(command, {
-                throwOnError: false,
-                logOnError: false,
-            });
-            // console.log(`
-            // Reboot your PC and run the command npx tailed init`)
-            // process.exit(1)
-            break;
-        case "darwin":
-            command = "brew install gh"
-            return setup.executeCommand(command, {
-                throwOnError: false,
-                logOnError: false,
-            });
-            break;
-        case "linux": {
-            let distro = await setup.getLinuxDistro();
-
-            switch (distro) {
-                case "fedora":
-                case "centos":
-                case "red hat":
-                    command = "sudo dnf install 'dnf-command(config-manager)' && sudo dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo && sudo dnf install gh";
-                    return setup.executeCommand(command);
-                    break;
-                case "arch":
-                    command = "sudo pacman -S github-cli"
-                    return setup.executeCommand(command);
-                case "opensuse":
-                    command = "sudo zypper addrepo https://cli.github.com/packages/rpm/gh-cli.repo && sudo zypper ref && sudo zypper install gh"
-                    return setup.executeCommand(command);
-                    break;
-                case "ubuntu":
-                case "debian":
-                    const command = "sudo apt-get install gh -y"
-                    return setup.executeCommand(command)
-                    break;   
-                default:
-                    return `
-                    Your linux distro have not been found please install github cli and open an issue to add the distro into the tailed package
-                    `
-                    break;   
-            }
-        }
-        default:
-            console.error(`Unsupported OS for automatic GitHub CLI installation: ${currentOS}`);
-            return false;
-
-    }
 }
 
