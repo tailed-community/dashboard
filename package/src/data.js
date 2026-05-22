@@ -88,7 +88,9 @@ async function seed(options = {}) {
 
     await commitBatch(batch, pendingWrites)
 
-    console.log(`\n\n✅ Data seeded into Firestore emulator (${totalWrites} documents)\n\n`)
+    console.log(`
+            ✅ Data seeded into Firestore emulator (${totalWrites} documents)
+        `)
 }
 
 module.exports = {

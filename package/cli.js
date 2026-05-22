@@ -10,15 +10,8 @@ const abortController = new AbortController();
 let shuttingDown = false;
 
 const shutdown = (signal) => {
-    if (shuttingDown) {
-        process.exit(130);
-    }
-
     shuttingDown = true;
-    console.log(`\nReceived ${signal}. Stopping...`);
     abortController.abort();
-    setup.stopActiveChildren();
-    process.exit(130);
 }
 
 process.once("SIGINT", () => shutdown("SIGINT"));
@@ -61,6 +54,17 @@ const main = async () => {
         case "test":
             await command.test()
             break;
+        
+        case "start":
+            await command.start({
+                signal: abortController.signal
+            })
+            break;
+        
+        default:
+             console.error(`Unknown command: ${argv._[0]}`);
+             yargs.showHelp();
+             process.exit(1);
         
     }
 }

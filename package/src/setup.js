@@ -1,8 +1,6 @@
 const readline = require("node:readline");
 const { execSync, spawn } = require("node:child_process");
 const net = require("node:net")
-const os = require("node:os")
-const getos = require("getos")
 
 const activeChildren = new Set();
 
@@ -13,35 +11,25 @@ const trackChild = (child) => {
     return child;
 }
 
-const stopChild = (child) => {
-    if (!child || child.killed) {
-        return;
-    }
 
-    if (os.platform() === "win32" && child.pid) {
-        try {
-            spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
-                stdio: "ignore",
-                windowsHide: true,
-            });
-            return;
-        } catch {
-            // Fall through to the normal kill path.
-        }
-    }
+const exportEmulatorData = (options = {}) => {
+    const {
+        cwd = process.cwd(),
+        exportDir = ".data",
+        projectId = "demo-tailed1",
+        quiet = false,
+    } = options;
 
-    child.kill("SIGTERM");
+    const result = executeCommand(
+        `firebase emulators:export ${exportDir} --force --project ${projectId}`,
+        { cwd }
+    );
+
+    return result;
 }
 
-const stopActiveChildren = () => {
-    for (const child of activeChildren) {
-        stopChild(child);
-    }
-    activeChildren.clear();
-}
 
 const executeCommand = (command, options = {}) => {
-
     const {
         throwOnError = false,
         logOnError = false,
@@ -100,63 +88,93 @@ const askQuestion = (rl, question) => {
     });
 };
 
-const getLinuxDistro = () => {
+
+const runManagedProcess = (command, options = {}) => {
+    const child = spawn(command, {
+        cwd: options.cwd || process.cwd(),
+        shell: true,
+        stdio: ["inherit", "pipe", "pipe"],
+    });
+
+    child.outputBuffer = "";
+
+    const onOutput = (stream) => (data) => {
+        const text = data.toString();
+        child.outputBuffer = `${child.outputBuffer}${text}`.slice(-20000);
+        stream.write(data);
+        child.emit("managed-output", text);
+    };
+
+    child.stdout?.on("data", onOutput(process.stdout));
+    child.stderr?.on("data", onOutput(process.stderr));
+
+    return trackChild(child);
+};
+
+
+const waitForProcessOutput = (child, pattern, options = {}) => {
+    const signal = options.signal;
+
     return new Promise((resolve, reject) => {
-        getos((error, osInfo) => {
-            if (error) {
-                reject(error);
+        let settled = false;
+
+        const matches = (text) => {
+            if (pattern instanceof RegExp) {
+                return pattern.test(text);
+            }
+
+            return text.includes(pattern);
+        };
+
+        const cleanup = () => {
+            child.removeListener("managed-output", onOutput);
+            child.removeListener("exit", onExit);
+            child.removeListener("error", onError);
+            signal?.removeEventListener("abort", onAbort);
+        };
+
+        const settle = (callback, value) => {
+            if (settled) {
                 return;
             }
 
-            resolve(osInfo?.dist?.toLowerCase() || "");
-        });
+            settled = true;
+            cleanup();
+            callback(value);
+        };
+
+        const onOutput = () => {
+            if (matches(child.outputBuffer || "")) {
+                settle(resolve);
+            }
+        };
+
+        const onAbort = () => settle(resolve);
+        const onError = (err) => settle(reject, err);
+        const onExit = (code, signalName) => {
+            const reason = signalName
+                ? `signal ${signalName}`
+                : `exit code ${code}`;
+            settle(reject, new Error(`Process stopped before expected output with ${reason}.`));
+        };
+
+        if (matches(child.outputBuffer || "")) {
+            resolve();
+            return;
+        }
+
+        if (signal?.aborted) {
+            resolve();
+            return;
+        }
+
+        child.on("managed-output", onOutput);
+        child.once("exit", onExit);
+        child.once("error", onError);
+        signal?.addEventListener("abort", onAbort, { once: true });
     });
-}
-
-const openTerminal = (command, options = {}) => {
-  const cwd = typeof options === "string"
-    ? options
-    : options.cwd || process.cwd();
-  const platform = os.platform();
-  let child;
-
-  if (platform === "win32") {
-    child = spawn(
-      "cmd.exe",
-      ["/d", "/c", "start", "", "/D", cwd, "cmd.exe", "/c", command],
-      { detached: true, stdio: "ignore" }
-    );
-    child.unref();
-    return trackChild(child);
-  }
-
-  if (platform === "darwin") {
-    const script = `
-      tell application "Terminal"
-        activate
-        do script "cd '${cwd.replace(/'/g, "'\\''")}' && ${command}"
-      end tell
-    `;
-
-    child = spawn("osascript", ["-e", script], {
-      detached: true,
-      stdio: "ignore",
-    });
-    child.unref();
-    return trackChild(child);
-  }
-
-  child = spawn(
-    "sh",
-    [
-      "-c",
-      `x-terminal-emulator -e sh -c 'cd "${cwd}" && ${command}; exec sh'`,
-    ],
-    { detached: true, stdio: "ignore" }
-  );
-  child.unref();
-  return trackChild(child);
 };
+
 
 function waitForPort(port, host = "127.0.0.1", options = {}) {
     const signal = options.signal;
@@ -216,8 +234,8 @@ module.exports = {
     executeCommand,
     createInterface,
     askQuestion,
-    getLinuxDistro,
-    openTerminal,
+    runManagedProcess,
+    waitForProcessOutput,
     waitForPort,
-    stopActiveChildren
+    exportEmulatorData,
 }
