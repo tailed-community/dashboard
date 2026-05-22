@@ -103,6 +103,7 @@ const eventSchema = z.object({
     heroImage: z.instanceof(File).optional(),
     scheduleImage: z.instanceof(File).optional(),
     capacity: z.string().optional(),
+    maxTeamSize: z.string().min(1, "Max team size is required"),
 }).refine((data) => {
     // If mode is In Person or Hybrid, location and city are required
     if ((data.mode === "In Person" || data.mode === "Hybrid") && (!data.location || !data.city)) {
@@ -125,7 +126,8 @@ const eventSchema = z.object({
     message: "Please fill in all required fields based on your selections",
 });
 
-type EventFormData = z.infer<typeof eventSchema>;
+type EventFormValues = z.input<typeof eventSchema>;
+type EventFormData = z.output<typeof eventSchema>;
 
 type Community = {
     id: string;
@@ -190,7 +192,7 @@ export default function CreateEventPage() {
     const [heroImagePreview, setHeroImagePreview] = useState<string | null>(null);
     const [scheduleImagePreview, setScheduleImagePreview] = useState<string | null>(null);
 
-    const form = useForm<EventFormData>({
+    const form = useForm<EventFormValues, undefined, EventFormData>({
         resolver: zodResolver(eventSchema),
         defaultValues: {
             title: "",
@@ -213,6 +215,7 @@ export default function CreateEventPage() {
             customHostName: user?.displayName || "",
             awards: [],
             capacity: "",
+            maxTeamSize: "",
         },
     });
 
@@ -310,6 +313,7 @@ export default function CreateEventPage() {
             if (data.digitalLink) formData.append("digitalLink", data.digitalLink);
             if (data.registrationLink) formData.append("registrationLink", data.registrationLink);
             if (data.capacity) formData.append("capacity", data.capacity);
+            if (data.maxTeamSize) formData.append("maxTeamSize", data.maxTeamSize);
             
             // Community or custom host
             if (data.hostType === "community" && data.communityId) {
@@ -405,7 +409,6 @@ export default function CreateEventPage() {
     };
 
     const handlePromptYes = () => {
-        // Navigate organizer to the custom form editor for this event
         setShowRegistrationPrompt(false);
         if (createdEventId) {
             navigate(`/events/${createdEventId}/forms/custom`);
@@ -811,6 +814,31 @@ export default function CreateEventPage() {
                                                 </FormControl>
                                                 <FormDescription>
                                                     Leave empty for unlimited
+                                                </FormDescription>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+
+                                    <FormField
+                                        control={form.control}
+                                        name="maxTeamSize"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Max Team Size</FormLabel>
+                                                <FormControl>
+                                                    <div className="relative">
+                                                        <Users className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                                                        <Input
+                                                            type="number"
+                                                            placeholder="4"
+                                                            className="pl-10"
+                                                            {...field}
+                                                        />
+                                                    </div>
+                                                </FormControl>
+                                                <FormDescription>
+                                                    Maximum participants per team
                                                 </FormDescription>
                                                 <FormMessage />
                                             </FormItem>

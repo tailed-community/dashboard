@@ -140,6 +140,16 @@ export function AttendeeDetailsDrawer({
                 <p className="text-sm text-muted-foreground">Source</p>
                 <p className="font-medium capitalize">{registration.source}</p>
               </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Team</p>
+                <p className="font-medium">
+                  {registration.teamName ? (
+                    <Badge variant="secondary">{registration.teamName}</Badge>
+                  ) : (
+                    <span className="text-muted-foreground">No team</span>
+                  )}
+                </p>
+              </div>
             </div>
           </div>
 
