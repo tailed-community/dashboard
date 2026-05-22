@@ -43,15 +43,6 @@ async function init({ project = "dashboard", signal } = {}) {
     /*** Env Section  ***/
     file.env();
 
-    /*** Start project Section  ***/
-    setup.runManagedProcess(emulatorCommand, { cwd: dir });
-    setup.runManagedProcess("npm run dev", { cwd: path.join(dir, "functions") })
-
-
-    /*** Wait for emulator to be ready ***/
-    await setup.waitForPort(8081, "127.0.0.1", { signal });
-    await data.seed();
-
     console.log(`
 ✅ Go to ${dir} and execute npm run tailed,
 to start the project. You can also execute npx tailed start 
