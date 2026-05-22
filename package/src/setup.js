@@ -16,8 +16,7 @@ const exportEmulatorData = (options = {}) => {
     const {
         cwd = process.cwd(),
         exportDir = ".data",
-        projectId = "demo-tailed1",
-        quiet = false,
+        projectId = "demo-tailed1"
     } = options;
 
     const result = executeCommand(

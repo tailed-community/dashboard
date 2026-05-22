@@ -74,7 +74,7 @@ async function start({ signal } = {}) {
 
     /*** Start project Section  ***/
     const emulator = setup.runManagedProcess(emulatorCommand, { cwd: dir });
-    const api = setup.runManagedProcess("npm run dev", { cwd: path.join(dir, "functions") })
+    setup.runManagedProcess("npm run dev", { cwd: path.join(dir, "functions") })
 
     console.log(`
 🦊 Starting dashboard project...
@@ -111,7 +111,6 @@ manage your emulated users. The link will also be available in the new terminal.
 
 
 async function test() {
-    const dir = path.join(process.cwd(), "dashboard")
     console.log(`Running tests...`);
     console.log("Currently no cmd tests available for the dashboard project,\nCreate your command and add it to this function.");
 }
