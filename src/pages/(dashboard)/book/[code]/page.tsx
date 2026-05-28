@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { DateTime } from "luxon";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
@@ -81,8 +82,8 @@ export default function BookingPage() {
         setSuccess(true);
         // Reconstruct the selected slot from existing booking
         setSelectedSlot({
-          start: new Date(data.existingBooking.scheduledStart._seconds * 1000),
-          end: new Date(data.existingBooking.scheduledEnd._seconds * 1000),
+          start: DateTime.fromISO(data.existingBooking.scheduledStart).toJSDate(),
+          end: DateTime.fromISO(data.existingBooking.scheduledEnd).toJSDate(),
           available: true,
         });
       } else {
