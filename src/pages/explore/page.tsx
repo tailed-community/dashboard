@@ -5,6 +5,10 @@ import { useAuth } from "@/hooks/use-auth";
 import { Separator } from "@/components/ui/separator";
 import { Loader2 } from "lucide-react";
 import { apiFetch } from "@/lib/fetch";
+import {
+  normalizeTailedGithubJobs,
+  TAILED_GITHUB_JOBS_URL,
+} from "@/lib/external-jobs";
 import { type ExternalJob } from "@/types/jobs";
 
 const INTERNSHIPS_URL =
@@ -57,11 +61,12 @@ export default function ExplorePage() {
           apiFetch("/public/jobs", {}, true),
           fetch(INTERNSHIPS_URL),
           fetch(NEW_GRADS_URL),
+          fetch(TAILED_GITHUB_JOBS_URL),
           apiFetch("/public/explore"),
           apiFetch(`/public/companies?pageSize=${companiesLimit}`, {}, true),
         ]);
 
-        const [featuredJobsResult, internshipsResult, newGradsResult, exploreResult, companiesResult] = results;
+        const [featuredJobsResult, internshipsResult, newGradsResult, tailedGithubJobsResult, exploreResult, companiesResult] = results;
 
         let totalFeaturedJobs = 0;
         let totalInternships = 0;
@@ -151,6 +156,51 @@ export default function ExplorePage() {
             });
           } catch (error) {
             console.error("Error parsing new grads:", error);
+          }
+        }
+
+        // Process Tail'ed GitHub jobs
+        if (tailedGithubJobsResult.status === "fulfilled") {
+          try {
+            const tailedGithubJobs = normalizeTailedGithubJobs(
+              await tailedGithubJobsResult.value.json()
+            );
+            const existingUrls = new Set(
+              [...internshipsArray, ...newGradsArray]
+                .map((job) => ("url" in job ? job.url : undefined))
+                .filter(Boolean)
+            );
+
+            tailedGithubJobs.forEach((job) => {
+              if (existingUrls.has(job.url)) return;
+
+              const timeAgo = calculateTimeAgo(new Date(job.date_posted * 1000));
+              const opportunity = {
+                id: `external-${job.id}`,
+                type: "job" as const,
+                title: job.title,
+                company: job.company_name,
+                location: job.locations.join(", ") || "Remote",
+                jobType: job.type === "new-grad" ? "New Grad" as const : "Internship" as const,
+                timeAgo,
+                color: getRandomColor(),
+                url: job.url,
+              };
+
+              if (job.type === "new-grad") {
+                totalNewGrads += 1;
+                if (newGradsArray.length < newGradsLimit) {
+                  newGradsArray.push(opportunity);
+                }
+              } else {
+                totalInternships += 1;
+                if (internshipsArray.length < internshipsLimit) {
+                  internshipsArray.push(opportunity);
+                }
+              }
+            });
+          } catch (error) {
+            console.error("Error parsing Tail'ed GitHub jobs:", error);
           }
         }
 

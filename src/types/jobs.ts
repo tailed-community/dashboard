@@ -71,6 +71,8 @@ export interface ExternalJob {
     unresolved: boolean;
     confidence: number;
   }[];
+  work_mode?: "onsite" | "remote" | "hybrid";
+  country?: string | null;
   degrees: string[];
   type: "internship" | "new-grad";
 }

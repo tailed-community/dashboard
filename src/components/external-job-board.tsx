@@ -9,6 +9,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  dedupeExternalJobs,
+  normalizeTailedGithubJobs,
+  TAILED_GITHUB_JOBS_URL,
+} from "@/lib/external-jobs";
 import { type ExternalJob } from "@/types/jobs";
 import { Building2, MapPin, Calendar, ExternalLink } from "lucide-react";
 
@@ -27,13 +32,16 @@ export default function ExternalJobBoard() {
   useEffect(() => {
     const fetchJobs = async () => {
       try {
-        const [internshipsRes, newGradsRes] = await Promise.all([
-          fetch(INTERNSHIPS_URL),
-          fetch(NEW_GRADS_URL),
-        ]);
+        const [internshipsRes, newGradsRes, tailedGithubJobsRes] =
+          await Promise.all([
+            fetch(INTERNSHIPS_URL),
+            fetch(NEW_GRADS_URL),
+            fetch(TAILED_GITHUB_JOBS_URL),
+          ]);
 
         const internships: ExternalJob[] = await internshipsRes.json();
         const newGrads: ExternalJob[] = await newGradsRes.json();
+        const tailedGithubJobs = await tailedGithubJobsRes.json();
 
         // Add type indicator
         const allJobs = [
@@ -42,9 +50,10 @@ export default function ExternalJobBoard() {
             type: "internship" as const,
           })),
           ...newGrads.map((job) => ({ ...job, type: "new-grad" as const })),
+          ...normalizeTailedGithubJobs(tailedGithubJobs),
         ];
 
-        setJobs(allJobs);
+        setJobs(dedupeExternalJobs(allJobs));
       } catch (error) {
         console.error("Failed to fetch jobs:", error);
       } finally {

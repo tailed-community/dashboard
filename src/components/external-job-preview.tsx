@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  dedupeExternalJobs,
+  normalizeTailedGithubJobs,
+  TAILED_GITHUB_JOBS_URL,
+} from "@/lib/external-jobs";
 import { type ExternalJob } from "@/types/jobs";
 import { Building2, MapPin, Calendar, ExternalLink } from "lucide-react";
 
@@ -22,23 +27,27 @@ export default function ExternalJobPreview({
   useEffect(() => {
     const fetchJobs = async () => {
       try {
-        const [internshipsRes, newGradsRes] = await Promise.all([
-          fetch(INTERNSHIPS_URL),
-          fetch(NEW_GRADS_URL),
-        ]);
+        const [internshipsRes, newGradsRes, tailedGithubJobsRes] =
+          await Promise.all([
+            fetch(INTERNSHIPS_URL),
+            fetch(NEW_GRADS_URL),
+            fetch(TAILED_GITHUB_JOBS_URL),
+          ]);
 
         const internships: Omit<ExternalJob, "type">[] =
           await internshipsRes.json();
         const newGrads: Omit<ExternalJob, "type">[] = await newGradsRes.json();
+        const tailedGithubJobs = await tailedGithubJobsRes.json();
 
         // Add type indicator and combine
-        const allJobs: ExternalJob[] = [
+        const allJobs: ExternalJob[] = dedupeExternalJobs([
           ...internships.map((job) => ({
             ...job,
             type: "internship" as const,
           })),
           ...newGrads.map((job) => ({ ...job, type: "new-grad" as const })),
-        ];
+          ...normalizeTailedGithubJobs(tailedGithubJobs),
+        ]);
 
         // Sort by date_posted descending and take first limit
         const sortedJobs = allJobs
