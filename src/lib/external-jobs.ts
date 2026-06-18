@@ -22,9 +22,11 @@ interface TailedGithubJob {
 let tailedGithubJobsPromise: Promise<ExternalJob[]> | null = null;
 
 function normalizeJobType(type: unknown): ExternalJob["type"] {
-  return String(type || "")
+  const normalizedType = typeof type === "string" ? type : "";
+
+  return normalizedType
     .toLowerCase()
-    .replace(/_/g, "-")
+    .replaceAll("_", "-")
     .includes("new-grad")
     ? "new-grad"
     : "internship";
@@ -43,7 +45,7 @@ function splitLocations(location: TailedGithubJob["location"]): string[] {
 
   return rawLocations
     .filter((value): value is string => typeof value === "string")
-    .flatMap((value) => value.split(/\s*(?:\/|\||;)\s*/))
+    .flatMap((value) => value.split(/\s*[/|;]\s*/))
     .map((value) => value.trim())
     .filter(
       (value) =>
@@ -99,22 +101,18 @@ export function normalizeTailedGithubJobs(
 }
 
 export function fetchTailedGithubJobs(): Promise<ExternalJob[]> {
-  if (!tailedGithubJobsPromise) {
-    tailedGithubJobsPromise = fetch(TAILED_GITHUB_JOBS_URL)
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`GitHub jobs request failed: ${response.status}`);
-        }
-        return response.json();
-      })
-      .then((jobs: TailedGithubJob[]) => normalizeTailedGithubJobs(jobs))
-      .catch((error) => {
-        console.error("Failed to fetch Tail'ed GitHub jobs:", error);
-        return [];
-      });
-  }
-
-  return tailedGithubJobsPromise;
+  return (tailedGithubJobsPromise ??= fetch(TAILED_GITHUB_JOBS_URL)
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`GitHub jobs request failed: ${response.status}`);
+      }
+      return response.json();
+    })
+    .then((jobs: TailedGithubJob[]) => normalizeTailedGithubJobs(jobs))
+    .catch((error) => {
+      console.error("Failed to fetch Tail'ed GitHub jobs:", error);
+      return [];
+    }));
 }
 
 export function dedupeExternalJobs(jobs: ExternalJob[]): ExternalJob[] {
