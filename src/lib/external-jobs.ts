@@ -19,6 +19,8 @@ interface TailedGithubJob {
   active?: boolean;
 }
 
+let tailedGithubJobsPromise: Promise<ExternalJob[]> | null = null;
+
 function normalizeJobType(type: unknown): ExternalJob["type"] {
   return String(type || "")
     .toLowerCase()
@@ -43,10 +45,15 @@ function splitLocations(location: TailedGithubJob["location"]): string[] {
     .filter((value): value is string => typeof value === "string")
     .flatMap((value) => value.split(/\s*(?:\/|\||;)\s*/))
     .map((value) => value.trim())
-    .filter(Boolean);
+    .filter(
+      (value) =>
+        value.length > 0 && value.toLowerCase() !== "not specified"
+    );
 }
 
-function getWorkMode(locations: string[]): WorkLocationType {
+function getWorkMode(locations: string[]): WorkLocationType | undefined {
+  if (locations.length === 0) return undefined;
+
   const normalized = normalizeLocations(locations);
   if (normalized.some((location) => location.type === "remote")) return "remote";
   if (normalized.some((location) => location.type === "hybrid")) return "hybrid";
@@ -62,12 +69,11 @@ export function normalizeTailedGithubJobs(
 
       const type = normalizeJobType(job.type);
       const locations = splitLocations(job.location);
-      const finalLocations = locations.length > 0 ? locations : ["Remote"];
-      const normalizedLocations = normalizeLocations(finalLocations);
+      const normalizedLocations = normalizeLocations(locations);
       const dateAdded = toUnixSeconds(job.date_added);
 
       return {
-        category: type === "new-grad" ? "New Grad" : "Internship",
+        category: null,
         company_name: job.company,
         id: job.id,
         title: job.title,
@@ -79,9 +85,9 @@ export function normalizeTailedGithubJobs(
         date_updated: dateAdded,
         date_posted: dateAdded,
         url: job.url,
-        locations: finalLocations,
+        locations,
         normalized_locations: normalizedLocations,
-        work_mode: getWorkMode(finalLocations),
+        work_mode: getWorkMode(locations),
         country:
           normalizedLocations.find((location) => location.normalized.country)
             ?.normalized.country || null,
@@ -90,6 +96,25 @@ export function normalizeTailedGithubJobs(
       };
     })
     .filter((job): job is ExternalJob => job !== null);
+}
+
+export function fetchTailedGithubJobs(): Promise<ExternalJob[]> {
+  if (!tailedGithubJobsPromise) {
+    tailedGithubJobsPromise = fetch(TAILED_GITHUB_JOBS_URL)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`GitHub jobs request failed: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then((jobs: TailedGithubJob[]) => normalizeTailedGithubJobs(jobs))
+      .catch((error) => {
+        console.error("Failed to fetch Tail'ed GitHub jobs:", error);
+        return [];
+      });
+  }
+
+  return tailedGithubJobsPromise;
 }
 
 export function dedupeExternalJobs(jobs: ExternalJob[]): ExternalJob[] {
@@ -108,7 +133,20 @@ export function dedupeExternalJobs(jobs: ExternalJob[]): ExternalJob[] {
       return;
     }
 
-    deduped[existingIndex] = job;
+    const existing = deduped[existingIndex];
+    deduped[existingIndex] = {
+      ...existing,
+      ...job,
+      category: job.category || existing.category,
+      terms: job.terms?.length ? job.terms : existing.terms,
+      locations: job.locations.length ? job.locations : existing.locations,
+      normalized_locations: job.normalized_locations?.length
+        ? job.normalized_locations
+        : existing.normalized_locations,
+      work_mode: job.work_mode || existing.work_mode,
+      country: job.country || existing.country,
+      degrees: job.degrees.length ? job.degrees : existing.degrees,
+    };
     idToIndex.set(job.id, existingIndex);
     urlToIndex.set(job.url, existingIndex);
   });

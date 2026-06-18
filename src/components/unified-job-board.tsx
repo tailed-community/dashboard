@@ -20,8 +20,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
     dedupeExternalJobs,
-    normalizeTailedGithubJobs,
-    TAILED_GITHUB_JOBS_URL,
+    fetchTailedGithubJobs,
 } from "@/lib/external-jobs";
 import { apiFetch } from "@/lib/fetch";
 import { type ExternalJob } from "@/types/jobs";
@@ -119,7 +118,7 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
                 apiFetch("/job/applied-jobs"),
                 fetch(INTERNSHIPS_URL),
                 fetch(NEW_GRADS_URL),
-                fetch(TAILED_GITHUB_JOBS_URL),
+                fetchTailedGithubJobs(),
             ]);
 
             const [
@@ -194,10 +193,7 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
             }
 
             if (tailedGithubJobsResult.status === "fulfilled") {
-                const tailedGithubJobs = await tailedGithubJobsResult.value.json();
-                externalJobsData.push(
-                    ...normalizeTailedGithubJobs(tailedGithubJobs)
-                );
+                externalJobsData.push(...tailedGithubJobsResult.value);
             } else {
                 console.error(
                     "Failed to fetch Tail'ed GitHub jobs:",
@@ -972,10 +968,10 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
                                         {"locations" in job
                                             ? formatLocationForDisplay(
                                                   getDisplayLocationsForJob(job)
-                                              )
+                                              ) || "Location not specified"
                                             : formatLocationForDisplay(
                                                   getDisplayLocationsForJob(job)
-                                              )}
+                                              ) || "Location not specified"}
                                     </span>
                                 </div>
                                 {"terms" in job &&
