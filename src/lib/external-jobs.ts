@@ -45,7 +45,12 @@ function splitLocations(location: TailedGithubJob["location"]): string[] {
 
   return rawLocations
     .filter((value): value is string => typeof value === "string")
-    .flatMap((value) => value.split(/\s*[/|;]\s*/))
+    .flatMap((value) =>
+      value
+        .replaceAll("/", "|")
+        .replaceAll(";", "|")
+        .split("|")
+    )
     .map((value) => value.trim())
     .filter(
       (value) =>
