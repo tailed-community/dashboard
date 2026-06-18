@@ -101,7 +101,7 @@ export function normalizeTailedGithubJobs(
 }
 
 export function fetchTailedGithubJobs(): Promise<ExternalJob[]> {
-  return (tailedGithubJobsPromise ??= fetch(TAILED_GITHUB_JOBS_URL)
+  tailedGithubJobsPromise ??= fetch(TAILED_GITHUB_JOBS_URL)
     .then((response) => {
       if (!response.ok) {
         throw new Error(`GitHub jobs request failed: ${response.status}`);
@@ -112,7 +112,9 @@ export function fetchTailedGithubJobs(): Promise<ExternalJob[]> {
     .catch((error) => {
       console.error("Failed to fetch Tail'ed GitHub jobs:", error);
       return [];
-    }));
+    });
+
+  return tailedGithubJobsPromise;
 }
 
 export function dedupeExternalJobs(jobs: ExternalJob[]): ExternalJob[] {
