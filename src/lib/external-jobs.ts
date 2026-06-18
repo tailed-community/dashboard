@@ -133,20 +133,7 @@ export function dedupeExternalJobs(jobs: ExternalJob[]): ExternalJob[] {
       return;
     }
 
-    const existing = deduped[existingIndex];
-    deduped[existingIndex] = {
-      ...existing,
-      ...job,
-      category: job.category || existing.category,
-      terms: job.terms?.length ? job.terms : existing.terms,
-      locations: job.locations.length ? job.locations : existing.locations,
-      normalized_locations: job.normalized_locations?.length
-        ? job.normalized_locations
-        : existing.normalized_locations,
-      work_mode: job.work_mode || existing.work_mode,
-      country: job.country || existing.country,
-      degrees: job.degrees.length ? job.degrees : existing.degrees,
-    };
+    deduped[existingIndex] = job;
     idToIndex.set(job.id, existingIndex);
     urlToIndex.set(job.url, existingIndex);
   });
