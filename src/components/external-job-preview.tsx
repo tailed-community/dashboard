@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  dedupeExternalJobs,
+  fetchTailedGithubJobs,
+} from "@/lib/external-jobs";
 import { type ExternalJob } from "@/types/jobs";
 import { Building2, MapPin, Calendar, ExternalLink } from "lucide-react";
 
@@ -22,23 +26,26 @@ export default function ExternalJobPreview({
   useEffect(() => {
     const fetchJobs = async () => {
       try {
-        const [internshipsRes, newGradsRes] = await Promise.all([
-          fetch(INTERNSHIPS_URL),
-          fetch(NEW_GRADS_URL),
-        ]);
+        const [internshipsRes, newGradsRes, tailedGithubJobs] =
+          await Promise.all([
+            fetch(INTERNSHIPS_URL),
+            fetch(NEW_GRADS_URL),
+            fetchTailedGithubJobs(),
+          ]);
 
         const internships: Omit<ExternalJob, "type">[] =
           await internshipsRes.json();
         const newGrads: Omit<ExternalJob, "type">[] = await newGradsRes.json();
 
         // Add type indicator and combine
-        const allJobs: ExternalJob[] = [
+        const allJobs: ExternalJob[] = dedupeExternalJobs([
           ...internships.map((job) => ({
             ...job,
             type: "internship" as const,
           })),
           ...newGrads.map((job) => ({ ...job, type: "new-grad" as const })),
-        ];
+          ...tailedGithubJobs,
+        ]);
 
         // Sort by date_posted descending and take first limit
         const sortedJobs = allJobs
@@ -100,7 +107,9 @@ export default function ExternalJobPreview({
             <div className="space-y-1 text-sm text-muted-foreground">
               <div className="flex items-center gap-1">
                 <MapPin className="h-4 w-4" />
-                <span>{job.locations.join(", ")}</span>
+                <span>
+                  {job.locations.join(", ") || "Location not specified"}
+                </span>
               </div>
               {job.terms && job.terms.length > 0 && (
                 <div className="flex items-center gap-1">

@@ -18,6 +18,10 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+    dedupeExternalJobs,
+    fetchTailedGithubJobs,
+} from "@/lib/external-jobs";
 import { apiFetch } from "@/lib/fetch";
 import { type ExternalJob } from "@/types/jobs";
 import {
@@ -114,6 +118,7 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
                 apiFetch("/job/applied-jobs"),
                 fetch(INTERNSHIPS_URL),
                 fetch(NEW_GRADS_URL),
+                fetchTailedGithubJobs(),
             ]);
 
             const [
@@ -121,6 +126,7 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
                 appliedJobsResult,
                 internshipsResult,
                 newGradsResult,
+                tailedGithubJobsResult,
             ] = results;
 
             let featuredJobsData: FeaturedJob[] = [];
@@ -185,6 +191,17 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
                     newGradsResult.reason
                 );
             }
+
+            if (tailedGithubJobsResult.status === "fulfilled") {
+                externalJobsData.push(...tailedGithubJobsResult.value);
+            } else {
+                console.error(
+                    "Failed to fetch Tail'ed GitHub jobs:",
+                    tailedGithubJobsResult.reason
+                );
+            }
+
+            externalJobsData = dedupeExternalJobs(externalJobsData);
 
             setFeaturedJobs(featuredJobsData);
             setAppliedJobIds(appliedJobIdsData);
@@ -951,10 +968,10 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
                                         {"locations" in job
                                             ? formatLocationForDisplay(
                                                   getDisplayLocationsForJob(job)
-                                              )
+                                              ) || "Location not specified"
                                             : formatLocationForDisplay(
                                                   getDisplayLocationsForJob(job)
-                                              )}
+                                              ) || "Location not specified"}
                                     </span>
                                 </div>
                                 {"terms" in job &&

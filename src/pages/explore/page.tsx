@@ -5,6 +5,10 @@ import { useAuth } from "@/hooks/use-auth";
 import { Separator } from "@/components/ui/separator";
 import { Loader2 } from "lucide-react";
 import { apiFetch } from "@/lib/fetch";
+import {
+  dedupeExternalJobs,
+  fetchTailedGithubJobs,
+} from "@/lib/external-jobs";
 import { type ExternalJob } from "@/types/jobs";
 
 const INTERNSHIPS_URL =
@@ -57,15 +61,18 @@ export default function ExplorePage() {
           apiFetch("/public/jobs", {}, true),
           fetch(INTERNSHIPS_URL),
           fetch(NEW_GRADS_URL),
+          fetchTailedGithubJobs(),
           apiFetch("/public/explore"),
           apiFetch(`/public/companies?pageSize=${companiesLimit}`, {}, true),
         ]);
 
-        const [featuredJobsResult, internshipsResult, newGradsResult, exploreResult, companiesResult] = results;
+        const [featuredJobsResult, internshipsResult, newGradsResult, tailedGithubJobsResult, exploreResult, companiesResult] = results;
 
         let totalFeaturedJobs = 0;
         let totalInternships = 0;
         let totalNewGrads = 0;
+        let internshipsData: ExternalJob[] = [];
+        let newGradsData: ExternalJob[] = [];
 
         // Process featured jobs
         if (featuredJobsResult.status === "fulfilled") {
@@ -104,24 +111,10 @@ export default function ExplorePage() {
         if (internshipsResult.status === "fulfilled") {
           try {
             const internships: ExternalJob[] = await internshipsResult.value.json();
-            totalInternships = internships.length;
-            
-            // Take limited internships
-            internships.slice(0, internshipsLimit).forEach((job) => {
-              const timeAgo = calculateTimeAgo(new Date(job.date_posted * 1000));
-              
-              internshipsArray.push({
-                id: `external-${job.id}`,
-                type: "job",
-                title: job.title,
-                company: job.company_name,
-                location: job.locations.join(", ") || "Remote",
-                jobType: "Internship",
-                timeAgo,
-                color: getRandomColor(),
-                url: job.url,
-              });
-            });
+            internshipsData = internships.map((job) => ({
+              ...job,
+              type: "internship" as const,
+            }));
           } catch (error) {
             console.error("Error parsing internships:", error);
           }
@@ -131,28 +124,59 @@ export default function ExplorePage() {
         if (newGradsResult.status === "fulfilled") {
           try {
             const newGrads: ExternalJob[] = await newGradsResult.value.json();
-            totalNewGrads = newGrads.length;
-            
-            // Take limited new grad positions
-            newGrads.slice(0, newGradsLimit).forEach((job) => {
-              const timeAgo = calculateTimeAgo(new Date(job.date_posted * 1000));
-              
-              newGradsArray.push({
-                id: `external-${job.id}`,
-                type: "job",
-                title: job.title,
-                company: job.company_name,
-                location: job.locations.join(", ") || "Remote",
-                jobType: "New Grad",
-                timeAgo,
-                color: getRandomColor(),
-                url: job.url,
-              });
-            });
+            newGradsData = newGrads.map((job) => ({
+              ...job,
+              type: "new-grad" as const,
+            }));
           } catch (error) {
             console.error("Error parsing new grads:", error);
           }
         }
+
+        const tailedGithubJobs =
+          tailedGithubJobsResult.status === "fulfilled"
+            ? tailedGithubJobsResult.value
+            : [];
+        const externalJobs = dedupeExternalJobs([
+          ...internshipsData,
+          ...newGradsData,
+          ...tailedGithubJobs,
+        ]).sort((a, b) => b.date_posted - a.date_posted);
+        const internships = externalJobs.filter(
+          (job) => job.type === "internship"
+        );
+        const newGrads = externalJobs.filter((job) => job.type === "new-grad");
+
+        totalInternships = internships.length;
+        totalNewGrads = newGrads.length;
+
+        internships.slice(0, internshipsLimit).forEach((job) => {
+          internshipsArray.push({
+            id: `external-${job.id}`,
+            type: "job",
+            title: job.title,
+            company: job.company_name,
+            location: job.locations.join(", ") || "Location not specified",
+            jobType: "Internship",
+            timeAgo: calculateTimeAgo(new Date(job.date_posted * 1000)),
+            color: getRandomColor(),
+            url: job.url,
+          });
+        });
+
+        newGrads.slice(0, newGradsLimit).forEach((job) => {
+          newGradsArray.push({
+            id: `external-${job.id}`,
+            type: "job",
+            title: job.title,
+            company: job.company_name,
+            location: job.locations.join(", ") || "Location not specified",
+            jobType: "New Grad",
+            timeAgo: calculateTimeAgo(new Date(job.date_posted * 1000)),
+            color: getRandomColor(),
+            url: job.url,
+          });
+        });
 
         // Process explore data (events and communities from API)
         let totalEvents = 0;

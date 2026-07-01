@@ -9,6 +9,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  dedupeExternalJobs,
+  fetchTailedGithubJobs,
+} from "@/lib/external-jobs";
 import { type ExternalJob } from "@/types/jobs";
 import { Building2, MapPin, Calendar, ExternalLink } from "lucide-react";
 
@@ -27,10 +31,12 @@ export default function ExternalJobBoard() {
   useEffect(() => {
     const fetchJobs = async () => {
       try {
-        const [internshipsRes, newGradsRes] = await Promise.all([
-          fetch(INTERNSHIPS_URL),
-          fetch(NEW_GRADS_URL),
-        ]);
+        const [internshipsRes, newGradsRes, tailedGithubJobs] =
+          await Promise.all([
+            fetch(INTERNSHIPS_URL),
+            fetch(NEW_GRADS_URL),
+            fetchTailedGithubJobs(),
+          ]);
 
         const internships: ExternalJob[] = await internshipsRes.json();
         const newGrads: ExternalJob[] = await newGradsRes.json();
@@ -42,9 +48,10 @@ export default function ExternalJobBoard() {
             type: "internship" as const,
           })),
           ...newGrads.map((job) => ({ ...job, type: "new-grad" as const })),
+          ...tailedGithubJobs,
         ];
 
-        setJobs(allJobs);
+        setJobs(dedupeExternalJobs(allJobs));
       } catch (error) {
         console.error("Failed to fetch jobs:", error);
       } finally {
@@ -169,7 +176,9 @@ export default function ExternalJobBoard() {
               <div className="space-y-1 text-sm text-muted-foreground">
                 <div className="flex items-center gap-1">
                   <MapPin className="h-4 w-4" />
-                  <span>{job.locations.join(", ")}</span>
+                  <span>
+                    {job.locations.join(", ") || "Location not specified"}
+                  </span>
                 </div>
                 {job.terms && job.terms.length > 0 && (
                   <div className="flex items-center gap-1">
