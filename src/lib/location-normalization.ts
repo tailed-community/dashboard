@@ -302,15 +302,30 @@ export function normalizeLocation(rawLocation: string): NormalizedJobLocation {
     const r = resolveRegion(parts[1], null);
     region = r.name;
     regionCode = r.code;
-    const c = resolveCountry(parts[2]);
-    country = c.name;
-    countryCode = c.code;
+    const countryToken = normalizeText(parts[2]);
+    if (countryToken === "ca") {
+      // User rule: with 3 parts, trailing "CA" means Canada.
+      countryCode = "CA";
+      country = COUNTRY_CODE_TO_NAME.CA;
+    } else {
+      const c = resolveCountry(parts[2]);
+      country = c.name;
+      countryCode = c.code;
+    }
     if (!countryCode && r.countryCode) {
       countryCode = r.countryCode;
       country = COUNTRY_CODE_TO_NAME[countryCode] || null;
     }
   } else if (parts.length === 2) {
     city = canonicalCity(parts[0]);
+    const regionToken = normalizeText(parts[1]);
+    if (regionToken === "ca") {
+      // User rule: with 2 parts, trailing "CA" means California (US).
+      regionCode = "CA";
+      region = US_STATES.CA;
+      countryCode = "US";
+      country = COUNTRY_CODE_TO_NAME.US;
+    } else {
     const c = resolveCountry(parts[1]);
     if (c.code) {
       countryCode = c.code;
@@ -321,6 +336,7 @@ export function normalizeLocation(rawLocation: string): NormalizedJobLocation {
       regionCode = r.code;
       countryCode = r.countryCode;
       country = countryCode ? COUNTRY_CODE_TO_NAME[countryCode] : null;
+    }
     }
   } else if (parts.length === 1) {
     const single = parts[0];
