@@ -7,6 +7,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { BreadcrumbSeparator } from "@/components/ui/sidebar";
 import { UnifiedJobBoard } from "@/components/unified-job-board";
+import { Seo } from "@/components/seo";
 import { useState, useEffect } from "react";
 
 export default function JobsPage() {
@@ -20,6 +21,11 @@ export default function JobsPage() {
     }, []);
     return (
         <>
+            <Seo
+                title="Tech Internships & New-Grad Jobs for Students"
+                description="Browse thousands of tech internships and new-grad jobs. Updated daily. Free forever — no account required to search."
+                path="/jobs"
+            />
             <div className="flex flex-1 flex-col gap-6 p-6">
                 <div className="max-w-6xl mx-auto w-full">
                     <h1 className="text-3xl font-bold mb-2">All Opportunities</h1>

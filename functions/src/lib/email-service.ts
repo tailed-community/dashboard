@@ -1,5 +1,7 @@
 import { createTransport } from "nodemailer";
 import dotenv from "dotenv";
+import { buildJobDetailUrl } from "./links";
+import type { DigestJob } from "./jobs-feed";
 
 dotenv.config();
 
@@ -535,8 +537,196 @@ export const sendEventApprovalEmail = async (
           <p style="color: #999999; font-size: 13px; margin: 0;">© ${new Date().getFullYear()} Tail'ed. All rights reserved.</p>
         </div>
       </div>
-    ",
-    text: Hi ${firstName || "there"},\n\nYour request to join ${eventTitle} has been approved by the organizer.\n\nView the event: ${eventLink}\n\n© ${new Date().getFullYear()} Tail'ed. All rights reserved.`,
+    `,
+    text: `Hi ${firstName || "there"},\n\nYour request to join ${eventTitle} has been approved by the organizer.\n\nView the event: ${eventLink}\n\n© ${new Date().getFullYear()} Tail'ed. All rights reserved.`,
+  };
+
+  return transport.sendMail(mailOptions);
+};
+
+/**
+ * Send a welcome/confirmation email when a student subscribes to job alerts
+ * (WS4 email capture). Confirms what they'll get and includes the
+ * unsubscribe link — this is the only confirmation step for v1 (no
+ * double opt-in; see docs/specs/04-email-capture.md "Out of scope").
+ */
+export const sendJobAlertWelcomeEmail = async (
+  email: string,
+  query: string | null | undefined,
+  unsubscribeUrl: string
+) => {
+  if (process.env.NODE_ENV === "development") {
+    console.log(
+      `Job alert welcome email sent to ${email} params: ${JSON.stringify({
+        query,
+        unsubscribeUrl,
+      })}`
+    );
+    return Promise.resolve();
+  }
+
+  const whatLine = query
+    ? `new <strong style="color: #EB7A24;">${escapeHtml(query)}</strong> roles`
+    : `new internships and new-grad roles`;
+  const whatLineText = query ? `new "${query}" roles` : `new internships and new-grad roles`;
+
+  const mailOptions = {
+    from: process.env.EMAIL_FROM || "Tail'ed <no-reply@tailed.ca>",
+    sender: "no-reply@tailed.ca",
+    to: email,
+    subject: "You're in — daily job alerts from Tail'ed",
+    html: `
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
+        <div style="background: linear-gradient(135deg, #EB7A24 0%, #FFD37D 100%); padding: 40px 20px; text-align: center;">
+          <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 600;">You're in! 🎉</h1>
+        </div>
+        <div style="padding: 40px 30px;">
+          <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">Hi there,</p>
+          <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+            You'll now get ${whatLine} delivered to your inbox each morning — free, forever, no spam.
+          </p>
+          <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 30px 0;">
+            Your first digest lands as soon as there are fresh matches. No account required — just this inbox.
+          </p>
+        </div>
+        <div style="background-color: #FFF9F0; padding: 25px 30px; text-align: center; border-top: 1px solid #FFD37D;">
+          <p style="color: #999999; font-size: 12px; margin: 0 0 8px 0;">
+            <a href="${unsubscribeUrl}" style="color: #999999; text-decoration: underline;">Unsubscribe from these alerts</a>
+          </p>
+          <p style="color: #999999; font-size: 13px; margin: 0;">© ${new Date().getFullYear()} Tail'ed. All rights reserved.</p>
+        </div>
+      </div>
+    `,
+    text: `You're in!\n\nYou'll now get ${whatLineText} delivered to your inbox each morning — free, forever, no spam.\n\nYour first digest lands as soon as there are fresh matches. No account required — just this inbox.\n\nUnsubscribe: ${unsubscribeUrl}\n\n© ${new Date().getFullYear()} Tail'ed. All rights reserved.`,
+  };
+
+  return transport.sendMail(mailOptions);
+};
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+const DIGEST_UTM = { source: "digest", medium: "email" } as const;
+
+/**
+ * Send the daily jobs digest email (WS5). `jobs` must already be capped
+ * (12 max) and sorted newest-first by the caller — this function only
+ * renders. Every job link carries `?utm_source=digest&utm_medium=email` so
+ * digest -> click is measurable in analytics.
+ */
+export const sendJobsDigestEmail = async (
+  email: string,
+  jobs: DigestJob[],
+  options: {
+    query?: string | null;
+    unsubscribeUrl: string;
+    totalMatchCount: number;
+  }
+) => {
+  const { query, unsubscribeUrl, totalMatchCount } = options;
+
+  const subjectWhat = query ? `"${query}" jobs` : "jobs";
+  const subject =
+    jobs.length === 1
+      ? `1 new ${subjectWhat} match for you`
+      : `${jobs.length} new ${subjectWhat} matches for you`;
+
+  const typeLabel = (type: DigestJob["type"]) =>
+    type === "new-grad" ? "New grad" : "Internship";
+
+  if (process.env.NODE_ENV === "development") {
+    console.log(
+      `Jobs digest email sent to ${email} params: ${JSON.stringify({
+        subject,
+        jobCount: jobs.length,
+        totalMatchCount,
+        unsubscribeUrl,
+      })}`
+    );
+    return Promise.resolve();
+  }
+
+  const rowsHtml = jobs
+    .map((job) => {
+      const jobUrl = buildJobDetailUrl(job.id, DIGEST_UTM);
+      return `
+        <tr>
+          <td style="padding: 16px 0; border-bottom: 1px solid #f0e6d8;">
+            <a href="${jobUrl}" style="color: #EB7A24; text-decoration: none; font-weight: 600; font-size: 16px;">
+              ${escapeHtml(job.title)}
+            </a>
+            <div style="color: #444444; font-size: 14px; margin-top: 4px;">
+              ${escapeHtml(job.companyName)}${job.location ? ` &middot; ${escapeHtml(job.location)}` : ""}
+            </div>
+            <div style="margin-top: 8px;">
+              <span style="display: inline-block; background: #FFF9F0; color: #EB7A24; border: 1px solid #FFD37D; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 600; margin-right: 6px;">
+                ${typeLabel(job.type)}
+              </span>
+              <span style="color: #999999; font-size: 12px;">${escapeHtml(job.datePostedLabel || "")}</span>
+            </div>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  const rowsText = jobs
+    .map((job) => {
+      const jobUrl = buildJobDetailUrl(job.id, DIGEST_UTM);
+      return `- ${job.title} — ${job.companyName}${job.location ? ` (${job.location})` : ""} [${typeLabel(job.type)}]\n  ${jobUrl}`;
+    })
+    .join("\n\n");
+
+  const whatLine = query
+    ? `new <strong style="color: #EB7A24;">${escapeHtml(query)}</strong> roles`
+    : `new internships and new-grad roles`;
+
+  const moreLine =
+    totalMatchCount > jobs.length
+      ? `<p style="color: #666666; font-size: 13px; margin: 20px 0 0 0;">Showing the newest ${jobs.length} of ${totalMatchCount} matches today.</p>`
+      : "";
+  const moreLineText =
+    totalMatchCount > jobs.length
+      ? `\nShowing the newest ${jobs.length} of ${totalMatchCount} matches today.\n`
+      : "";
+
+  const mailOptions = {
+    from: process.env.EMAIL_FROM || "Tail'ed <no-reply@tailed.ca>",
+    sender: "no-reply@tailed.ca",
+    to: email,
+    subject,
+    html: `
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
+        <div style="background: linear-gradient(135deg, #EB7A24 0%, #FFD37D 100%); padding: 32px 20px; text-align: center;">
+          <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 600;">Your daily job digest</h1>
+        </div>
+        <div style="padding: 32px 30px;">
+          <p style="color: #333333; font-size: 15px; line-height: 1.6; margin: 0 0 20px 0;">
+            Here are the ${whatLine} we found since your last digest.
+          </p>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
+            ${rowsHtml}
+          </table>
+          ${moreLine}
+        </div>
+        <div style="background-color: #FFF9F0; padding: 25px 30px; text-align: center; border-top: 1px solid #FFD37D;">
+          <p style="color: #777777; font-size: 12px; margin: 0 0 10px 0;">
+            Tail'ed is free, forever — a non-profit helping students find real opportunities, no spam, no data resale.
+          </p>
+          <p style="color: #999999; font-size: 12px; margin: 0 0 8px 0;">
+            <a href="${unsubscribeUrl}" style="color: #999999; text-decoration: underline;">Unsubscribe from these alerts</a>
+          </p>
+          <p style="color: #999999; font-size: 13px; margin: 0;">© ${new Date().getFullYear()} Tail'ed. All rights reserved.</p>
+        </div>
+      </div>
+    `,
+    text: `Your daily job digest\n\nHere are the ${query ? `new "${query}" roles` : "new internships and new-grad roles"} we found since your last digest.\n\n${rowsText}\n${moreLineText}\nTail'ed is free, forever — a non-profit helping students find real opportunities, no spam, no data resale.\n\nUnsubscribe: ${unsubscribeUrl}\n\n© ${new Date().getFullYear()} Tail'ed. All rights reserved.`,
   };
 
   return transport.sendMail(mailOptions);

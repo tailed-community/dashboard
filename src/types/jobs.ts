@@ -75,4 +75,7 @@ export interface ExternalJob {
   country?: string | null;
   degrees: string[];
   type: "internship" | "new-grad";
+  season?: string;
+  source?: string;
+  date_posted_label?: string;
 }

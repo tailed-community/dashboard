@@ -1,0 +1,83 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /account
+Disallow: /auth/
+Disallow: /sign-in
+Disallow: /sign-up
+Disallow: /events/create
+Disallow: /communities/create
+
+# AI / LLM answer-engine crawlers — explicitly allowed so assistants like
+# ChatGPT, Gemini, Claude, and Perplexity can discover and cite job listings.
+User-agent: GPTBot
+Allow: /
+Disallow: /dashboard
+Disallow: /account
+Disallow: /auth/
+Disallow: /sign-in
+Disallow: /sign-up
+Disallow: /events/create
+Disallow: /communities/create
+
+User-agent: ChatGPT-User
+Allow: /
+Disallow: /dashboard
+Disallow: /account
+Disallow: /auth/
+Disallow: /sign-in
+Disallow: /sign-up
+Disallow: /events/create
+Disallow: /communities/create
+
+User-agent: OAI-SearchBot
+Allow: /
+Disallow: /dashboard
+Disallow: /account
+Disallow: /auth/
+Disallow: /sign-in
+Disallow: /sign-up
+Disallow: /events/create
+Disallow: /communities/create
+
+User-agent: ClaudeBot
+Allow: /
+Disallow: /dashboard
+Disallow: /account
+Disallow: /auth/
+Disallow: /sign-in
+Disallow: /sign-up
+Disallow: /events/create
+Disallow: /communities/create
+
+User-agent: Google-Extended
+Allow: /
+Disallow: /dashboard
+Disallow: /account
+Disallow: /auth/
+Disallow: /sign-in
+Disallow: /sign-up
+Disallow: /events/create
+Disallow: /communities/create
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /dashboard
+Disallow: /account
+Disallow: /auth/
+Disallow: /sign-in
+Disallow: /sign-up
+Disallow: /events/create
+Disallow: /communities/create
+
+User-agent: Applebot-Extended
+Allow: /
+Disallow: /dashboard
+Disallow: /account
+Disallow: /auth/
+Disallow: /sign-in
+Disallow: /sign-up
+Disallow: /events/create
+Disallow: /communities/create
+
+Sitemap: https://community.tailed.ca/sitemap.xml

@@ -14,12 +14,19 @@ interface TailedGithubJob {
   location?: string | string[];
   type?: string;
   season?: string;
+  source?: string;
   url?: string;
+  /**
+   * NOTE: despite the name, this is a human-readable relative label from the
+   * scraper (e.g. "Posted 8 Days Ago") — NOT a parseable date. Display only;
+   * `date_added` is the sortable field.
+   */
+  date_posted?: string;
   date_added?: string;
   active?: boolean;
 }
 
-let tailedGithubJobsPromise: Promise<ExternalJob[]> | null = null;
+let externalJobsPromise: Promise<ExternalJob[]> | null = null;
 
 function normalizeJobType(type: unknown): ExternalJob["type"] {
   const normalizedType = typeof type === "string" ? type : "";
@@ -78,6 +85,7 @@ export function normalizeTailedGithubJobs(
       const locations = splitLocations(job.location);
       const normalizedLocations = normalizeLocations(locations);
       const dateAdded = toUnixSeconds(job.date_added);
+      const hasSeason = Boolean(job.season) && job.season !== "Not specified";
 
       return {
         category: null,
@@ -85,10 +93,7 @@ export function normalizeTailedGithubJobs(
         id: job.id,
         title: job.title,
         active: job.active !== false,
-        terms:
-          job.season && job.season !== "Not specified"
-            ? [job.season]
-            : undefined,
+        terms: hasSeason ? [job.season as string] : undefined,
         date_updated: dateAdded,
         date_posted: dateAdded,
         url: job.url,
@@ -100,26 +105,38 @@ export function normalizeTailedGithubJobs(
             ?.normalized.country || null,
         degrees: [],
         type,
+        season: hasSeason ? job.season : undefined,
+        source: job.source,
+        date_posted_label: job.date_posted,
       };
     })
     .filter((job): job is ExternalJob => job !== null);
 }
 
-export function fetchTailedGithubJobs(): Promise<ExternalJob[]> {
-  tailedGithubJobsPromise ??= fetch(TAILED_GITHUB_JOBS_URL)
-    .then((response) => {
-      if (!response.ok) {
-        throw new Error(`GitHub jobs request failed: ${response.status}`);
-      }
-      return response.json();
-    })
-    .then((jobs: TailedGithubJob[]) => normalizeTailedGithubJobs(jobs))
-    .catch((error) => {
-      console.error("Failed to fetch Tail'ed GitHub jobs:", error);
-      return [];
-    });
+/**
+ * Fetches the external jobs feed (internships + new grads, ~11k jobs) and
+ * adapts each entry into the shared `ExternalJob` shape. Concurrent/repeat
+ * callers share a single in-flight network round-trip via a module-level
+ * cache; the cache is cleared on rejection so a subsequent call can retry.
+ */
+export function fetchExternalJobs(): Promise<ExternalJob[]> {
+  if (!externalJobsPromise) {
+    externalJobsPromise = fetch(TAILED_GITHUB_JOBS_URL)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`GitHub jobs request failed: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then((jobs: TailedGithubJob[]) => normalizeTailedGithubJobs(jobs))
+      .catch((error) => {
+        externalJobsPromise = null;
+        console.error("Failed to fetch Tail'ed GitHub jobs:", error);
+        return [];
+      });
+  }
 
-  return tailedGithubJobsPromise;
+  return externalJobsPromise;
 }
 
 export function dedupeExternalJobs(jobs: ExternalJob[]): ExternalJob[] {
@@ -144,4 +161,32 @@ export function dedupeExternalJobs(jobs: ExternalJob[]): ExternalJob[] {
   });
 
   return deduped;
+}
+
+/** Filters a list of external jobs down to only the active ones. */
+export function activeExternalJobs(jobs: ExternalJob[]): ExternalJob[] {
+  return jobs.filter((job) => job.active !== false);
+}
+
+/** date_posted/date_updated on `ExternalJob` are unix epochs; some sources are seconds, some ms. */
+export function toMillis(epoch: number): number {
+  return epoch < 1e12 ? epoch * 1000 : epoch;
+}
+
+/**
+ * Human label for a job's posting date: prefers the feed-provided
+ * `date_posted_label` when present, else a relative label ("Posted today",
+ * "Posted 3d ago", ...) derived from `date_posted`.
+ */
+export function formatPostedLabel(job: ExternalJob): string {
+  if (job.date_posted_label) return job.date_posted_label;
+
+  const posted = new Date(toMillis(job.date_posted));
+  const now = new Date();
+  const diffInDays = Math.floor((now.getTime() - posted.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (diffInDays <= 0) return "Posted today";
+  if (diffInDays === 1) return "Posted yesterday";
+  if (diffInDays < 30) return `Posted ${diffInDays}d ago`;
+  return `Posted ${posted.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
 }

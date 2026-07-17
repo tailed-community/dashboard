@@ -4,6 +4,9 @@ import "./index.css";
 import App from "./App.tsx";
 import { AuthProvider } from "./lib/auth-provider.tsx";
 import { FirebaseClient } from "./lib/firebase-client.ts";
+import { initAnalytics } from "./lib/analytics.ts";
+
+initAnalytics();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

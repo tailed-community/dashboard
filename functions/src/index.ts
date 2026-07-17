@@ -11,6 +11,8 @@ import jobRouter from "./routes/job";
 import eventRouter from "./routes/event";
 import communityRouter from "./routes/community";
 import publicRouter from "./routes/public";
+import alertsRouter from "./routes/alerts";
+import { jobsDigest } from "./scheduled/jobs-digest";
 
 declare global {
   namespace Express {
@@ -59,6 +61,7 @@ app.use("/devpost", devpostRouter);
 app.use("/job", jobRouter);
 app.use("/events", eventRouter);
 app.use("/communities", communityRouter);
+app.use("/alerts", alertsRouter);
 
 if (process.env.NODE_ENV === "development") {
   // In development, we can add a simple health check endpoint
@@ -68,3 +71,4 @@ if (process.env.NODE_ENV === "development") {
 }
 
 exports.app = onRequest({ cors: true }, app);
+exports.jobsDigest = jobsDigest;

@@ -1,4 +1,5 @@
 import { UnifiedJobBoard } from "@/components/unified-job-board";
+import { ProfileCompletionBanner } from "@/components/profile-completion-banner";
 
 export default function Page() {
     return (
@@ -8,6 +9,9 @@ export default function Page() {
                 <p className="text-muted-foreground mb-6">
                     Track your applications and discover new opportunities
                 </p>
+                <div className="mb-6">
+                    <ProfileCompletionBanner />
+                </div>
                 <UnifiedJobBoard limit={10} />
             </div>
         </div>

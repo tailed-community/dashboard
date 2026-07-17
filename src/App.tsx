@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "./components/ui/sonner";
 import { SidebarContextProvider } from "./contexts/sidebar-context";
 import { ProtectedRoute } from "./components/protected-route";
@@ -36,6 +36,9 @@ const AppliedJobsPage = lazy(
     () => import("./pages/(dashboard)/jobs/applied/page")
 );
 const JobsPage = lazy(() => import("./pages/(dashboard)/jobs/page"));
+const ExternalJobPage = lazy(
+    () => import("./pages/(dashboard)/jobs/external/page")
+);
 // New pages from main
 const CompaniesPage = lazy(() => import("./pages/companies/page"));
 const CompanyDetailPage = lazy(() => import("./pages/companies/[id]/page"));
@@ -58,6 +61,19 @@ const ExplorePage = lazy(() => import("./pages/explore/page"));
 const AboutPage = lazy(() => import("./pages/about/page"));
 // Booking page from feature branch
 const BookingPage = lazy(() => import("./pages/(dashboard)/book/[code]/page"));
+// Design-lab prototypes (internal landing redesign explorations)
+const DesignLabPage = lazy(() => import("./pages/design-lab/page"));
+const LabZine = lazy(() => import("./pages/design-lab/zine"));
+const LabStreakDuo = lazy(() => import("./pages/design-lab/streak-duo"));
+const LabAfterHours = lazy(() => import("./pages/design-lab/after-hours"));
+const LabPoster = lazy(() => import("./pages/design-lab/poster"));
+const LabPlayground = lazy(() => import("./pages/design-lab/playground"));
+const LabPlaygroundJobs = lazy(() => import("./pages/design-lab/playground-jobs"));
+const LabPlaygroundEvents = lazy(() => import("./pages/design-lab/playground-events"));
+const LabPlaygroundCommunities = lazy(() => import("./pages/design-lab/playground-communities"));
+const LabPlaygroundJobDetail = lazy(() => import("./pages/design-lab/playground-job-detail"));
+const LabPlaygroundEventDetail = lazy(() => import("./pages/design-lab/playground-event-detail"));
+const LabPlaygroundCommunityDetail = lazy(() => import("./pages/design-lab/playground-community-detail"));
 
 function App() {
     return (
@@ -93,6 +109,13 @@ function App() {
                         {/* PUBLIC ROUTES - Ungated, accessible to all */}
                         <Route element={<PublicLayout />}>
                             <Route path="/jobs" element={<JobsPage />} />
+                            {/* External job detail (static "e" segment) MUST be
+                                registered before /jobs/:slug so it isn't
+                                shadowed by the dynamic slug route. */}
+                            <Route
+                                path="/jobs/e/:id"
+                                element={<ExternalJobPage />}
+                            />
                             <Route
                                 path="/jobs/:slug"
                                 element={<PublicJobPage />}
@@ -158,6 +181,13 @@ function App() {
                                 path="/communities"
                                 element={<CommunitiesPage />}
                             />
+                            {/* Legacy/external links used "/community" (singular);
+                                keep a redirect as a safety net now that all
+                                in-app links point to "/communities" directly. */}
+                            <Route
+                                path="/community"
+                                element={<Navigate to="/communities" replace />}
+                            />
                             <Route
                                 path="/communities/:id"
                                 element={<CommunityDetailPage />}
@@ -215,6 +245,20 @@ function App() {
                                 element={<JobApplyPage />}
                             />
                         </Route>
+
+                        {/* DESIGN LAB - internal, standalone landing prototypes */}
+                        <Route path="/design-lab" element={<DesignLabPage />} />
+                        <Route path="/design-lab/zine" element={<LabZine />} />
+                        <Route path="/design-lab/streak-duo" element={<LabStreakDuo />} />
+                        <Route path="/design-lab/after-hours" element={<LabAfterHours />} />
+                        <Route path="/design-lab/poster" element={<LabPoster />} />
+                        <Route path="/design-lab/playground" element={<LabPlayground />} />
+                        <Route path="/design-lab/playground/jobs" element={<LabPlaygroundJobs />} />
+                        <Route path="/design-lab/playground/events" element={<LabPlaygroundEvents />} />
+                        <Route path="/design-lab/playground/communities" element={<LabPlaygroundCommunities />} />
+                        <Route path="/design-lab/playground/jobs/:id" element={<LabPlaygroundJobDetail />} />
+                        <Route path="/design-lab/playground/events/:id" element={<LabPlaygroundEventDetail />} />
+                        <Route path="/design-lab/playground/communities/:id" element={<LabPlaygroundCommunityDetail />} />
 
                         {/* 404 CATCH-ALL ROUTE */}
                         <Route path="*" element={<NotFoundComponent />} />

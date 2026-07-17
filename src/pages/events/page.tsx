@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
+import { Seo } from "@/components/seo";
 
 type HighlightedEvent = {
     id: string;
@@ -496,6 +497,11 @@ export default function EventsPage() {
     if (loading) {
         return (
             <div className="min-h-screen bg-brand-cream flex items-center justify-center">
+                <Seo
+                    title="Student Hackathons & Tech Events"
+                    description="Hackathons, workshops, and student tech events. Find your next event and register free."
+                    path="/events"
+                />
                 <div className="flex flex-col items-center gap-4">
                     <Loader2 className="h-8 w-8 animate-spin text-slate-600" />
                     <p className="text-sm text-slate-600">Loading events...</p>
@@ -503,9 +509,14 @@ export default function EventsPage() {
             </div>
         );
     }
-    
+
     return (
         <div className="min-h-screen bg-brand-cream">
+            <Seo
+                title="Student Hackathons & Tech Events"
+                description="Hackathons, workshops, and student tech events. Find your next event and register free."
+                path="/events"
+            />
             <section className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800 text-white">
                 <div className="pointer-events-none absolute inset-0">
                     <div className="absolute -left-16 top-10 h-64 w-64 rounded-full bg-amber-400/30 blur-3xl" />

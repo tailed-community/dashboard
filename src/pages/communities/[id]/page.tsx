@@ -20,6 +20,18 @@ import { Separator } from "@/components/ui/separator";
 import { HTMLContent } from "@/components/ui/html-content";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
+import { Seo } from "@/components/seo";
+
+const SITE_URL = "https://community.tailed.ca";
+
+function truncate(text: string, max = 160): string {
+    const clean = text.trim();
+    return clean.length > max ? `${clean.slice(0, max - 1).trimEnd()}…` : clean;
+}
+
+function isAbsoluteHttpUrl(url?: string | null): url is string {
+    return !!url && /^https?:\/\//i.test(url);
+}
 
 type CommunityData = {
     id: string;
@@ -252,8 +264,32 @@ export default function CommunityDetailPage() {
         }
     };
 
+    const canonicalPath = `/communities/${slug}`;
+    const seoDescription = truncate(
+        community.shortDescription || community.description || "Join this student community on Tail'ed."
+    );
+    const seoImage = isAbsoluteHttpUrl(community.bannerUrl)
+        ? community.bannerUrl
+        : isAbsoluteHttpUrl(community.logoUrl)
+            ? community.logoUrl
+            : undefined;
+
     return (
         <div className="min-h-screen bg-brand-cream">
+            <Seo
+                title={community.name}
+                description={seoDescription}
+                path={canonicalPath}
+                image={seoImage}
+                jsonLd={{
+                    "@context": "https://schema.org",
+                    "@type": "Organization",
+                    name: community.name,
+                    description: seoDescription,
+                    url: `${SITE_URL}${canonicalPath}`,
+                    ...(isAbsoluteHttpUrl(community.logoUrl) ? { logo: community.logoUrl } : {}),
+                }}
+            />
             {/* Banner Image */}
             {community.bannerUrl && (
                 <div className="w-full h-64 md:h-80 overflow-hidden">

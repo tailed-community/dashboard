@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/fetch";
+import { JobAlertSignup } from "@/components/capture/job-alert-signup";
+import { CheckCircle2 } from "lucide-react";
 
 type FieldDef = {
   question?: string;
@@ -24,6 +26,12 @@ type Team = {
   members?: string[];
 };
 
+type RegistrationResult = {
+  status?: string;
+  message?: string;
+  attendee?: { email?: string };
+};
+
 export default function EventRegistrationPage() {
   const params = useParams();
   const navigate = useNavigate();
@@ -37,6 +45,7 @@ export default function EventRegistrationPage() {
   const [selectedTeamId, setSelectedTeamId] = useState<string>("__none__");
   const [newTeamName, setNewTeamName] = useState("");
   const [creatingTeam, setCreatingTeam] = useState(false);
+  const [registrationResult, setRegistrationResult] = useState<RegistrationResult | null>(null);
 
   const loadTeams = async () => {
     try {
@@ -140,6 +149,38 @@ export default function EventRegistrationPage() {
     </div>
   );
 
+  if (registrationResult) {
+    const pending = registrationResult.status === "pending" || requiresApproval;
+    return (
+      <div className="max-w-xl mx-auto p-4">
+        <div className="flex flex-col items-center text-center gap-3 mb-6">
+          <CheckCircle2 className="h-10 w-10 text-green-600" />
+          <h1 className="text-2xl font-semibold">
+            {pending ? "Request submitted" : "You're registered!"}
+          </h1>
+          <p className="text-muted-foreground">
+            {pending
+              ? "The organizer will review your request and email you when it is approved."
+              : registrationResult.message || "Successfully registered for the event."}
+          </p>
+        </div>
+
+        <div className="rounded-lg border bg-muted/40 p-4 mb-6">
+          <p className="text-sm font-medium mb-2">Also get weekly job picks?</p>
+          <JobAlertSignup
+            source="event_rsvp_optin"
+            variant="inline"
+            defaultEmail={registrationResult.attendee?.email}
+          />
+        </div>
+
+        <Button className="w-full" onClick={() => navigate(`/events/${eventId}`)}>
+          Back to event
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-xl mx-auto p-4">
       <h1 className="text-2xl font-semibold mb-4">Register for event</h1>
@@ -197,7 +238,7 @@ export default function EventRegistrationPage() {
             } else {
               toast.success(result?.message || "Successfully registered for the event");
             }
-            setTimeout(() => navigate(`/events/${eventId}`), 800);
+            setRegistrationResult(result || {});
           }}
         />
       ) : (

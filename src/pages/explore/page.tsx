@@ -5,16 +5,9 @@ import { useAuth } from "@/hooks/use-auth";
 import { Separator } from "@/components/ui/separator";
 import { Loader2 } from "lucide-react";
 import { apiFetch } from "@/lib/fetch";
-import {
-  dedupeExternalJobs,
-  fetchTailedGithubJobs,
-} from "@/lib/external-jobs";
+import { fetchExternalJobs } from "@/lib/external-jobs";
 import { type ExternalJob } from "@/types/jobs";
-
-const INTERNSHIPS_URL =
-  "https://raw.githubusercontent.com/tailed-community/tech-internships-2025-2026/refs/heads/main/data/current.json";
-const NEW_GRADS_URL =
-  "https://raw.githubusercontent.com/tailed-community/tech-new-grads-2025-2026/refs/heads/main/data/current.json";
+import { Seo } from "@/components/seo";
 
 export default function ExplorePage() {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
@@ -59,20 +52,16 @@ export default function ExplorePage() {
         // Fetch featured jobs, external jobs, events, communities, and companies in parallel
         const results = await Promise.allSettled([
           apiFetch("/public/jobs", {}, true),
-          fetch(INTERNSHIPS_URL),
-          fetch(NEW_GRADS_URL),
-          fetchTailedGithubJobs(),
+          fetchExternalJobs(),
           apiFetch("/public/explore"),
           apiFetch(`/public/companies?pageSize=${companiesLimit}`, {}, true),
         ]);
 
-        const [featuredJobsResult, internshipsResult, newGradsResult, tailedGithubJobsResult, exploreResult, companiesResult] = results;
+        const [featuredJobsResult, externalJobsResult, exploreResult, companiesResult] = results;
 
         let totalFeaturedJobs = 0;
         let totalInternships = 0;
         let totalNewGrads = 0;
-        let internshipsData: ExternalJob[] = [];
-        let newGradsData: ExternalJob[] = [];
 
         // Process featured jobs
         if (featuredJobsResult.status === "fulfilled") {
@@ -107,76 +96,52 @@ export default function ExplorePage() {
           }
         }
 
-        // Process external internships
-        if (internshipsResult.status === "fulfilled") {
+        // Process external jobs (internships + new grads, from the shared feed)
+        if (externalJobsResult.status === "fulfilled") {
           try {
-            const internships: ExternalJob[] = await internshipsResult.value.json();
-            internshipsData = internships.map((job) => ({
-              ...job,
-              type: "internship" as const,
-            }));
+            const externalJobs: ExternalJob[] = externalJobsResult.value;
+            const internships = externalJobs.filter((job) => job.type === "internship");
+            const newGrads = externalJobs.filter((job) => job.type === "new-grad");
+            totalInternships = internships.length;
+            totalNewGrads = newGrads.length;
+
+            // Take limited internships
+            internships.slice(0, internshipsLimit).forEach((job) => {
+              const timeAgo = calculateTimeAgo(new Date(job.date_posted * 1000));
+
+              internshipsArray.push({
+                id: `external-${job.id}`,
+                type: "job",
+                title: job.title,
+                company: job.company_name,
+                location: job.locations.join(", ") || "Remote",
+                jobType: "Internship",
+                timeAgo,
+                color: getRandomColor(),
+                url: job.url,
+              });
+            });
+
+            // Take limited new grad positions
+            newGrads.slice(0, newGradsLimit).forEach((job) => {
+              const timeAgo = calculateTimeAgo(new Date(job.date_posted * 1000));
+
+              newGradsArray.push({
+                id: `external-${job.id}`,
+                type: "job",
+                title: job.title,
+                company: job.company_name,
+                location: job.locations.join(", ") || "Remote",
+                jobType: "New Grad",
+                timeAgo,
+                color: getRandomColor(),
+                url: job.url,
+              });
+            });
           } catch (error) {
-            console.error("Error parsing internships:", error);
+            console.error("Error parsing external jobs:", error);
           }
         }
-
-        // Process external new grads
-        if (newGradsResult.status === "fulfilled") {
-          try {
-            const newGrads: ExternalJob[] = await newGradsResult.value.json();
-            newGradsData = newGrads.map((job) => ({
-              ...job,
-              type: "new-grad" as const,
-            }));
-          } catch (error) {
-            console.error("Error parsing new grads:", error);
-          }
-        }
-
-        const tailedGithubJobs =
-          tailedGithubJobsResult.status === "fulfilled"
-            ? tailedGithubJobsResult.value
-            : [];
-        const externalJobs = dedupeExternalJobs([
-          ...internshipsData,
-          ...newGradsData,
-          ...tailedGithubJobs,
-        ]).sort((a, b) => b.date_posted - a.date_posted);
-        const internships = externalJobs.filter(
-          (job) => job.type === "internship"
-        );
-        const newGrads = externalJobs.filter((job) => job.type === "new-grad");
-
-        totalInternships = internships.length;
-        totalNewGrads = newGrads.length;
-
-        internships.slice(0, internshipsLimit).forEach((job) => {
-          internshipsArray.push({
-            id: `external-${job.id}`,
-            type: "job",
-            title: job.title,
-            company: job.company_name,
-            location: job.locations.join(", ") || "Location not specified",
-            jobType: "Internship",
-            timeAgo: calculateTimeAgo(new Date(job.date_posted * 1000)),
-            color: getRandomColor(),
-            url: job.url,
-          });
-        });
-
-        newGrads.slice(0, newGradsLimit).forEach((job) => {
-          newGradsArray.push({
-            id: `external-${job.id}`,
-            type: "job",
-            title: job.title,
-            company: job.company_name,
-            location: job.locations.join(", ") || "Location not specified",
-            jobType: "New Grad",
-            timeAgo: calculateTimeAgo(new Date(job.date_posted * 1000)),
-            color: getRandomColor(),
-            url: job.url,
-          });
-        });
 
         // Process explore data (events and communities from API)
         let totalEvents = 0;
@@ -403,6 +368,11 @@ export default function ExplorePage() {
 
   return (
     <div className="min-h-screen bg-brand-cream">
+      <Seo
+        title="Explore"
+        description="Explore student communities, events, and opportunities on Tail'ed."
+        path="/explore"
+      />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">

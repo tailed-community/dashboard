@@ -1,0 +1,212 @@
+import { onSchedule } from "firebase-functions/v2/scheduler";
+import { FieldPath, type Timestamp } from "firebase-admin/firestore";
+import { db } from "../lib/firebase";
+import { fetchDigestJobs, type DigestJob } from "../lib/jobs-feed";
+import { matchJobsToSubscription, type DigestSubscriptionLike } from "../lib/digest-matching";
+import { sendJobsDigestEmail } from "../lib/email-service";
+import { buildUnsubscribeUrl } from "../lib/links";
+
+const SUBSCRIPTIONS_COLLECTION = "jobAlertSubscriptions";
+const SUBSCRIPTION_BATCH_SIZE = 300;
+const MAX_JOBS_PER_EMAIL = 12;
+const SEND_CONCURRENCY = 5;
+/** Never-sent subscriptions get at most a 7-day backlog, to avoid dumping ~11k jobs in one email. */
+const NEVER_SENT_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
+
+interface JobAlertSubscriptionDoc extends DigestSubscriptionLike {
+  id: string;
+  email: string;
+  active: boolean;
+  unsubscribeToken: string;
+  createdAt: Timestamp | Date | null;
+  lastSentJobDate: number | null;
+}
+
+function toEpochMs(value: Timestamp | Date | null | undefined): number {
+  if (!value) return 0;
+  if (value instanceof Date) return value.getTime();
+  const maybeTimestamp = value as Timestamp;
+  if (typeof maybeTimestamp.toMillis === "function") {
+    return maybeTimestamp.toMillis();
+  }
+  return 0;
+}
+
+/**
+ * Watermark = last sent job's `date_added` (epoch ms), else — for a
+ * subscription that has never sent — `max(createdAt, now - 7 days)` so the
+ * first-ever digest doesn't dump the entire historical backlog.
+ */
+function computeWatermark(sub: JobAlertSubscriptionDoc, now: number): number {
+  if (typeof sub.lastSentJobDate === "number") {
+    return sub.lastSentJobDate;
+  }
+  const createdAtMs = toEpochMs(sub.createdAt);
+  return Math.max(createdAtMs, now - NEVER_SENT_LOOKBACK_MS);
+}
+
+async function fetchActiveSubscriptions(): Promise<JobAlertSubscriptionDoc[]> {
+  const subs: JobAlertSubscriptionDoc[] = [];
+  let lastDocId: FirebaseFirestore.QueryDocumentSnapshot | undefined;
+
+  for (;;) {
+    let query = db
+      .collection(SUBSCRIPTIONS_COLLECTION)
+      .where("active", "==", true)
+      .orderBy(FieldPath.documentId())
+      .limit(SUBSCRIPTION_BATCH_SIZE);
+
+    if (lastDocId) {
+      query = query.startAfter(lastDocId);
+    }
+
+    const snapshot = await query.get();
+    if (snapshot.empty) break;
+
+    for (const doc of snapshot.docs) {
+      const data = doc.data();
+      subs.push({
+        id: doc.id,
+        email: data.email,
+        query: data.query ?? null,
+        jobType: data.jobType ?? null,
+        locations: data.locations ?? null,
+        active: data.active,
+        unsubscribeToken: data.unsubscribeToken,
+        createdAt: data.createdAt ?? null,
+        lastSentJobDate: typeof data.lastSentJobDate === "number" ? data.lastSentJobDate : null,
+      });
+    }
+
+    lastDocId = snapshot.docs[snapshot.docs.length - 1];
+    if (snapshot.docs.length < SUBSCRIPTION_BATCH_SIZE) break;
+  }
+
+  return subs;
+}
+
+/** Hand-rolled bounded concurrency runner (no new deps, per spec). */
+async function runWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<void>
+): Promise<void> {
+  let cursor = 0;
+  async function next(): Promise<void> {
+    while (cursor < items.length) {
+      const item = items[cursor++];
+      await worker(item);
+    }
+  }
+  const workerCount = Math.max(1, Math.min(concurrency, items.length));
+  await Promise.all(Array.from({ length: workerCount }, () => next()));
+}
+
+export interface RunJobsDigestOptions {
+  dryRun?: boolean;
+}
+
+export interface RunJobsDigestSummary {
+  subscribers: number;
+  emailsSent: number;
+  skippedNoMatches: number;
+  errors: number;
+}
+
+/**
+ * Runs one pass of the daily jobs digest: fetches the feed once, then for
+ * every active subscription computes new matches since its watermark, caps
+ * at 12, sends (unless dryRun), and advances the watermark on success only.
+ * Exported as a plain function so it's directly callable from the dry-run
+ * script without going through the Cloud Scheduler trigger.
+ */
+export async function runJobsDigest(
+  options: RunJobsDigestOptions = {}
+): Promise<RunJobsDigestSummary> {
+  const dryRun = options.dryRun ?? process.env.DIGEST_DRY_RUN === "true";
+  const now = Date.now();
+
+  const summary: RunJobsDigestSummary = {
+    subscribers: 0,
+    emailsSent: 0,
+    skippedNoMatches: 0,
+    errors: 0,
+  };
+
+  let jobs: DigestJob[];
+  try {
+    jobs = await fetchDigestJobs();
+  } catch (error) {
+    console.error("jobs-digest: failed to fetch jobs feed, aborting run", error);
+    return summary;
+  }
+
+  const subscriptions = await fetchActiveSubscriptions();
+  summary.subscribers = subscriptions.length;
+
+  await runWithConcurrency(subscriptions, SEND_CONCURRENCY, async (sub) => {
+    try {
+      const watermark = computeWatermark(sub, now);
+      const candidates = jobs.filter((job) => job.dateAddedMs > watermark);
+      const matched = matchJobsToSubscription(candidates, sub);
+
+      if (matched.length === 0) {
+        summary.skippedNoMatches += 1;
+        return;
+      }
+
+      const toSend = matched.slice(0, MAX_JOBS_PER_EMAIL);
+      // Watermark advances past all of `matched`, not just `toSend`: when more than
+      // MAX_JOBS_PER_EMAIL jobs match in one run, the newest 12 are emailed and the
+      // watermark still jumps to the newest match. The older overflow is intentionally
+      // not carried forward to the next digest (spec'd tradeoff) — those jobs simply
+      // remain visible on the site.
+      const newWatermark = toSend.reduce((max, job) => Math.max(max, job.dateAddedMs), watermark);
+
+      if (dryRun) {
+        console.log("jobs-digest[dry-run] would send", {
+          subscriptionId: sub.id,
+          email: sub.email,
+          query: sub.query,
+          jobType: sub.jobType,
+          locations: sub.locations,
+          matchCount: matched.length,
+          sendCount: toSend.length,
+        });
+        return;
+      }
+
+      const unsubscribeUrl = buildUnsubscribeUrl(sub.unsubscribeToken);
+      await sendJobsDigestEmail(sub.email, toSend, {
+        query: sub.query,
+        unsubscribeUrl,
+        totalMatchCount: matched.length,
+      });
+
+      await db.collection(SUBSCRIPTIONS_COLLECTION).doc(sub.id).update({
+        lastSentAt: new Date(),
+        lastSentJobDate: newWatermark,
+      });
+
+      summary.emailsSent += 1;
+    } catch (error) {
+      summary.errors += 1;
+      console.error("jobs-digest: failed to process subscription", sub.id, error);
+    }
+  });
+
+  console.log("jobs-digest: run complete", summary);
+  return summary;
+}
+
+export const jobsDigest = onSchedule(
+  {
+    schedule: "every day 07:30",
+    timeZone: "America/Toronto",
+    timeoutSeconds: 540,
+    memory: "512MiB",
+  },
+  async () => {
+    await runJobsDigest();
+  }
+);

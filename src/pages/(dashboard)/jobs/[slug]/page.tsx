@@ -27,6 +27,48 @@ import {
 import { type Job, type Organization } from "@/types/jobs";
 import { HTMLContent } from "@/components/ui/html-content";
 import { Separator } from "@/components/ui/separator";
+import { Seo } from "@/components/seo";
+
+function stripHtml(html: string): string {
+    return html
+        .replace(/<[^>]*>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function truncate(text: string, maxLength: number): string {
+    if (text.length <= maxLength) return text;
+    return `${text.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+function toIsoDate(dateString?: string): string | undefined {
+    if (!dateString) return undefined;
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return undefined;
+    return date.toISOString().slice(0, 10);
+}
+
+function mapEmploymentType(type?: string): string | undefined {
+    if (!type) return undefined;
+    const normalized = type.trim().toLowerCase();
+    const map: Record<string, string> = {
+        "full-time": "FULL_TIME",
+        "full time": "FULL_TIME",
+        fulltime: "FULL_TIME",
+        "part-time": "PART_TIME",
+        "part time": "PART_TIME",
+        parttime: "PART_TIME",
+        internship: "INTERN",
+        intern: "INTERN",
+        "co-op": "INTERN",
+        coop: "INTERN",
+        contract: "CONTRACTOR",
+        contractor: "CONTRACTOR",
+        temporary: "TEMPORARY",
+        volunteer: "VOLUNTEER",
+    };
+    return map[normalized];
+}
 
 export default function PublicJobPage() {
     const { slug } = useParams<{ slug: string }>();
@@ -155,8 +197,69 @@ export default function PublicJobPage() {
         );
     }
 
+    const orgName = organization?.name ?? "Tail'ed partner";
+    const seoDescription = job.description
+        ? truncate(stripHtml(job.description), 160)
+        : `${job.title} at ${orgName} — apply now on Tail'ed, the free job board for students.`;
+    const seoImage =
+        organization?.logo && /^https?:\/\//.test(organization.logo)
+            ? organization.logo
+            : undefined;
+
+    const jobPostingJsonLd: Record<string, unknown> = {
+        "@context": "https://schema.org",
+        "@type": "JobPosting",
+        title: job.title,
+        description: job.description
+            ? truncate(stripHtml(job.description), 500)
+            : seoDescription,
+        hiringOrganization: {
+            "@type": "Organization",
+            name: orgName,
+        },
+    };
+
+    const datePosted = toIsoDate(job.postingDate);
+    if (datePosted) jobPostingJsonLd.datePosted = datePosted;
+
+    const validThrough = toIsoDate(job.endPostingDate);
+    if (validThrough) jobPostingJsonLd.validThrough = validThrough;
+
+    const employmentType = mapEmploymentType(job.type);
+    if (employmentType) jobPostingJsonLd.employmentType = employmentType;
+
+    if (job.location) {
+        jobPostingJsonLd.jobLocation = {
+            "@type": "Place",
+            address: {
+                "@type": "PostalAddress",
+                addressLocality: job.location,
+            },
+        };
+    }
+
+    if (job.salary && (job.salary.min || job.salary.max)) {
+        jobPostingJsonLd.baseSalary = {
+            "@type": "MonetaryAmount",
+            currency: "CAD",
+            value: {
+                "@type": "QuantitativeValue",
+                ...(job.salary.min ? { minValue: job.salary.min } : {}),
+                ...(job.salary.max ? { maxValue: job.salary.max } : {}),
+                unitText: "YEAR",
+            },
+        };
+    }
+
     return (
         <div className="min-h-screen bg-background p-4 md:p-8">
+            <Seo
+                title={`${job.title} at ${orgName}`}
+                description={seoDescription}
+                path={`/jobs/${slug}`}
+                image={seoImage}
+                jsonLd={jobPostingJsonLd}
+            />
             <div className="mx-auto max-w-5xl">
                 <Link
                     to=".."

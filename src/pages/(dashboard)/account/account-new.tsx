@@ -37,6 +37,7 @@ import { FirebaseError } from "firebase/app";
 import type { DevpostProfile } from "../jobs/[slug]/apply/types";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { getFileUrl } from "@/lib/firebase-client";
+import { trackEvent } from "@/lib/analytics";
 
 type StudentProps = {
     email: string;
@@ -227,6 +228,14 @@ export default function AccountPage() {
     // Function to calculate profile completeness
     const calculateProfileScore = (profileData: any) => {
         const checks = {
+            // Identity basics — collected progressively post-signup, never gated.
+            firstName: !!profileData.firstName?.trim(),
+            lastName: !!profileData.lastName?.trim(),
+            school: !!profileData.school?.trim(),
+            program: !!profileData.program?.trim(),
+            graduationYear: !!String(profileData.graduationYear || "").trim(),
+            location: !!profileData.location?.trim(),
+            // Enrichment
             githubUsername: !!profileData.githubUsername?.trim(),
             github: !!(
                 profileData.github && Object.keys(profileData.github).length > 0
@@ -246,9 +255,10 @@ export default function AccountPage() {
             portfolioUrl: !!profileData.portfolioUrl?.trim(),
         };
 
-        // Calculate score: each field is worth 12.5 points (100/8)
+        // Calculate score: each field is worth an equal share of 100
+        const totalFields = Object.keys(checks).length;
         const completedCount = Object.values(checks).filter(Boolean).length;
-        const score = Math.round((completedCount / 8) * 100);
+        const score = Math.round((completedCount / totalFields) * 100);
 
         return {
             score,
@@ -350,6 +360,12 @@ export default function AccountPage() {
     const profileScore = useMemo(() => {
         return calculateProfileScore(student);
     }, [
+        student.firstName,
+        student.lastName,
+        student.school,
+        student.program,
+        student.graduationYear,
+        student.location,
         student.githubUsername,
         student.github,
         student.devpostUsername,
@@ -570,7 +586,27 @@ export default function AccountPage() {
 
         setIsSaving(true);
         try {
+            const preSaveCompleted = originalStudent
+                ? calculateProfileScore(originalStudent).completed
+                : null;
+
             await apiService.updateStudent(student);
+
+            if (preSaveCompleted) {
+                const postSaveCompleted = calculateProfileScore(student).completed;
+                const newlyCompletedFields = Object.keys(postSaveCompleted).filter(
+                    (field) =>
+                        (postSaveCompleted as Record<string, boolean>)[field] &&
+                        !(preSaveCompleted as Record<string, boolean>)[field]
+                );
+
+                if (newlyCompletedFields.length > 0) {
+                    trackEvent("profile_completed_section", {
+                        section: newlyCompletedFields.join(","),
+                    });
+                }
+            }
+
             setOriginalStudent(student);
             setHasChanges(false);
             // Clear any validation errors after successful save
@@ -1099,7 +1135,10 @@ export default function AccountPage() {
                                 )}
                             </div>
                             <div className="flex gap-1.5 mb-3">
-                                {Array.from({ length: 8 }).map((_, index) => {
+                                {Array.from({
+                                    length: Object.keys(profileScore.completed)
+                                        .length,
+                                }).map((_, index) => {
                                     const completedFields = Object.values(
                                         profileScore.completed
                                     ).filter(Boolean).length;
@@ -1117,6 +1156,103 @@ export default function AccountPage() {
                                 })}
                             </div>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                <div className="flex items-center gap-2 text-sm">
+                                    {profileScore.completed.firstName ? (
+                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                    ) : (
+                                        <Circle className="h-4 w-4 text-gray-400" />
+                                    )}
+                                    <span
+                                        className={
+                                            profileScore.completed.firstName
+                                                ? "text-green-700"
+                                                : "text-gray-500"
+                                        }
+                                    >
+                                        First Name
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-2 text-sm">
+                                    {profileScore.completed.lastName ? (
+                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                    ) : (
+                                        <Circle className="h-4 w-4 text-gray-400" />
+                                    )}
+                                    <span
+                                        className={
+                                            profileScore.completed.lastName
+                                                ? "text-green-700"
+                                                : "text-gray-500"
+                                        }
+                                    >
+                                        Last Name
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-2 text-sm">
+                                    {profileScore.completed.school ? (
+                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                    ) : (
+                                        <Circle className="h-4 w-4 text-gray-400" />
+                                    )}
+                                    <span
+                                        className={
+                                            profileScore.completed.school
+                                                ? "text-green-700"
+                                                : "text-gray-500"
+                                        }
+                                    >
+                                        School
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-2 text-sm">
+                                    {profileScore.completed.program ? (
+                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                    ) : (
+                                        <Circle className="h-4 w-4 text-gray-400" />
+                                    )}
+                                    <span
+                                        className={
+                                            profileScore.completed.program
+                                                ? "text-green-700"
+                                                : "text-gray-500"
+                                        }
+                                    >
+                                        Program
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-2 text-sm">
+                                    {profileScore.completed.graduationYear ? (
+                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                    ) : (
+                                        <Circle className="h-4 w-4 text-gray-400" />
+                                    )}
+                                    <span
+                                        className={
+                                            profileScore.completed
+                                                .graduationYear
+                                                ? "text-green-700"
+                                                : "text-gray-500"
+                                        }
+                                    >
+                                        Graduation Year
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-2 text-sm">
+                                    {profileScore.completed.location ? (
+                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                    ) : (
+                                        <Circle className="h-4 w-4 text-gray-400" />
+                                    )}
+                                    <span
+                                        className={
+                                            profileScore.completed.location
+                                                ? "text-green-700"
+                                                : "text-gray-500"
+                                        }
+                                    >
+                                        Location
+                                    </span>
+                                </div>
                                 <div className="flex items-center gap-2 text-sm">
                                     {profileScore.completed.githubUsername ? (
                                         <CheckCircle2 className="h-4 w-4 text-green-600" />

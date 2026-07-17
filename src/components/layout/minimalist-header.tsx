@@ -71,7 +71,7 @@ const navigationItems = [
         items: [
             {
                 title: "Student Community",
-                href: "/community",
+                href: "/communities",
                 description: "Connect with fellow students",
                 icon: Users,
                 authRequired: false,

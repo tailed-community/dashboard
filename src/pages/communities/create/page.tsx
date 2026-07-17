@@ -440,7 +440,7 @@ export default function CreateCommunityPage() {
                                     <Button
                                         type="button"
                                         variant="outline"
-                                        onClick={() => navigate("/community")}
+                                        onClick={() => navigate("/communities")}
                                         disabled={isSubmitting}
                                         className="flex-1"
                                     >
