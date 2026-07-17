@@ -2,7 +2,15 @@ import { auth, studentAuth, db } from "./firebase";
 
 export interface UpsertUserResult {
   userRecord: any; // Firebase UserRecord
+  /**
+   * @deprecated Alias for `authUserCreated`, kept so existing call sites
+   * (which expect "a new Firebase Auth account was created") keep working.
+   * Prefer `authUserCreated` / `profileCreated` explicitly in new code.
+   */
   wasCreated: boolean;
+  authUserCreated: boolean; // true if a new Firebase Auth account was created
+  profileCreated: boolean; // true if a new `profiles/{uid}` doc was created
+  profileComplete: boolean; // has firstName && school && program
   error?: string;
 }
 
@@ -10,115 +18,156 @@ export interface UpsertUserInput {
   email: string;
   firstName?: string;
   lastName?: string;
+  photoURL?: string;
+  /**
+   * When the Firebase Auth user is already known to exist (e.g. the uid came
+   * from a verified ID token), pass it here to skip the Auth lookup/creation
+   * step entirely and go straight to ensuring the Firestore profile doc.
+   */
+  uid?: string;
+  profileSource?: "google" | "email" | "import";
 }
+
+const deriveInitials = (
+  firstName?: string,
+  lastName?: string,
+  email?: string
+): string => {
+  if (firstName && lastName) {
+    return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+  }
+  if (firstName) {
+    return firstName.charAt(0).toUpperCase();
+  }
+  return (email || "").charAt(0).toUpperCase() || "U";
+};
+
+const isProfileComplete = (data: Record<string, any> | undefined): boolean => {
+  return !!(data?.firstName && data?.school && data?.program);
+};
 
 /**
  * Upsert a student user account
- * - If user exists, returns existing user
- * - If user doesn't exist, creates new user and profile
+ * - Ensures a Firebase Auth user exists (by email lookup, or trusts the
+ *   provided `uid` when the caller already verified the token).
+ * - Ensures a `profiles/{uid}` Firestore doc exists (lenient shape: only
+ *   email is required). Never overwrites fields that are already set.
  * @param input User information (email is required)
- * @returns Result object with user record and creation status
+ * @returns Result object with user record, creation status, and profile completeness
  */
 export async function upsertStudentUser(
   input: UpsertUserInput
 ): Promise<UpsertUserResult> {
-  const { email, firstName, lastName } = input;
+  const { email, firstName, lastName, photoURL, uid, profileSource } = input;
   const emailLower = email.toLowerCase();
 
   try {
-    // Check if user already exists
-    let userRecord;
-    let wasCreated = false;
+    let userRecord: any;
+    let authUserCreated = false;
 
-    try {
-      userRecord = await auth.getUserByEmail(emailLower);
-    } catch (error: any) {
-      if (error.code === "auth/user-not-found") {
-        // Create new user account
-        try {
-          const tenantAuth = await studentAuth();
-          userRecord = await tenantAuth.createUser({
-            email: emailLower,
-            emailVerified: false,
-            displayName: firstName && lastName ? `${firstName} ${lastName}` : undefined,
-          });
-          wasCreated = true;
-
-          // Create profile document for new user
-          await db.collection("profiles").doc(userRecord.uid).set({
-            userId: userRecord.uid,
-            email: emailLower,
-            firstName: firstName || "",
-            lastName: lastName || "",
-            initials: firstName && lastName 
-              ? `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase()
-              : emailLower.charAt(0).toUpperCase(),
-            communities: [],
-            appliedJobs: [],
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          });
-        } catch (createError: any) {
+    if (uid) {
+      // Auth user already verified to exist (e.g. via decoded ID token) — skip lookup.
+      userRecord = { uid, email: emailLower };
+    } else {
+      try {
+        userRecord = await auth.getUserByEmail(emailLower);
+      } catch (error: any) {
+        if (error.code === "auth/user-not-found") {
+          // Create new user account
+          try {
+            const tenantAuth = await studentAuth();
+            userRecord = await tenantAuth.createUser({
+              email: emailLower,
+              emailVerified: false,
+              displayName:
+                firstName && lastName ? `${firstName} ${lastName}` : undefined,
+            });
+            authUserCreated = true;
+          } catch (createError: any) {
+            return {
+              userRecord: null,
+              wasCreated: false,
+              authUserCreated: false,
+              profileCreated: false,
+              profileComplete: false,
+              error: `Failed to create account: ${createError.message}`,
+            };
+          }
+        } else {
           return {
             userRecord: null,
             wasCreated: false,
-            error: `Failed to create account: ${createError.message}`,
+            authUserCreated: false,
+            profileCreated: false,
+            profileComplete: false,
+            error: `Failed to check user: ${error.message}`,
           };
         }
-      } else {
-        return {
-          userRecord: null,
-          wasCreated: false,
-          error: `Failed to check user: ${error.message}`,
-        };
       }
     }
 
-    // If user exists but we have additional info, update their profile
-    if (!wasCreated && (firstName || lastName)) {
-      try {
-        const profileRef = db.collection("profiles").doc(userRecord.uid);
-        const profileDoc = await profileRef.get();
-        
-        if (profileDoc.exists) {
-          const profileData = profileDoc.data();
-          const updates: any = { updatedAt: new Date() };
-          
-          // Only update if we have more info than what's stored
-          if (firstName && !profileData?.firstName) {
-            updates.firstName = firstName;
-          }
-          if (lastName && !profileData?.lastName) {
-            updates.lastName = lastName;
-          }
-          
-          // Update initials if we updated names
-          if (updates.firstName || updates.lastName) {
-            const first = updates.firstName || profileData?.firstName;
-            const last = updates.lastName || profileData?.lastName;
-            if (first && last) {
-              updates.initials = `${first.charAt(0)}${last.charAt(0)}`.toUpperCase();
-            }
-          }
-          
-          if (Object.keys(updates).length > 1) { // More than just updatedAt
-            await profileRef.update(updates);
-          }
+    const profileRef = db.collection("profiles").doc(userRecord.uid);
+    const profileDoc = await profileRef.get();
+    let profileCreated = false;
+    let profileData: Record<string, any>;
+
+    if (!profileDoc.exists) {
+      profileCreated = true;
+      profileData = {
+        userId: userRecord.uid,
+        email: emailLower,
+        firstName: firstName || "",
+        lastName: lastName || "",
+        photoURL: photoURL || null,
+        initials: deriveInitials(firstName, lastName, emailLower),
+        communities: [],
+        appliedJobs: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        profileSource: profileSource || "email",
+      };
+      await profileRef.set(profileData);
+    } else {
+      profileData = profileDoc.data() || {};
+
+      // Only fill in fields that are missing — never overwrite existing data.
+      const updates: Record<string, any> = {};
+      if (firstName && !profileData.firstName) updates.firstName = firstName;
+      if (lastName && !profileData.lastName) updates.lastName = lastName;
+      if (photoURL && !profileData.photoURL) updates.photoURL = photoURL;
+
+      if (Object.keys(updates).length > 0) {
+        const first = updates.firstName || profileData.firstName;
+        const last = updates.lastName || profileData.lastName;
+        if (first && last) {
+          updates.initials = `${first.charAt(0)}${last.charAt(0)}`.toUpperCase();
         }
-      } catch (updateError) {
-        // Non-critical error, log but don't fail
-        console.warn(`Failed to update profile for ${emailLower}:`, updateError);
+        updates.updatedAt = new Date();
+
+        try {
+          await profileRef.update(updates);
+          profileData = { ...profileData, ...updates };
+        } catch (updateError) {
+          // Non-critical error, log but don't fail
+          console.warn(`Failed to update profile for ${emailLower}:`, updateError);
+        }
       }
     }
 
     return {
       userRecord,
-      wasCreated,
+      wasCreated: authUserCreated,
+      authUserCreated,
+      profileCreated,
+      profileComplete: isProfileComplete(profileData),
     };
   } catch (error: any) {
     return {
       userRecord: null,
       wasCreated: false,
+      authUserCreated: false,
+      profileCreated: false,
+      profileComplete: false,
       error: `Unexpected error: ${error.message}`,
     };
   }

@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/fetch";
 import { getFileUrl } from "@/lib/firebase-client";
+import { Seo } from "@/components/seo";
 
 const categories = [
   "All",
@@ -178,6 +179,11 @@ export default function CommunityPage() {
 
   return (
     <div className="min-h-screen bg-brand-cream">
+      <Seo
+        title="Student Tech Communities"
+        description="Discover and join student tech clubs and communities across Canada — hackathon teams, campus clubs, and more."
+        path="/communities"
+      />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {/* Header */}
         <div className="mb-8">

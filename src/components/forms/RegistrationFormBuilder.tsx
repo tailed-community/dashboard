@@ -4,6 +4,7 @@ import { Form, FormItem, FormLabel, FormControl, FormField, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/fetch";
+import { trackEvent } from "@/lib/analytics";
 
 type FieldDef = {
   question?: string;
@@ -18,7 +19,7 @@ type Props = {
   fields?: FieldDef[]; // if omitted, uses default form
   role?: "mentor" | "judge" | "participant";
   teamId?: string | null;
-  onSuccess?: (result: { status?: string; message?: string }) => void;
+  onSuccess?: (result: { status?: string; message?: string; attendee?: { email?: string } }) => void;
   onError?: (err: unknown) => void;
 };
 
@@ -153,6 +154,7 @@ export default function RegistrationFormBuilder({ eventId, fields = defaultField
 
       const body = await resp.json().catch(() => ({}));
 
+      trackEvent("event_rsvp_completed", { eventId });
       reset();
       onSuccess && onSuccess(body);
     } catch (err) {

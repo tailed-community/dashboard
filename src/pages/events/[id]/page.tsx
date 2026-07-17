@@ -22,6 +22,25 @@ import { Separator } from "@/components/ui/separator";
 import { HTMLContent } from "@/components/ui/html-content";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Seo } from "@/components/seo";
+import { trackEvent } from "@/lib/analytics";
+
+const SITE_URL = "https://community.tailed.ca";
+
+function stripHtmlAndTruncate(html: string, max = 160): string {
+    const text = html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    if (!text) return "Student tech event on Tail'ed.";
+    return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
+}
+
+function isAbsoluteHttpUrl(url?: string | null): url is string {
+    return !!url && /^https?:\/\//i.test(url);
+}
+
+function toIsoDateTime(date?: string, time?: string): string | undefined {
+    if (!date) return undefined;
+    return time ? `${date}T${time}` : date;
+}
 
 type EventData = {
     id: string;
@@ -127,6 +146,7 @@ export default function EventDetailPage() {
                 };
 
                 setEvent(eventData);
+                trackEvent("event_view", { eventId: eventData.id });
 
                 // Community data is already populated by backend
                 if (eventData.community) {
@@ -243,8 +263,51 @@ export default function EventDetailPage() {
         }
     };
 
+    const canonicalPath = `/events/${id}`;
+    const seoDescription = stripHtmlAndTruncate(event.description || "");
+    const seoImage = isAbsoluteHttpUrl(heroImageUrl) ? heroImageUrl : undefined;
+    const startIso = toIsoDateTime(event.startDate, event.startTime);
+    const endIso = toIsoDateTime(event.endDate, event.endTime);
+    const attendanceMode =
+        event.mode === "Online"
+            ? "https://schema.org/OnlineEventAttendanceMode"
+            : event.mode === "Hybrid"
+                ? "https://schema.org/MixedEventAttendanceMode"
+                : "https://schema.org/OfflineEventAttendanceMode";
+
+    let eventLocation: Record<string, unknown> | undefined;
+    if (event.mode === "Online") {
+        eventLocation = { "@type": "VirtualLocation", url: `${SITE_URL}${canonicalPath}` };
+    } else if (event.location || event.city) {
+        eventLocation = {
+            "@type": "Place",
+            ...(event.location ? { name: event.location } : {}),
+            ...(event.city ? { address: event.city } : {}),
+        };
+    }
+
+    const eventJsonLd: Record<string, unknown> = {
+        "@context": "https://schema.org",
+        "@type": "Event",
+        name: event.title,
+        ...(startIso ? { startDate: startIso } : {}),
+        ...(endIso ? { endDate: endIso } : {}),
+        eventAttendanceMode: attendanceMode,
+        ...(eventLocation ? { location: eventLocation } : {}),
+        ...(seoImage ? { image: seoImage } : {}),
+        description: seoDescription,
+        ...(community?.name ? { organizer: { "@type": "Organization", name: community.name } } : {}),
+    };
+
     return (
         <div className="min-h-screen">
+            <Seo
+                title={event.title}
+                description={seoDescription}
+                path={canonicalPath}
+                image={seoImage}
+                jsonLd={eventJsonLd}
+            />
             {/* Main Content */}
             <div className="mx-auto max-w-7xl px-6 py-12">
                 {/* Back Button */}
@@ -512,7 +575,10 @@ x                        {event.requiresApproval && <Separator />}
                                 {!isPastEvent ? (
                                     event.requiresApproval ? (
                                         <Button
-                                            onClick={() => navigate(`/events/${id}/register`)}
+                                            onClick={() => {
+                                                trackEvent("event_rsvp_started", { eventId: event.id });
+                                                navigate(`/events/${id}/register`);
+                                            }}
                                             className="w-full bg-slate-900 hover:bg-slate-800 rounded-lg"
                                             size="lg"
                                         >
@@ -529,7 +595,10 @@ x                        {event.requiresApproval && <Separator />}
                                         </Button>
                                     ) : (
                                         <Button
-                                            onClick={() => navigate(`/events/${id}/register`)}
+                                            onClick={() => {
+                                                trackEvent("event_rsvp_started", { eventId: event.id });
+                                                navigate(`/events/${id}/register`);
+                                            }}
                                             className="w-full bg-slate-900 hover:bg-slate-800 rounded-lg"
                                             size="lg"
                                         >

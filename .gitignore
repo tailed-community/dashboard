@@ -32,3 +32,6 @@ functions/firebase-debug.log
 .data
 *firebase-export*
 .todo
+
+# Internal strategy/spec docs - kept local only, not for the public repo
+/docs/

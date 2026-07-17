@@ -18,6 +18,16 @@ import { Separator } from "@/components/ui/separator";
 import { HTMLContent } from "@/components/ui/html-content";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
+import { Seo } from "@/components/seo";
+
+function truncate(text: string, max = 160): string {
+    const clean = text.trim();
+    return clean.length > max ? `${clean.slice(0, max - 1).trimEnd()}…` : clean;
+}
+
+function isAbsoluteHttpUrl(url?: string | null): url is string {
+    return !!url && /^https?:\/\//i.test(url);
+}
 
 type CompanyData = {
     id: string;
@@ -231,8 +241,19 @@ export default function CompanyDetailPage() {
         }
     };
 
+    const seoDescription = company.description
+        ? truncate(company.description.replace(/<[^>]*>/g, " ").replace(/\s+/g, " "))
+        : `Jobs and opportunities at ${company.name} for students and new grads.`;
+    const seoImage = isAbsoluteHttpUrl(company.logo) ? company.logo : undefined;
+
     return (
         <div className="min-h-screen bg-brand-cream">
+            <Seo
+                title={company.name}
+                description={seoDescription}
+                path={`/companies/${slug}`}
+                image={seoImage}
+            />
             {/* Main Content */}
             <div className="mx-auto max-w-7xl px-6 py-12">
                 <div className="grid gap-12 lg:grid-cols-[240px_1fr_260px]">

@@ -1990,7 +1990,9 @@ router.post("/:eventId/import-attendees", async (req: Request, res: Response) =>
 });
 
 const createAttendeeSchema = z.object({
-  userId: z.string(),
+  // Optional: guest (unauthenticated) RSVPs have no userId — see
+  // POST /:eventId/join. Email (from formAnswers) is required for guests.
+  userId: z.string().optional(),
   // Email moved to formAnswers — optional at top-level
   email: z.string().email().optional(),
   firstName: z.string().min(1).optional(),
@@ -2028,335 +2030,19 @@ const getAnswerByLabels = (
 
 /**
  * POST /events/:eventId/join
- * Join an event and sync the event onto the user's profile
- * Requires the user to be logged in and to provide a role (mentor, judge, participant)
+ * Join an event and sync the event onto the user's profile.
+ * Accepts guest (unauthenticated) RSVPs on the default form path — the
+ * email captured in the form's answers is used as the guest identity for
+ * dedupe instead of a userId. Logged-in users still get the event synced
+ * onto their profile as before.
  */
 router.post("/:eventId/join", async (req: Request, res: Response) => {
   try {
     const { eventId } = req.params;
-    const userId = requireUserId(req, res);
-    if (!userId) return null;
+    const userId = req.user?.uid || null;
 
     const eventContext = await loadEventContext(res, eventId);
     if (!eventContext) return null;
-
-    const { resolvedEventId, eventData } = eventContext;
-
-    if (eventData.status && eventData.status !== "published") {
-      return res.status(400).json({ error: "Event is not open for joining" });
-    }
-
-    // Accept role, optional account info, optional form metadata and answers
-    const joinSchema = z.object({
-      role: z.string().min(1).max(50),
-      answers: z
-        .array(
-          z.object({
-            questionId: z.string().optional(),
-            label: z.string().min(1),
-            value: z.any(),
-          })
-        )
-        .optional(),
-    });
-
-    const validationResult = joinSchema.safeParse(req.body);
-    if (!validationResult.success) {
-      return res.status(400).json({
-        error: "Invalid request data",
-        details: validationResult.error.errors,
-      });
-    }
-
-    const { role, answers } = validationResult.data;
-    const normalizedAnswers = Array.isArray(answers)
-      ? answers.map((a: any) => ({
-        questionId: a.questionId || null,
-        label: a.label,
-        value: a.value,
-      }))
-      : [];
-
-    if (eventData.communityId) {
-      const communityContext = await requireCommunityContext(
-        res,
-        eventData,
-        "Event is not associated with a community"
-      );
-      if (!communityContext) return null;
-    }
-
-    const eventRef = db.collection("events").doc(resolvedEventId);
-    const profileRef = db.collection("profiles").doc(userId);
-
-    const result = await db.runTransaction(async (transaction) => {
-      const [freshEventDoc, profileDoc] = await Promise.all([
-        transaction.get(eventRef),
-        transaction.get(profileRef),
-      ]);
-
-      if (!freshEventDoc.exists) {
-        return res.status(400).json({ error: "Event not found" });
-      }
-
-      const freshEventData = freshEventDoc.data();
-      if (!freshEventData) {
-        return res.status(400).json({ error: "Event data not found" });
-      }
-
-      const profileEvents = profileDoc.exists && Array.isArray(profileDoc.data()?.events)
-        ? profileDoc.data()?.events
-        : [];
-      const profileData = profileDoc.exists ? (profileDoc.data() || {}) : {};
-
-      const extractedEmail = getAnswerByLabels(normalizedAnswers, ["email", "email address"]) || profileData.email || "";
-      const extractedFirstName = getAnswerByLabels(normalizedAnswers, ["first name", "firstname", "first_name"]) || profileData.firstName || "";
-      const extractedLastName = getAnswerByLabels(normalizedAnswers, ["last name", "lastname", "last_name"]) || profileData.lastName || "";
-      const requiresApproval = Boolean(freshEventData.requiresApproval);
-      const initialStatus = requiresApproval ? "pending" : "confirmed";
-
-      const registrationsRef = eventRef.collection("registrations");
-      const existingRegistrationQuery = registrationsRef
-        .where("userId", "==", userId)
-        .where("role", "==", role)
-        .limit(1);
-      const existingRegistrationSnapshot = await transaction.get(existingRegistrationQuery);
-
-      if (!existingRegistrationSnapshot.empty) {
-        return res.status(400).json({ error: "Already joined this event with this role" });
-      }
-
-      // Create attendee entry with only technical fields; personal PII is stored in formAnswers
-      const attendeeEntry = createAttendeeSchema.parse({
-        userId,
-        email: extractedEmail || undefined,
-        firstName: extractedFirstName || undefined,
-        lastName: extractedLastName || undefined,
-        role,
-        status: initialStatus,
-      });
-
-      const registrationRef = registrationsRef.doc();
-
-      transaction.set(registrationRef, {
-        ...attendeeEntry,
-        eventId: resolvedEventId,
-        registeredAt: new Date(),
-        registeredBy: userId,
-        source: normalizedAnswers.length > 0 ? "form" : "self-join",
-        communityId: eventData.communityId || null,
-        formId: null,
-        formLabel: null,
-        formAnswers: normalizedAnswers,
-        approvedAt: initialStatus === "confirmed" ? new Date() : null,
-      });
-
-      if (existingRegistrationSnapshot.empty && initialStatus === "confirmed") {
-        transaction.set(
-          profileRef,
-          {
-            events: [...profileEvents, resolvedEventId],
-            updatedAt: new Date(),
-          },
-          { merge: true }
-        );
-      }
-
-      return {
-        attendee: attendeeEntry,
-        registrations: 1,
-        joined: true,
-        status: initialStatus,
-      };
-    });
-
-    if ("attendee" in result) {
-      return res.status(200).json({
-        success: true,
-        message: result.status === "pending"
-          ? "Request submitted for organizer approval"
-          : "Successfully joined event",
-        attendee: result.attendee,
-        registrations: result.registrations,
-        status: result.status,
-      });
-    }
-    else{
-      return res.status(500).json({
-        error: "Failed to join event",
-      });
-    }
-  } catch (error: any) {
-    console.error("Error joining event:", error);
-
-    if (error.status) {
-      return res.status(error.status).json({
-        error: error.error,
-      });
-    }
-
-    return res.status(500).json({
-      error: "Failed to join event",
-      details: error.message,
-    });
-  }
-});
-
-/**
- * POST /events/:eventId/join
- * Join an event and sync the event onto the user's profile
- * Requires the user to be logged in and to provide a role (mentor, judge, participant)
- */
-router.post("/:eventId/join", async (req: Request, res: Response) => {
-  try {
-    const { eventId } = req.params;
-    const userId = req.user?.uid;
-    if (!userId) return null;
-
-    const eventContext = await loadEventContext(res, eventId);
-    if (!eventContext) return null;
-
-    const { resolvedEventId, eventData } = eventContext;
-
-    if (eventData.status && eventData.status !== "published") {
-      return res.status(400).json({ error: "Event is not open for joining" });
-    }
-
-    const validationResult = z.object({
-      role: z.string().min(1).max(50),
-    }).safeParse(req.body);
-
-    if (!validationResult.success) {
-      return res.status(400).json({
-        error: "Invalid request data",
-        details: validationResult.error.errors,
-      });
-    }
-
-    const { role } = validationResult.data;
-
-    if (eventData.communityId) {
-      const communityContext = await requireCommunityContext(
-        res,
-        eventData,
-        "Event is not associated with a community"
-      );
-      if (!communityContext) return null;
-    }
-
-    const eventRef = db.collection("events").doc(resolvedEventId);
-    const profileRef = db.collection("profiles").doc(userId);
-
-    const result = await db.runTransaction(async (transaction) => {
-      const [freshEventDoc, profileDoc] = await Promise.all([
-        transaction.get(eventRef),
-        transaction.get(profileRef),
-      ]);
-
-      if (!freshEventDoc.exists) {
-        return res.status(400).json({ error: "Event not found" });
-      }
-
-      const freshEventData = freshEventDoc.data();
-      if (!freshEventData) {
-        return res.status(400).json({ error: "Event data not found" });
-      }
-
-      const profileEvents = profileDoc.exists && Array.isArray(profileDoc.data()?.events)
-        ? profileDoc.data()?.events
-        : [];
-
-      const registrationsRef = eventRef.collection("registrations");
-      const existingRegistrationQuery = registrationsRef
-        .where("userId", "==", userId)
-        .where("role", "==", role)
-        .limit(1);
-      const existingRegistrationSnapshot = await transaction.get(existingRegistrationQuery);
-
-      if (!existingRegistrationSnapshot.empty) {
-        return res.status(400).json({ error: "Already joined this event with this role" });
-      }
-
-      const attendeeEntry = createAttendeeSchema.parse({
-        userId,
-        email: profileDoc.data()?.email || "",
-        firstName: profileDoc.data()?.firstName,
-        lastName: profileDoc.data()?.lastName,
-        role,
-        status: "confirmed",
-      });
-
-      const registrationRef = registrationsRef.doc();
-
-      transaction.set(registrationRef, {
-        ...attendeeEntry,
-        eventId: resolvedEventId,
-        registeredAt: new Date(),
-        registeredBy: userId,
-        source: "self-join",
-        communityId: eventData.communityId,
-      });
-
-      if (existingRegistrationSnapshot.empty) {
-        transaction.set(
-          profileRef,
-          {
-            events: [...profileEvents, resolvedEventId],
-            updatedAt: new Date(),
-          },
-          { merge: true }
-        );
-      }
-
-      return {
-        attendee: attendeeEntry,
-        registrations: 1,
-        joined: true,
-      };
-    });
-
-    if ("attendee" in result) {
-      return res.status(200).json({
-        success: true,
-        message: "Successfully joined event",
-        attendee: result.attendee,
-        registrations: result.registrations,
-      });
-    }
-    else{
-      return res.status(500).json({
-        error: "Failed to join event",
-      });
-    }
-  } catch (error: any) {
-    console.error("Error joining event:", error);
-
-    if (error.status) {
-      return res.status(error.status).json({
-        error: error.error,
-      });
-    }
-
-    return res.status(500).json({
-      error: "Failed to join event",
-      details: error.message,
-    });
-  }
-});
-
-/**
- * POST /events/:eventId/join
- * Join an event and sync the event onto the user's profile
- * Requires the user to be logged in and to provide a role (mentor, judge, participant)
- */
-router.post("/:eventId/join", async (req: Request, res: Response) => {
-  try {
-    const { eventId } = req.params;
-    const userId = requireUserId(req, res);
-    if (!userId) return;
-
-    const eventContext = await loadEventContext(res, eventId);
-    if (!eventContext) return;
 
     const { resolvedEventId, eventData } = eventContext;
 
@@ -2396,29 +2082,38 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
       }))
       : [];
 
+    // Guests (no auth) must provide an email via the form answers — there is
+    // no profile to fall back on and no account to key the registration by.
+    const answersEmail = getAnswerByLabels(normalizedAnswers, ["email", "email address"]);
+    if (!userId && !answersEmail) {
+      return res.status(400).json({ error: "Email is required to RSVP" });
+    }
+
     if (eventData.communityId) {
       const communityContext = await requireCommunityContext(
         res,
         eventData,
         "Event is not associated with a community"
       );
-      if (!communityContext) return;
+      if (!communityContext) return null;
     }
 
     const eventRef = db.collection("events").doc(resolvedEventId);
-    const profileRef = db.collection("profiles").doc(userId);
+    const profileRef = userId ? db.collection("profiles").doc(userId) : null;
 
-    // Validate and prepare team data if teamId is provided
+    // Validate and prepare team data if teamId is provided. Team membership
+    // is keyed by userId, so guest (unauthenticated) RSVPs can't join a team —
+    // teamId is silently ignored for guests rather than rejecting the RSVP.
     let teamJoinStatus: "pending" | "already-member" | null = null;
     let teamDataForJoin: FirebaseFirestore.DocumentData | null = null;
-    if (teamId) {
+    if (teamId && userId) {
       const teamRef = db.collection("events").doc(resolvedEventId).collection("teams").doc(teamId);
       const teamDoc = await teamRef.get();
-      
+
       if (!teamDoc.exists) {
         return res.status(404).json({ error: "Team not found" });
       }
-      
+
       const teamData = teamDoc.data()!;
       teamDataForJoin = teamData;
       const members = normalizeStringArray(teamData.members);
@@ -2427,20 +2122,19 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
       if (members.includes(userId)) {
         teamJoinStatus = "already-member";
       } else if (members.length >= Number(teamData.maxSize || 0)) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: "Team is at maximum capacity",
           message: `This team can have maximum ${teamData.maxSize} members`,
         });
       } else {
         teamJoinStatus = "pending";
       }
-      
     }
 
     const result = await db.runTransaction(async (transaction) => {
       const [freshEventDoc, profileDoc] = await Promise.all([
         transaction.get(eventRef),
-        transaction.get(profileRef),
+        profileRef ? transaction.get(profileRef) : Promise.resolve(null),
       ]);
 
       if (!freshEventDoc.exists) {
@@ -2452,22 +2146,21 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
         return res.status(400).json({ error: "Event data not found" });
       }
 
-      const profileEvents = profileDoc.exists && Array.isArray(profileDoc.data()?.events)
+      const profileEvents = profileDoc?.exists && Array.isArray(profileDoc.data()?.events)
         ? profileDoc.data()?.events
         : [];
-      const profileData = profileDoc.exists ? (profileDoc.data() || {}) : {};
+      const profileData = profileDoc?.exists ? (profileDoc.data() || {}) : {};
 
-      const extractedEmail = getAnswerByLabels(normalizedAnswers, ["email", "email address"]) || profileData.email || "";
+      const extractedEmail = (answersEmail || profileData.email || "").trim().toLowerCase();
       const extractedFirstName = getAnswerByLabels(normalizedAnswers, ["first name", "firstname", "first_name"]) || profileData.firstName || "";
       const extractedLastName = getAnswerByLabels(normalizedAnswers, ["last name", "lastname", "last_name"]) || profileData.lastName || "";
       const requiresApproval = Boolean(freshEventData.requiresApproval);
       const initialStatus = requiresApproval ? "pending" : "confirmed";
 
       const registrationsRef = eventRef.collection("registrations");
-      const existingRegistrationQuery = registrationsRef
-        .where("userId", "==", userId)
-        .where("role", "==", role)
-        .limit(1);
+      const existingRegistrationQuery = userId
+        ? registrationsRef.where("userId", "==", userId).where("role", "==", role).limit(1)
+        : registrationsRef.where("email", "==", extractedEmail).where("role", "==", role).limit(1);
       const existingRegistrationSnapshot = await transaction.get(existingRegistrationQuery);
 
       if (!existingRegistrationSnapshot.empty) {
@@ -2476,7 +2169,7 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
 
       // Create attendee entry with only technical fields; personal PII is stored in formAnswers
       const attendeeEntry = createAttendeeSchema.parse({
-        userId,
+        userId: userId || undefined,
         email: extractedEmail || undefined,
         firstName: extractedFirstName || undefined,
         lastName: extractedLastName || undefined,
@@ -2499,7 +2192,7 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
         approvedAt: initialStatus === "confirmed" ? new Date() : null,
       });
 
-      if (existingRegistrationSnapshot.empty && initialStatus === "confirmed") {
+      if (profileRef && existingRegistrationSnapshot.empty && initialStatus === "confirmed") {
         transaction.set(
           profileRef,
           {
@@ -2519,15 +2212,15 @@ router.post("/:eventId/join", async (req: Request, res: Response) => {
     });
 
     // Add user to team request workflow only when they are not already a member.
-    if (teamId && "attendee" in result && teamJoinStatus === "pending" && teamDataForJoin) {
+    if (userId && teamId && "attendee" in result && teamJoinStatus === "pending" && teamDataForJoin) {
       try {
         const teamRef = db.collection("events").doc(resolvedEventId).collection("teams").doc(teamId);
         const teamDoc = await teamRef.get();
-        
+
         if (teamDoc.exists) {
           const teamData = teamDoc.data()!;
           const members = normalizeStringArray(teamData.members);
-          
+
           // Add user to team if not already a member
           if (!members.includes(userId)) {
             const requestRef = teamRef.collection("requests").doc();

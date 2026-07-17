@@ -3,6 +3,7 @@ import { Header } from "@/components/landing/header";
 import { Target, Eye, Users, Rocket, Heart, TrendingUp, Globe } from "lucide-react";
 import { SiYoutube, SiInstagram, SiDiscord, SiGithub } from "react-icons/si";
 import { FaLinkedinIn } from "react-icons/fa";
+import { Seo } from "@/components/seo";
 
 interface SocialLink {
   type: "linkedin" | "instagram" | "portfolio" | "github" | "twitter";
@@ -72,6 +73,12 @@ const getSocialIcon = (type: SocialLink["type"]) => {
 export default function AboutPage() {
   return (
     <div>
+      <Seo
+        title="About Tail'ed — a Non-Profit Built by Students"
+        noSuffix
+        description="Tail'ed is a non-profit platform built by students, for students: thousands of job listings, hackathons, and communities. Free forever."
+        path="/about"
+      />
       <main className="w-full">
         {/* Hero Section */}
         <section className="pt-32 pb-16 md:pt-40 md:pb-24 px-4 md:px-6 max-w-7xl mx-auto flex flex-col items-center text-center relative isolate">

@@ -1,5 +1,5 @@
-import { useEffect, useState, useMemo, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState, useMemo, useRef, Fragment } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -18,10 +18,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-    dedupeExternalJobs,
-    fetchTailedGithubJobs,
-} from "@/lib/external-jobs";
+import { fetchExternalJobs } from "@/lib/external-jobs";
 import { apiFetch } from "@/lib/fetch";
 import { type ExternalJob } from "@/types/jobs";
 import {
@@ -32,12 +29,13 @@ import {
     normalizeSearchText,
     type NormalizedJobLocation,
 } from "@/lib/location-normalization";
-import { Building2, MapPin, Calendar, ExternalLink, Star } from "lucide-react";
-
-const INTERNSHIPS_URL =
-    "https://raw.githubusercontent.com/tailed-community/tech-internships-2025-2026/refs/heads/main/data/current.json";
-const NEW_GRADS_URL =
-    "https://raw.githubusercontent.com/tailed-community/tech-new-grads-2025-2026/refs/heads/main/data/current.json";
+import { Building2, MapPin, Calendar, ExternalLink, Star, Bookmark } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useSavedJobs } from "@/lib/saved-jobs";
+import { JobAlertSignup, isJobAlertSubscribed } from "@/components/capture/job-alert-signup";
+import { FloatingCaptureCard } from "@/components/capture/floating-capture-card";
+import { trackEvent } from "@/lib/analytics";
+import { getStorageFlag, setStorageFlag } from "@/lib/storage-flags";
 
 type FeaturedJob = {
     id: string;
@@ -68,7 +66,10 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
     const [externalJobs, setExternalJobs] = useState<ExternalJob[]>([]);
     const [loading, setLoading] = useState(true);
     const [appliedJobIds, setAppliedJobIds] = useState<Set<string>>(new Set());
-    const [searchTerm, setSearchTerm] = useState("");
+    const [searchParams, setSearchParams] = useSearchParams();
+    const [searchTerm, setSearchTerm] = useState(
+        () => searchParams.get("search") || ""
+    );
     const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
     const [selectedCountry, setSelectedCountry] = useState<string>("all");
     const [selectedState, setSelectedState] = useState<string>("all");
@@ -77,13 +78,52 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
     const [selectedWorkModes, setSelectedWorkModes] = useState<Array<"onsite" | "hybrid" | "remote">>([]);
     const [categories, setCategories] = useState<string[]>([]);
     const [visibleCount, setVisibleCount] = useState(20);
+    const [showSavedOnly, setShowSavedOnly] = useState(false);
+    const [showSavePrompt, setShowSavePrompt] = useState(false);
     const observerRef = useRef<IntersectionObserver | null>(null);
     const currentObservedRef = useRef<Element | null>(null);
     const navigate = useNavigate();
+    const { savedIds, isSaved, toggleSaved } = useSavedJobs();
+
+    useEffect(() => {
+        if (!isPreview) trackEvent("jobs_view");
+    }, [isPreview]);
+
+    const handleToggleSaved = (e: React.MouseEvent, jobId: string) => {
+        e.stopPropagation();
+        const { saved, count } = toggleSaved(jobId);
+        if (!saved) return;
+
+        trackEvent("job_saved", { jobId });
+
+        if (count === 2 && !isJobAlertSubscribed()) {
+            const promptAlreadyShown = getStorageFlag("local", "saveJobPromptShown");
+            if (!promptAlreadyShown) {
+                setShowSavePrompt(true);
+                setStorageFlag("local", "saveJobPromptShown");
+            }
+        }
+    };
 
     const arraysHaveSameValues = <T,>(left: T[], right: T[]): boolean => {
         if (left.length !== right.length) return false;
         return left.every((value, index) => value === right[index]);
+    };
+
+    const handleSearchChange = (value: string) => {
+        setSearchTerm(value);
+        setSearchParams(
+            (prev) => {
+                const next = new URLSearchParams(prev);
+                if (value) {
+                    next.set("search", value);
+                } else {
+                    next.delete("search");
+                }
+                return next;
+            },
+            { replace: true }
+        );
     };
 
     useEffect(() => {
@@ -116,27 +156,23 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
             const results = await Promise.allSettled([
                 apiFetch("/public/jobs", {}, true),
                 apiFetch("/job/applied-jobs"),
-                fetch(INTERNSHIPS_URL),
-                fetch(NEW_GRADS_URL),
-                fetchTailedGithubJobs(),
+                fetchExternalJobs(),
             ]);
 
             const [
                 jobsResult,
                 appliedJobsResult,
-                internshipsResult,
-                newGradsResult,
-                tailedGithubJobsResult,
+                externalJobsResult,
             ] = results;
 
             let featuredJobsData: FeaturedJob[] = [];
-            if (jobsResult.status === "fulfilled") {
+            if (jobsResult.status === "fulfilled" && jobsResult.value.ok) {
                 const jobs = await jobsResult.value.json();
-                featuredJobsData = jobs.jobs.map((job: any) => ({
+                featuredJobsData = (jobs.jobs || []).map((job: any) => ({
                     ...job,
                     featured: true,
                 }));
-            } else {
+            } else if (jobsResult.status === "rejected") {
                 console.error(
                     "Failed to fetch featured jobs:",
                     jobsResult.reason
@@ -160,48 +196,14 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
             }
 
             let externalJobsData: ExternalJob[] = [];
-            if (internshipsResult.status === "fulfilled") {
-                const internships: ExternalJob[] =
-                    await internshipsResult.value.json();
-                externalJobsData.push(
-                    ...internships.map((job) => ({
-                        ...job,
-                        type: "internship" as const,
-                    }))
-                );
+            if (externalJobsResult.status === "fulfilled") {
+                externalJobsData = externalJobsResult.value;
             } else {
                 console.error(
-                    "Failed to fetch internships:",
-                    internshipsResult.reason
+                    "Failed to fetch external jobs:",
+                    externalJobsResult.reason
                 );
             }
-
-            if (newGradsResult.status === "fulfilled") {
-                const newGrads: ExternalJob[] =
-                    await newGradsResult.value.json();
-                externalJobsData.push(
-                    ...newGrads.map((job) => ({
-                        ...job,
-                        type: "new-grad" as const,
-                    }))
-                );
-            } else {
-                console.error(
-                    "Failed to fetch new grads:",
-                    newGradsResult.reason
-                );
-            }
-
-            if (tailedGithubJobsResult.status === "fulfilled") {
-                externalJobsData.push(...tailedGithubJobsResult.value);
-            } else {
-                console.error(
-                    "Failed to fetch Tail'ed GitHub jobs:",
-                    tailedGithubJobsResult.reason
-                );
-            }
-
-            externalJobsData = dedupeExternalJobs(externalJobsData);
 
             setFeaturedJobs(featuredJobsData);
             setAppliedJobIds(appliedJobIdsData);
@@ -353,12 +355,25 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
         return normalizeSearchText(fields.join(" "));
     };
 
+    // Precomputed per-job searchable text, keyed only on allJobs (not on the
+    // active filters). matchJobWithFilters is invoked once per job per facet
+    // (7 passes: filteredJobs + 6 facet-count scans) on every keystroke, so
+    // recomputing getSearchableText from scratch each time was O(jobs × 7)
+    // string-building work per keystroke across ~11k jobs.
+    const searchableTextByJob = useMemo(() => {
+        const output = new Map<string, string>();
+        allJobs.forEach((job) => {
+            output.set(job.id, getSearchableText(job));
+        });
+        return output;
+    }, [allJobs, normalizedLocationsByJob]);
+
     const matchJobWithFilters = (
         job: UnifiedJob,
         filters: ActiveFilters,
         ignoreFacet?: "types" | "categories" | "workModes" | "countries" | "states" | "cities"
     ): boolean => {
-        const searchableText = getSearchableText(job);
+        const searchableText = searchableTextByJob.get(job.id) || "";
         const matchesSearch = filters.search.length === 0 || searchableText.includes(filters.search);
         if (!matchesSearch) return false;
 
@@ -512,8 +527,18 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
     const categoryCounts = useMemo(() => computeFacetCounts("categories"), [allJobs, activeFilters, normalizedLocationsByJob]);
     const workModeCounts = useMemo(() => computeFacetCounts("workModes"), [allJobs, activeFilters, normalizedLocationsByJob]);
     const countryCounts = useMemo(() => computeFacetCounts("countries"), [allJobs, activeFilters, normalizedLocationsByJob]);
-    const stateCounts = useMemo(() => computeFacetCounts("states"), [allJobs, activeFilters, normalizedLocationsByJob, selectedCountry]);
-    const cityCounts = useMemo(() => computeFacetCounts("cities"), [allJobs, activeFilters, normalizedLocationsByJob, selectedCountry, selectedState]);
+    // computeFacetCounts("states"/"cities") only ever adds values when
+    // selectedCountry !== "all" (see the facet branches above), so the result
+    // is always an empty Map when no country is selected — skip the full
+    // allJobs scan in that case rather than doing the work to get nothing.
+    const stateCounts = useMemo(
+        () => (selectedCountry === "all" ? new Map<string, number>() : computeFacetCounts("states")),
+        [allJobs, activeFilters, normalizedLocationsByJob, selectedCountry]
+    );
+    const cityCounts = useMemo(
+        () => (selectedCountry === "all" ? new Map<string, number>() : computeFacetCounts("cities")),
+        [allJobs, activeFilters, normalizedLocationsByJob, selectedCountry, selectedState]
+    );
 
     const sortByCountThenLabel = (
         items: Array<{ value: string; label: string; count: number }>
@@ -600,6 +625,7 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
 
     const filteredJobs = useMemo(() => {
         let filtered = allJobs.filter((job) => matchJobWithFilters(job, activeFilters));
+        if (showSavedOnly) filtered = filtered.filter((job) => savedIds.includes(job.id));
         if (limit) filtered = filtered.slice(0, limit);
         return filtered;
     }, [
@@ -607,6 +633,8 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
         activeFilters,
         limit,
         normalizedLocationsByJob,
+        showSavedOnly,
+        savedIds,
     ]);
 
     useEffect(() => {
@@ -656,15 +684,35 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
         });
     }, [availableWorkModeOptions]);
 
+    // Resets the "load more" window back to the first page whenever the
+    // filtered set changes. The alert banner's row-index anchor
+    // (alertBannerRowIndex below) assumes visibleCount has just been reset to
+    // 20 on every filter/search change — don't change this without checking
+    // that coupling.
     useEffect(() => {
         setVisibleCount(20);
     }, [filteredJobs]);
+
+    const searchActive = normalizedSearch.length > 0;
+    // Slim job-alert banner: shown once a search is active or the visitor has
+    // scrolled past the first page of results; suppressed once subscribed.
+    const showAlertBanner = !isJobAlertSubscribed() && (searchActive || visibleCount > 20);
+    const displayedJobCount = Math.min(filteredJobs.length, visibleCount);
+    // When a search is active and it returns a short (but non-zero) result
+    // set, there aren't 6 rows to anchor the banner after — show it right
+    // after the last result row instead so this high-intent moment still
+    // gets a capture surface. Otherwise keep the existing row-6 anchor.
+    const showShortSearchBanner = searchActive && filteredJobs.length > 0 && filteredJobs.length <= 6;
+    // Row index 5 (i.e. after the 6th result) assumes visibleCount was just
+    // reset to 20 by the effect above whenever filteredJobs changes — don't
+    // change one without checking the other.
+    const alertBannerRowIndex = showShortSearchBanner ? displayedJobCount - 1 : 5;
 
     const handleJobClick = (job: UnifiedJob) => {
         if (job.featured) {
             navigate(`/jobs/${job.id}/`);
         } else {
-            window.open(job.url, "_blank");
+            navigate(`/jobs/e/${encodeURIComponent(job.id)}`);
         }
     };
 
@@ -696,7 +744,7 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
                         <Input
                             placeholder="Search all fields..."
                             value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
+                            onChange={(e) => handleSearchChange(e.target.value)}
                             className="w-64"
                         />
                         <DropdownMenu>
@@ -730,37 +778,39 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
                                 ))}
                             </DropdownMenuContent>
                         </DropdownMenu>
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button variant="outline" className="w-full sm:w-52 justify-start font-normal">
-                                    {selectedCategories.length === 0
-                                        ? "All Categories"
-                                        : selectedCategories.length === 1
-                                          ? "1 category selected"
-                                          : `${selectedCategories.length} categories selected`}
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent className="w-72 max-h-72 overflow-y-auto">
-                                <DropdownMenuItem onClick={() => setSelectedCategories([])}>
-                                    Clear category filters
-                                </DropdownMenuItem>
-                                {availableCategoryOptions.map((category) => (
-                                    <DropdownMenuCheckboxItem
-                                        key={category.value}
-                                        checked={selectedCategories.includes(category.value)}
-                                        onCheckedChange={(checked) => {
-                                            setSelectedCategories((prev) =>
-                                                checked
-                                                    ? [...prev, category.value]
-                                                    : prev.filter((value) => value !== category.value)
-                                            );
-                                        }}
-                                    >
-                                        {category.label} ({category.count})
-                                    </DropdownMenuCheckboxItem>
-                                ))}
-                            </DropdownMenuContent>
-                        </DropdownMenu>
+                        {categories.length > 0 && (
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="outline" className="w-full sm:w-52 justify-start font-normal">
+                                        {selectedCategories.length === 0
+                                            ? "All Categories"
+                                            : selectedCategories.length === 1
+                                              ? "1 category selected"
+                                              : `${selectedCategories.length} categories selected`}
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent className="w-72 max-h-72 overflow-y-auto">
+                                    <DropdownMenuItem onClick={() => setSelectedCategories([])}>
+                                        Clear category filters
+                                    </DropdownMenuItem>
+                                    {availableCategoryOptions.map((category) => (
+                                        <DropdownMenuCheckboxItem
+                                            key={category.value}
+                                            checked={selectedCategories.includes(category.value)}
+                                            onCheckedChange={(checked) => {
+                                                setSelectedCategories((prev) =>
+                                                    checked
+                                                        ? [...prev, category.value]
+                                                        : prev.filter((value) => value !== category.value)
+                                                );
+                                            }}
+                                        >
+                                            {category.label} ({category.count})
+                                        </DropdownMenuCheckboxItem>
+                                    ))}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        )}
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button variant="outline" className="w-full sm:w-44 justify-start font-normal">
@@ -887,6 +937,14 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
                                 Clear location filters
                             </Button>
                         )}
+                        <Button
+                            variant={showSavedOnly ? "default" : "outline"}
+                            className="w-full sm:w-auto"
+                            onClick={() => setShowSavedOnly((prev) => !prev)}
+                        >
+                            <Bookmark className={cn("h-4 w-4", showSavedOnly && "fill-current")} />
+                            Saved{savedIds.length > 0 ? ` (${savedIds.length})` : ""}
+                        </Button>
                     </div>
                 </div>
             )}
@@ -901,8 +959,8 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
 
             <div className={isPreview ? "flex flex-col gap-4" : "flex flex-col gap-6"}>
                 {filteredJobs.slice(0, visibleCount).map((job, index) => (
+                    <Fragment key={job.id}>
                     <Card
-                        key={job.id}
                         className={
                             isPreview
                                 ? "hover:shadow-md transition-shadow cursor-pointer"
@@ -933,7 +991,20 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
                                             : job.company_name}
                                     </CardTitle>
                                 </div>
-                                <div className="flex gap-2">
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={(e) => handleToggleSaved(e, job.id)}
+                                        aria-label={isSaved(job.id) ? "Remove from saved jobs" : "Save job"}
+                                        className="p-1.5 rounded-md hover:bg-muted transition-colors"
+                                    >
+                                        <Bookmark
+                                            className={cn(
+                                                "h-4 w-4",
+                                                isSaved(job.id) ? "fill-current text-primary" : "text-muted-foreground"
+                                            )}
+                                        />
+                                    </button>
                                     {job.featured && (
                                         <Badge variant="default">
                                             <Star className="h-3 w-3 mr-1" />
@@ -1002,22 +1073,79 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
                                 </Badge>
                             )}
                             {!job.featured && (
-                                <div className="mt-4 text-primary text-sm">
+                                <div
+                                    className="mt-4 inline-flex items-center gap-1 text-primary text-sm hover:underline"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        trackEvent("job_apply_click", { jobId: job.id, source: "board" });
+                                        window.open(
+                                            job.url,
+                                            "_blank",
+                                            "noopener"
+                                        );
+                                    }}
+                                >
                                     Apply externally{" "}
                                     <ExternalLink className="h-4 w-4 inline" />
                                 </div>
                             )}
                         </CardContent>
                     </Card>
+                    {!isPreview && showAlertBanner && index === alertBannerRowIndex && (
+                        <div className="rounded-lg border bg-muted/40 p-4 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+                            <p className="text-sm font-medium">
+                                Get new {searchActive ? `"${searchTerm.trim()}"` : ""} roles in your inbox every morning
+                            </p>
+                            <JobAlertSignup
+                                source="search"
+                                variant="inline"
+                                query={searchActive ? searchTerm.trim() : undefined}
+                                jobType={
+                                    selectedTypes.length === 1 && selectedTypes[0] !== "featured"
+                                        ? (selectedTypes[0] as "internship" | "new-grad")
+                                        : undefined
+                                }
+                                locations={selectedCities.length > 0 ? selectedCities : undefined}
+                                className="sm:max-w-xs"
+                            />
+                        </div>
+                    )}
+                    </Fragment>
                 ))}
             </div>
 
             {filteredJobs.length === 0 && (
-                <div className="text-center py-12">
+                <div className="text-center py-12 space-y-4">
                     <p className="text-muted-foreground">
                         No jobs found matching your criteria.
                     </p>
+                    {!isPreview && !isJobAlertSubscribed() && (
+                        <div className="max-w-sm mx-auto text-left">
+                            <p className="text-sm font-medium mb-2 text-center">
+                                Get notified when new roles matching your search go live
+                            </p>
+                            <JobAlertSignup
+                                source="search"
+                                variant="inline"
+                                query={searchActive ? searchTerm.trim() : undefined}
+                            />
+                        </div>
+                    )}
                 </div>
+            )}
+
+            {showSavePrompt && !showAlertBanner && (
+                <FloatingCaptureCard
+                    icon={Bookmark}
+                    title="Want your saved jobs + fresh matches in your inbox?"
+                    onDismiss={() => setShowSavePrompt(false)}
+                >
+                    <JobAlertSignup
+                        source="save_job"
+                        variant="inline"
+                        onSubscribed={() => setShowSavePrompt(false)}
+                    />
+                </FloatingCaptureCard>
             )}
         </div>
     );

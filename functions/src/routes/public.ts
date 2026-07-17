@@ -10,29 +10,41 @@ const router = Router();
  */
 router.get("/featured", async (req: Request, res: Response) => {
   try {
-    // Get featured/upcoming event (next published event)
+    // Get featured/upcoming event (next published event). Pull a small batch
+    // (rather than just the single soonest one) so we can prefer the first
+    // one that actually has a hero image — an imageless event fails the
+    // frontend's featurability gate and would otherwise empty that column.
     const eventsSnapshot = await db
       .collection("events")
       .where("status", "==", "published")
       .where("startDate", ">=", DateTime.now().toISODate())
       .orderBy("startDate", "asc")
-      .limit(1)
+      .limit(10)
       .get();
 
-    const featuredEvent = eventsSnapshot.empty
-      ? null
-      : { id: eventsSnapshot.docs[0].id, ...eventsSnapshot.docs[0].data() };
+    const eventDocs = eventsSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as any));
+    const featuredEvent =
+      eventDocs.find((evt) => Boolean(evt.heroImage)) ?? eventDocs[0] ?? null;
 
-    // Get top community (by member count)
+    // Get top communities (by member count). Pull a small batch and prefer
+    // the first one that passes the frontend's featurability gate (enough
+    // members, has a logo/banner, has a description) rather than blindly
+    // returning whichever has the most members — a gate-failing community
+    // would otherwise empty that column.
     const communitiesSnapshot = await db
       .collection("communities")
       .orderBy("memberCount", "desc")
-      .limit(1)
+      .limit(10)
       .get();
 
-    const topCommunity = communitiesSnapshot.empty
-      ? null
-      : { id: communitiesSnapshot.docs[0].id, ...communitiesSnapshot.docs[0].data() };
+    const communityDocs = communitiesSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as any));
+    const topCommunity =
+      communityDocs.find(
+        (c) =>
+          (c.memberCount ?? 0) >= 25 &&
+          Boolean(c.logo || c.banner) &&
+          Boolean(c.shortDescription && String(c.shortDescription).trim().length > 0)
+      ) ?? communityDocs[0] ?? null;
 
     return res.status(200).json({
       success: true,

@@ -2,6 +2,7 @@ import express from "express";
 const router = express.Router();
 
 import { db, studentAuth } from "../lib/firebase";
+import { upsertStudentUser } from "../lib/user-management";
 import { z } from "zod";
 
 export const TENANT_IDS = { STUDENTS: process.env.FB_TENANT_ID! } as const;
@@ -177,6 +178,80 @@ router.post("/create-account", async (req, res) => {
         return res.status(500).json({
             error: "Server error",
             message: "Failed to create account. Please try again later.",
+        });
+    }
+});
+
+const ensureAccountSchema = z.object({
+    firstName: z.string().trim().min(1).optional(),
+    lastName: z.string().trim().min(1).optional(),
+    photoURL: z.string().url().optional(),
+});
+
+/**
+ * POST /auth/ensure-account
+ *
+ * Auth required (relies on the `decodedToken` middleware populating `req.user`
+ * from a verified Bearer token — never trusts a body-supplied email).
+ *
+ * Ensures a `profiles/{uid}` document exists for the signed-in user. This is
+ * the single lenient profile-creation path shared by Google sign-in and
+ * email-link sign-in: if the profile is missing it is created with only the
+ * minimal fields we have; if it already exists, only currently-missing
+ * firstName/lastName/photoURL are filled in. Nothing is ever overwritten.
+ */
+router.post("/ensure-account", async (req, res) => {
+    if (!req.user?.uid) {
+        return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const email = req.user.email;
+    if (!email) {
+        return res.status(400).json({
+            error: "Missing email",
+            message: "The authenticated user has no email on their token.",
+        });
+    }
+
+    const result = ensureAccountSchema.safeParse(req.body || {});
+    if (!result.success) {
+        return res.status(400).json({
+            error: "Invalid request data",
+            details: result.error.format(),
+        });
+    }
+
+    const { firstName, lastName, photoURL } = result.data;
+
+    try {
+        const upsertResult = await upsertStudentUser({
+            uid: req.user.uid,
+            email,
+            firstName,
+            lastName,
+            photoURL,
+            // Google sign-in supplies a photoURL; email-link sign-in never does.
+            profileSource: photoURL ? "google" : "email",
+        });
+
+        if (upsertResult.error || !upsertResult.userRecord) {
+            console.error("Error ensuring account:", upsertResult.error);
+            return res.status(500).json({
+                error: "Server error",
+                message: "Failed to ensure account. Please try again later.",
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            created: upsertResult.profileCreated,
+            profileComplete: upsertResult.profileComplete,
+        });
+    } catch (error: any) {
+        console.error("Error in /auth/ensure-account:", error);
+        return res.status(500).json({
+            error: "Server error",
+            message: "Failed to ensure account. Please try again later.",
         });
     }
 });
