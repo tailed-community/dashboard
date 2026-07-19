@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { ArrowRight, Bell, Briefcase, UserRoundCog } from "lucide-react";
 import { Seo } from "@/components/seo";
+import { PreloadLink } from "@/components/preload-link";
 import { apiFetch } from "@/lib/fetch";
 import { useAuth } from "@/hooks/use-auth";
 import { useProfileSummary } from "@/hooks/use-profile-summary";
@@ -39,13 +40,13 @@ function SummaryCard({
             <div className="flex items-center gap-2 text-joy-grass">{icon}</div>
             <p className="joy-display mt-3 text-3xl font-extrabold leading-none text-joy-ink">{value}</p>
             <p className="mt-1 text-sm text-joy-ink-muted">{label}</p>
-            <Link
+            <PreloadLink
                 to={to}
                 className="mt-4 inline-flex items-center gap-1 text-sm font-bold text-joy-grass transition hover:gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60"
             >
                 {cta}
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
-            </Link>
+            </PreloadLink>
         </div>
     );
 }

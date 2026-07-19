@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { signOut } from "firebase/auth";
 import { PlaygroundButton } from "@/components/playground/playground-button";
+import { PreloadLink } from "@/components/preload-link";
 import { PlaygroundMobileNav } from "@/components/playground/playground-mobile-nav";
 import { ProfileMenu } from "@/components/playground/profile-menu";
 import { usePlaygroundRoutes } from "@/components/playground/playground-routes";
@@ -87,12 +88,12 @@ export function PlaygroundHeader({
                                 </Link>
                             );
                         })}
-                        <Link
+                        <PreloadLink
                             to={routes.spotlight}
                             className="rounded-lg px-3.5 py-2 text-sm font-bold text-joy-ink-muted transition hover:bg-joy-ink/5 hover:text-joy-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60"
                         >
                             Spotlight
-                        </Link>
+                        </PreloadLink>
                     </nav>
                 )}
 

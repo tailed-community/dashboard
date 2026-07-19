@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { PreloadLink } from "@/components/preload-link";
 import { ArrowRight, Github, Search } from "lucide-react";
 import { SiDiscord } from "react-icons/si";
 import { FcGoogle } from "react-icons/fc";
@@ -630,7 +631,7 @@ export default function HomePage() {
                     <h2 className="joy-display text-2xl font-extrabold text-joy-ink">Beyond the job board</h2>
                     <div className="mt-6 grid gap-6 sm:grid-cols-3">
                         {COMMUNITY_LINKS.map((item) => (
-                            <Link
+                            <PreloadLink
                                 key={item.to}
                                 to={item.to}
                                 className="group rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60"
@@ -643,7 +644,7 @@ export default function HomePage() {
                                     />
                                 </p>
                                 <p className="mt-1 text-sm text-joy-ink-muted">{item.blurb}</p>
-                            </Link>
+                            </PreloadLink>
                         ))}
                     </div>
                 </div>

@@ -9,6 +9,7 @@ import {
     SheetTrigger,
 } from "@/components/ui/sheet";
 import { PlaygroundButton } from "@/components/playground/playground-button";
+import { PreloadLink } from "@/components/preload-link";
 import type { PlaygroundActiveNav, PlaygroundHeaderCta } from "@/components/playground/playground-header";
 import type { PlaygroundRoutes } from "@/components/playground/playground-routes";
 import { Bell, Briefcase, Calendar, ClipboardList, FileText, LayoutGrid, LogOut, Menu as MenuIcon, Settings, Sparkles, Users } from "lucide-react";
@@ -88,10 +89,10 @@ export function PlaygroundMobileNav({
                                 </SheetClose>
                             ))}
                             <SheetClose asChild>
-                                <Link to={routes.spotlight} className={linkClass(false)}>
+                                <PreloadLink to={routes.spotlight} className={linkClass(false)}>
                                     <Sparkles className="h-4 w-4" />
                                     Spotlight
-                                </Link>
+                                </PreloadLink>
                             </SheetClose>
                         </nav>
                     )}
@@ -122,34 +123,34 @@ export function PlaygroundMobileNav({
                                     </Link>
                                 </SheetClose>
                                 <SheetClose asChild>
-                                    <Link to={routes.account} className={linkClass(false)}>
+                                    <PreloadLink to={routes.account} className={linkClass(false)}>
                                         <Settings className="h-4 w-4" />
                                         Edit profile
-                                    </Link>
+                                    </PreloadLink>
                                 </SheetClose>
                                 <SheetClose asChild>
-                                    <Link to={routes.alerts} className={linkClass(false)}>
+                                    <PreloadLink to={routes.alerts} className={linkClass(false)}>
                                         <Bell className="h-4 w-4" />
                                         My alerts
-                                    </Link>
+                                    </PreloadLink>
                                 </SheetClose>
                                 <SheetClose asChild>
-                                    <Link to={routes.applications} className={linkClass(false)}>
+                                    <PreloadLink to={routes.applications} className={linkClass(false)}>
                                         <FileText className="h-4 w-4" />
                                         My applications
-                                    </Link>
+                                    </PreloadLink>
                                 </SheetClose>
                                 <SheetClose asChild>
-                                    <Link to={routes.surveyValues} className={linkClass(false)}>
+                                    <PreloadLink to={routes.surveyValues} className={linkClass(false)}>
                                         <ClipboardList className="h-4 w-4" />
                                         Workplace values
-                                    </Link>
+                                    </PreloadLink>
                                 </SheetClose>
                                 <SheetClose asChild>
-                                    <Link to={routes.surveySelfId} className={linkClass(false)}>
+                                    <PreloadLink to={routes.surveySelfId} className={linkClass(false)}>
                                         <ClipboardList className="h-4 w-4" />
                                         Self-ID
-                                    </Link>
+                                    </PreloadLink>
                                 </SheetClose>
                                 <SheetClose asChild>
                                     <button

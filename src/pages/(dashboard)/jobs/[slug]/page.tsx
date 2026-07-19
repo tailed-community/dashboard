@@ -16,6 +16,7 @@ import {
     Building2,
 } from "lucide-react";
 import { PlaygroundButton } from "@/components/playground/playground-button";
+import { PreloadLink } from "@/components/preload-link";
 import { type Job, type Organization } from "@/types/jobs";
 import { HTMLContent } from "@/components/ui/html-content";
 import { Seo } from "@/components/seo";
@@ -274,12 +275,12 @@ export default function PublicJobPage() {
                                 <Building2 className="h-6 w-6" />
                             </div>
                         )}
-                        <Link
+                        <PreloadLink
                             to={`/companies/${organization.slug || organization.id}`}
                             className="text-lg font-semibold text-joy-ink-muted transition-colors hover:text-joy-ink hover:underline"
                         >
                             {organization.name}
-                        </Link>
+                        </PreloadLink>
                     </div>
                 )}
 
