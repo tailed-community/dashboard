@@ -1,5 +1,6 @@
 import type { User } from "firebase/auth";
 import { Link } from "react-router-dom";
+import { PreloadLink } from "@/components/preload-link";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
     DropdownMenu,
@@ -143,13 +144,13 @@ export function ProfileMenu({
                         </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild className={itemClass}>
-                        <Link to={routes.account}>
+                        <PreloadLink to={routes.account}>
                             <Settings className="mr-2 h-4 w-4" />
                             <span>Edit profile</span>
-                        </Link>
+                        </PreloadLink>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild className={itemClass}>
-                        <Link to={routes.alerts}>
+                        <PreloadLink to={routes.alerts}>
                             <Bell className="mr-2 h-4 w-4" />
                             <span>My alerts</span>
                             {alertCount > 0 && (
@@ -157,13 +158,13 @@ export function ProfileMenu({
                                     {alertCount}
                                 </span>
                             )}
-                        </Link>
+                        </PreloadLink>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild className={itemClass}>
-                        <Link to={routes.applications}>
+                        <PreloadLink to={routes.applications}>
                             <FileText className="mr-2 h-4 w-4" />
                             <span>My applications</span>
-                        </Link>
+                        </PreloadLink>
                     </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
@@ -172,16 +173,16 @@ export function ProfileMenu({
                 </DropdownMenuLabel>
                 <DropdownMenuGroup>
                     <DropdownMenuItem asChild className={itemClass}>
-                        <Link to={routes.surveyValues}>
+                        <PreloadLink to={routes.surveyValues}>
                             <ClipboardList className="mr-2 h-4 w-4" />
                             <span>Workplace values</span>
-                        </Link>
+                        </PreloadLink>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild className={itemClass}>
-                        <Link to={routes.surveySelfId}>
+                        <PreloadLink to={routes.surveySelfId}>
                             <ClipboardList className="mr-2 h-4 w-4" />
                             <span>Self-ID</span>
-                        </Link>
+                        </PreloadLink>
                     </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />

@@ -1,5 +1,5 @@
-import { Link } from "react-router-dom";
 import type { ReactNode } from "react";
+import { PreloadLink } from "@/components/preload-link";
 
 /**
  * Chunky, joyful button: rounded, green primary with a pressed bottom-shadow
@@ -43,9 +43,9 @@ export function PlaygroundButton({
     }
     if (to) {
         return (
-            <Link to={to} className={cls}>
+            <PreloadLink to={to} className={cls}>
                 {children}
-            </Link>
+            </PreloadLink>
         );
     }
     return (
