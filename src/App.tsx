@@ -7,6 +7,9 @@ import { PrivateRoute } from "./components/private-route";
 import { NotFoundComponent } from "./components/not-found-component";
 import { JoyLayout } from "./layouts/joy-layout";
 import { schedulePreload } from "./lib/route-preload";
+import { installGlobalNavProgressListener } from "./lib/nav-progress";
+import { NavProgressBar, NavProgressReset } from "./components/nav-progress-bar";
+import { RouteFallback } from "./components/route-fallback";
 import {
     accountImport,
     alertDetailImport,
@@ -45,19 +48,6 @@ import CommunityDetailJoyPage from "./pages/communities/[id]/joy-page";
 import SignIn from "./pages/(auth)/sign-in/page";
 import SignUp from "./pages/(auth)/signup/page";
 import YourSpacePage from "./pages/(dashboard)/me/page";
-
-// Loading component
-const LoadingFallback = () => (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 text-gray-700">
-        <div className="relative">
-            <div className="h-12 w-12 border-4 border-gray-300 rounded-full"></div>
-            <div className="absolute top-0 left-0 h-12 w-12 border-4 border-t-primary border-transparent rounded-full animate-spin"></div>
-        </div>
-        <p className="mt-4 text-sm font-medium text-gray-600 animate-pulse">
-            Loading, please wait...
-        </p>
-    </div>
-);
 
 // Lazy loaded components. Each one's dynamic import() thunk is declared
 // exactly once in ./lib/route-imports.ts (imported above), so the same
@@ -142,12 +132,15 @@ function App() {
     // route-preload.ts for the full rationale.
     useEffect(() => {
         schedulePreload();
+        installGlobalNavProgressListener();
     }, []);
 
     return (
         <Router>
+            <NavProgressBar />
+            <NavProgressReset />
             <SidebarContextProvider>
-                <Suspense fallback={<LoadingFallback />}>
+                <Suspense fallback={<RouteFallback />}>
                     <Routes>
                         {/* HOME PAGE - Main hub */}
                         <Route path="/" element={<HomePage />} />
