@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/use-auth";
+import { RouteFallback } from "@/components/route-fallback";
 
 interface PrivateRouteProps {
     children: React.ReactNode;
@@ -28,7 +29,7 @@ export function PrivateRoute({ children }: PrivateRouteProps) {
     const location = useLocation();
 
     if (loading) {
-        return null;
+        return <RouteFallback />;
     }
 
     if (!user) {

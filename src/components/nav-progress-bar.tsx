@@ -114,9 +114,15 @@ export function NavProgressReset() {
 
     useEffect(() => {
         doneNavProgress();
-        // Intentionally re-runs on every commited location change (pathname,
-        // search, and hash all count as "the navigation resolved").
-    }, [location.pathname, location.search, location.hash]);
+        // Keyed on location.key (not pathname/search/hash) so a Link click
+        // back to the CURRENT location — e.g. the header logo while already
+        // on "/" — still re-fires this effect. react-router mints a new
+        // location.key on every push/replace, even to an identical path, so
+        // this is the one thing guaranteed to change on every commited
+        // navigation. Keying on the string fields instead meant same-path
+        // navigations never re-ran the effect, doneNavProgress() was never
+        // called, and the bar sat at 85% for the full safety timeout.
+    }, [location.key]);
 
     return null;
 }

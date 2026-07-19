@@ -38,7 +38,15 @@ export function DigestPrompt({ suppressed = false }: DigestPromptProps) {
     // in, so we don't briefly show a logged-out capture prompt to someone
     // who turns out to be signed in a moment later.
     if (loading && likelySignedIn) return;
-    if (user) return;
+    if (user) {
+      // Auth resolved (or re-resolved) to signed-in after the listener was
+      // already armed — e.g. the localStorage hint was missing/wrong in
+      // private browsing and a signed-in visitor scrolled past the
+      // threshold before Firebase reported back. Force the card hidden so
+      // it can't stay shown (or flash) to a signed-in user.
+      setVisible(false);
+      return;
+    }
     if (isJobAlertSubscribed()) return;
     if (typeof window === "undefined") return;
 
