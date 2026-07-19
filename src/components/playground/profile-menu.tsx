@@ -1,4 +1,5 @@
 import type { User } from "firebase/auth";
+import { Link } from "react-router-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
     DropdownMenu,
@@ -136,19 +137,19 @@ export function ProfileMenu({
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>
                     <DropdownMenuItem asChild className={itemClass}>
-                        <a href={routes.me}>
+                        <Link to={routes.me}>
                             <LayoutGrid className="mr-2 h-4 w-4" />
                             <span>Your space</span>
-                        </a>
+                        </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild className={itemClass}>
-                        <a href={routes.account}>
+                        <Link to={routes.account}>
                             <Settings className="mr-2 h-4 w-4" />
                             <span>Edit profile</span>
-                        </a>
+                        </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild className={itemClass}>
-                        <a href={routes.alerts}>
+                        <Link to={routes.alerts}>
                             <Bell className="mr-2 h-4 w-4" />
                             <span>My alerts</span>
                             {alertCount > 0 && (
@@ -156,13 +157,13 @@ export function ProfileMenu({
                                     {alertCount}
                                 </span>
                             )}
-                        </a>
+                        </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild className={itemClass}>
-                        <a href={routes.applications}>
+                        <Link to={routes.applications}>
                             <FileText className="mr-2 h-4 w-4" />
                             <span>My applications</span>
-                        </a>
+                        </Link>
                     </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
@@ -171,16 +172,16 @@ export function ProfileMenu({
                 </DropdownMenuLabel>
                 <DropdownMenuGroup>
                     <DropdownMenuItem asChild className={itemClass}>
-                        <a href={routes.surveyValues}>
+                        <Link to={routes.surveyValues}>
                             <ClipboardList className="mr-2 h-4 w-4" />
                             <span>Workplace values</span>
-                        </a>
+                        </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild className={itemClass}>
-                        <a href={routes.surveySelfId}>
+                        <Link to={routes.surveySelfId}>
                             <ClipboardList className="mr-2 h-4 w-4" />
                             <span>Self-ID</span>
-                        </a>
+                        </Link>
                     </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />

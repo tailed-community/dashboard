@@ -108,40 +108,40 @@ export function PlaygroundMobileNav({
                         {user ? (
                             <>
                                 <SheetClose asChild>
-                                    <a href={routes.me} className={linkClass(false)}>
+                                    <Link to={routes.me} className={linkClass(false)}>
                                         <LayoutGrid className="h-4 w-4" />
                                         Your space
-                                    </a>
+                                    </Link>
                                 </SheetClose>
                                 <SheetClose asChild>
-                                    <a href={routes.account} className={linkClass(false)}>
+                                    <Link to={routes.account} className={linkClass(false)}>
                                         <Settings className="h-4 w-4" />
                                         Edit profile
-                                    </a>
+                                    </Link>
                                 </SheetClose>
                                 <SheetClose asChild>
-                                    <a href={routes.alerts} className={linkClass(false)}>
+                                    <Link to={routes.alerts} className={linkClass(false)}>
                                         <Bell className="h-4 w-4" />
                                         My alerts
-                                    </a>
+                                    </Link>
                                 </SheetClose>
                                 <SheetClose asChild>
-                                    <a href={routes.applications} className={linkClass(false)}>
+                                    <Link to={routes.applications} className={linkClass(false)}>
                                         <FileText className="h-4 w-4" />
                                         My applications
-                                    </a>
+                                    </Link>
                                 </SheetClose>
                                 <SheetClose asChild>
-                                    <a href={routes.surveyValues} className={linkClass(false)}>
+                                    <Link to={routes.surveyValues} className={linkClass(false)}>
                                         <ClipboardList className="h-4 w-4" />
                                         Workplace values
-                                    </a>
+                                    </Link>
                                 </SheetClose>
                                 <SheetClose asChild>
-                                    <a href={routes.surveySelfId} className={linkClass(false)}>
+                                    <Link to={routes.surveySelfId} className={linkClass(false)}>
                                         <ClipboardList className="h-4 w-4" />
                                         Self-ID
-                                    </a>
+                                    </Link>
                                 </SheetClose>
                                 <SheetClose asChild>
                                     <button
