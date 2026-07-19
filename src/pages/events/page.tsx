@@ -13,7 +13,6 @@ import { useNavigate } from "react-router-dom";
 import { apiFetch } from "@/lib/fetch";
 import { getFileUrl } from "@/lib/firebase-client";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
     Card,
     CardDescription,
@@ -72,6 +71,9 @@ type CityGroup = {
 
 type FirestoreEvent = {
     id: string;
+    // Required by the event-creation schema (functions/src/routes/event.ts) and
+    // used for /events/:slug navigation.
+    slug: string;
     title: string;
     description: string;
     startDate: string;
@@ -330,7 +332,7 @@ export default function EventsPage() {
     const [loading, setLoading] = useState(true);
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
     const [selectedCity, setSelectedCity] = useState<string | null>(null);
-    const [showAllEvents, setShowAllEvents] = useState(false);
+    const [showAllEvents] = useState(false);
 
     useEffect(() => {
         const fetchEvents = async () => {

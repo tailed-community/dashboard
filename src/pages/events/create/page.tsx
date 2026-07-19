@@ -14,7 +14,7 @@ import { z } from "zod";
 import { toast } from "sonner";
 import { CalendarDays, MapPin, Users, Loader2, Upload, Link as LinkIcon } from "lucide-react";
 import { apiFetch } from "@/lib/fetch";
-import { EventAwardsEditor, toMainPlaceNumber, getMainPlaceTitle } from "@/components/events/awards";
+import { EventAwardsEditor } from "@/components/events/awards";
 import { Button } from "@/components/ui/button";
 import {
     Card,
@@ -229,18 +229,6 @@ export default function CreateEventPage() {
     const watchMode = form.watch("mode");
     const watchHostType = form.watch("hostType");
     const watchAwards = form.watch("awards") || [];
-    const takenMainPlaces = new Set(
-        watchAwards
-            .map((award) => {
-                if (award?.type !== "main_place") {
-                    return null;
-                }
-
-                return toMainPlaceNumber(award.place);
-            })
-            .filter((place): place is 1 | 2 | 3 => place !== null)
-    );
-    const nextAvailableMainPlace = ([1, 2, 3] as const).find((place) => !takenMainPlaces.has(place)) ?? null;
 
     // Auto-generate slug from title
     const generateSlug = (title: string) => {

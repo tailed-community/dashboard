@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { CommunityCard, type Community } from "@/components/community/community-card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, Plus, Loader2 } from "lucide-react";
+import { Search, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { apiFetch } from "@/lib/fetch";

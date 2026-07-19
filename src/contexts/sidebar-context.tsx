@@ -1,11 +1,11 @@
-import React, {
+import {
     createContext,
     useContext,
     useState,
     useEffect,
-    ReactNode,
     useCallback,
 } from "react";
+import type { ReactNode } from "react";
 import { apiFetch } from "@/lib/fetch";
 
 // Define types for our data
@@ -29,7 +29,11 @@ interface SidebarContextType {
 const SidebarContext = createContext<SidebarContextType | undefined>(undefined);
 
 // Combined API fetch function with onboarding status
-const fetchData = async () => {
+const fetchData = async (): Promise<{
+    userData: User | null;
+    onboardingRequired: boolean;
+    error?: string;
+}> => {
     try {
         const res = await apiFetch("/profile");
         const userData = await res.json();
@@ -42,7 +46,7 @@ const fetchData = async () => {
         return {
             userData: null,
             onboardingRequired: true,
-            error: error.message,
+            error: error instanceof Error ? error.message : String(error),
         };
     }
 };

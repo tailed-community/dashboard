@@ -5,28 +5,12 @@ import { ArrowLeft, Loader2, Settings, Users, UserCog } from "lucide-react";
 import { apiFetch } from "@/lib/fetch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import CommunitySettingsTab from "./components/community-settings-tab.tsx";
+import CommunitySettingsTab, {
+    type CommunityData,
+} from "./components/community-settings-tab.tsx";
 import EventAttendeesTab from "./components/event-attendees-tab.tsx";
 import CommunityMembersTab from "./components/community-members-tab.tsx";
 import CommunityAdminsTab from "./components/community-admins-tab.tsx";
-
-type CommunityData = {
-    id: string;
-    name: string;
-    slug: string;
-    shortDescription?: string;
-    description: string;
-    category: string;
-    logoUrl?: string;
-    bannerUrl?: string;
-    memberCount: number;
-    members: string[];
-    createdBy: string;
-    createdByName: string;
-    createdAt: Date;
-    updatedAt: Date;
-    status: string;
-};
 
 export default function CommunityAdminPage() {
     const { id: slug } = useParams<{ id: string }>();

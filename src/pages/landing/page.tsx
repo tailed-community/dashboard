@@ -313,7 +313,7 @@ export default function LandingPage() {
     <div className="bg-brand-cream dark:bg-neutral-950 font-sans text-brand-cream-900 dark:text-brand-cream-100 overflow-x-hidden transition-colors duration-200 antialiased selection:bg-brand-orange/20 selection:text-brand-orange">
       <Seo
         noSuffix
-        title="Tail'ed — Tech internships and new-grad jobs for students, free forever"
+        title="Tail'ed Community — Tech internships and new-grad jobs for students, free forever"
         description="A non-profit student platform with thousands of tech internships and new-grad jobs, hackathons, events, and student communities. Free forever."
         path="/"
       />
@@ -342,7 +342,7 @@ export default function LandingPage() {
             </span>
           </h1>
           <p className="text-sm md:text-lg text-brand-cream-600 dark:text-brand-cream-400 max-w-xl mx-auto mb-4 leading-relaxed">
-            Tail'ed is a non-profit built by students, for students — no paywall, no data selling.
+            Tail'ed Community is a non-profit built by students, for students — no paywall, no data selling.
           </p>
 
           <form
@@ -412,7 +412,7 @@ export default function LandingPage() {
           <FreshJobsStrip jobs={freshJobs} loading={jobsLoading} failed={jobsFailed} jobCount={jobCount} />
         </section>
 
-        {/* This week on Tail'ed — events + communities, quality-gated */}
+        {/* This week on Tail'ed Community — events + communities, quality-gated */}
         {showWeekSection && (
           <section className="px-4 pb-16 max-w-5xl mx-auto">
             <h2 className="text-xl font-bold text-brand-cream-950 dark:text-brand-cream-50 mb-4 px-1">
@@ -467,7 +467,7 @@ export default function LandingPage() {
         <section className="px-4 pb-16 max-w-2xl mx-auto text-center">
           <h2 className="text-lg font-bold text-brand-cream-950 dark:text-brand-cream-50 mb-2">Why is this free?</h2>
           <p className="text-brand-cream-600 dark:text-brand-cream-400 leading-relaxed mb-3">
-            Tail'ed is a registered non-profit built by students. No premium tier, no resume-selling, no recruiter
+            Tail'ed Community is a registered non-profit built by students. No premium tier, no resume-selling, no recruiter
             spam — we exist so every student gets the same shot.
           </p>
           <a
@@ -540,16 +540,16 @@ export default function LandingPage() {
             </a>
           </div>
           <div className="flex items-center gap-6">
-            <Link to="https://www.youtube.com/@tailedcommunity" target="_blank" rel="noopener noreferrer" className="text-brand-cream-400 hover:text-brand-cream-900 dark:hover:text-brand-cream-50 transition-colors" aria-label="Tail'ed on YouTube">
+            <Link to="https://www.youtube.com/@tailedcommunity" target="_blank" rel="noopener noreferrer" className="text-brand-cream-400 hover:text-brand-cream-900 dark:hover:text-brand-cream-50 transition-colors" aria-label="Tail'ed Community on YouTube">
               <SiYoutube className="w-5 h-5" />
             </Link>
-            <Link to="https://www.instagram.com/tailed.community" target="_blank" rel="noopener noreferrer" className="text-brand-cream-400 hover:text-brand-cream-900 dark:hover:text-brand-cream-50 transition-colors" aria-label="Tail'ed on Instagram">
+            <Link to="https://www.instagram.com/tailed.community" target="_blank" rel="noopener noreferrer" className="text-brand-cream-400 hover:text-brand-cream-900 dark:hover:text-brand-cream-50 transition-colors" aria-label="Tail'ed Community on Instagram">
               <SiInstagram className="w-5 h-5" />
             </Link>
-            <Link to="https://discord.gg/gpbtFXTgNQ" target="_blank" rel="noopener noreferrer" className="text-brand-cream-400 hover:text-brand-cream-900 dark:hover:text-brand-cream-50 transition-colors" aria-label="Tail'ed on Discord">
+            <Link to="https://discord.gg/gpbtFXTgNQ" target="_blank" rel="noopener noreferrer" className="text-brand-cream-400 hover:text-brand-cream-900 dark:hover:text-brand-cream-50 transition-colors" aria-label="Tail'ed Community on Discord">
               <SiDiscord className="w-5 h-5" />
             </Link>
-            <Link to="https://github.com/tailed-community" target="_blank" rel="noopener noreferrer" className="text-brand-cream-400 hover:text-brand-cream-900 dark:hover:text-brand-cream-50 transition-colors" aria-label="Tail'ed on GitHub">
+            <Link to="https://github.com/tailed-community" target="_blank" rel="noopener noreferrer" className="text-brand-cream-400 hover:text-brand-cream-900 dark:hover:text-brand-cream-50 transition-colors" aria-label="Tail'ed Community on GitHub">
               <SiGithub className="w-5 h-5" />
             </Link>
           </div>

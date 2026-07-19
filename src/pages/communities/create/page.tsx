@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { Users, Loader2, Upload, Image as ImageIcon } from "lucide-react";
+import { Users, Loader2 } from "lucide-react";
 import { apiFetch } from "@/lib/fetch";
 import { Button } from "@/components/ui/button";
 import {

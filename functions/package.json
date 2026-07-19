@@ -5,13 +5,14 @@
     "lint-backup": "eslint --ext .js,.ts .",
     "lint": "",
     "build-backup": "tsc",
-    "build": "tsc --noEmitOnError false --skipLibCheck --allowJs --checkJs false --noImplicitAny false --strict false --strictNullChecks false --suppressImplicitAnyIndexErrors",
+    "build": "tsc",
     "build:watch": "tsc --watch",
     "dev": "nodemon src/index.ts",
     "serve": "cd .. && cross-env NODE_ENV=development firebase emulators:start --only functions --import .data --export-on-exit",
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",
     "digest:dry": "npm run build && cross-env DIGEST_DRY_RUN=true node lib/scripts/run-digest-dry.js",
+    "onboarding:dry": "npm run build && cross-env ONBOARDING_DRY_RUN=true node lib/scripts/run-onboarding-emails-dry.js",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log"
   },
@@ -33,6 +34,7 @@
     "luxon": "^3.7.2",
     "multer": "^2.0.2",
     "nodemailer": "^8.0.1",
+    "pdf-parse": "^1.1.1",
     "zod": "^3.24.2"
   },
   "devDependencies": {
@@ -42,6 +44,7 @@
     "@types/luxon": "^3.7.1",
     "@types/multer": "^2.0.0",
     "@types/nodemailer": "^6.4.17",
+    "@types/pdf-parse": "^1.1.5",
     "@typescript-eslint/eslint-plugin": "^8.38.0",
     "@typescript-eslint/parser": "^8.38.0",
     "cross-env": "^10.0.0",
@@ -51,7 +54,7 @@
     "husky": "^9.1.7",
     "nodemon": "^3.1.10",
     "ts-node": "^10.9.2",
-    "typescript": "^4.9.5"
+    "typescript": "^5.9.3"
   },
   "overrides": {
     "@tootallnate/once": "^3.0.1"

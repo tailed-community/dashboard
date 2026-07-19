@@ -19,7 +19,7 @@ export default function DesignLabPage() {
                     Internal · Prototypes
                 </p>
                 <h1 className="mt-2 text-4xl font-bold tracking-tight">
-                    Tail'ed design lab
+                    Tail'ed Community design lab
                 </h1>
                 <p className="mt-3 text-gray-400">
                     Standalone landing-page redesign directions, each using live

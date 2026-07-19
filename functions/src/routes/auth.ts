@@ -3,6 +3,7 @@ const router = express.Router();
 
 import { db, studentAuth } from "../lib/firebase";
 import { upsertStudentUser } from "../lib/user-management";
+import { localeFromAcceptLanguage } from "../lib/locale";
 import { z } from "zod";
 
 export const TENANT_IDS = { STUDENTS: process.env.FB_TENANT_ID! } as const;
@@ -223,6 +224,16 @@ router.post("/ensure-account", async (req, res) => {
 
     const { firstName, lastName, photoURL } = result.data;
 
+    // First-login provisioning (Google / email-link): seed the new profile's
+    // preferredLanguage from the browser's Accept-Language, mirroring the public
+    // alert-capture endpoint. This only takes effect when a profile is created —
+    // upsertStudentUser never overwrites an existing profile's preferredLanguage,
+    // so a returning user's saved FR/EN choice is preserved. Primary language tag
+    // starts-with "fr" → "fr", else "en".
+    const acceptLanguageLocale = localeFromAcceptLanguage(
+        req.headers["accept-language"]
+    );
+
     try {
         const upsertResult = await upsertStudentUser({
             uid: req.user.uid,
@@ -232,6 +243,7 @@ router.post("/ensure-account", async (req, res) => {
             photoURL,
             // Google sign-in supplies a photoURL; email-link sign-in never does.
             profileSource: photoURL ? "google" : "email",
+            preferredLanguage: acceptLanguageLocale,
         });
 
         if (upsertResult.error || !upsertResult.userRecord) {

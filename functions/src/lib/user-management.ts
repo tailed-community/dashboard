@@ -25,7 +25,12 @@ export interface UpsertUserInput {
    * step entirely and go straight to ensuring the Firestore profile doc.
    */
   uid?: string;
-  profileSource?: "google" | "email" | "import";
+  profileSource?: "google" | "email" | "import" | "alert_capture";
+  /**
+   * Communication-language preference (spec 08 §5). Optional so existing
+   * callers are unaffected; seeded to "en" when a new profile doc is created.
+   */
+  preferredLanguage?: "en" | "fr";
 }
 
 const deriveInitials = (
@@ -58,7 +63,8 @@ const isProfileComplete = (data: Record<string, any> | undefined): boolean => {
 export async function upsertStudentUser(
   input: UpsertUserInput
 ): Promise<UpsertUserResult> {
-  const { email, firstName, lastName, photoURL, uid, profileSource } = input;
+  const { email, firstName, lastName, photoURL, uid, profileSource, preferredLanguage } =
+    input;
   const emailLower = email.toLowerCase();
 
   try {
@@ -125,6 +131,9 @@ export async function upsertStudentUser(
         createdAt: new Date(),
         updatedAt: new Date(),
         profileSource: profileSource || "email",
+        // Communication language always exists on the doc (spec 08 §5); defaults
+        // to English, overridden later by the browser-language client bootstrap.
+        preferredLanguage: preferredLanguage || "en",
       };
       await profileRef.set(profileData);
     } else {

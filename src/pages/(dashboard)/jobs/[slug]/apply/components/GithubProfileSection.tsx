@@ -43,7 +43,7 @@ export default function GithubProfileSection({
 
     // Check authentication status when component mounts
     useEffect(() => {
-        const unsubscribe = studentAuth.onAuthStateChanged((user) => {
+        const unsubscribe = studentAuth.onAuthStateChanged(() => {
             setIsAnonymous(isAnonymousUser());
         });
 
@@ -241,7 +241,7 @@ function renderGithubProfileDetails(githubProfile: GithubProfile) {
                         <div className="flex flex-wrap gap-2">
                             {githubProfile.topLanguages.map((lang, index) => (
                                 <Badge key={index} variant="secondary">
-                                    {lang.name || lang} (
+                                    {lang} (
                                     {githubProfile.languageDistribution?.[index]
                                         ?.percentage || 0}
                                     %)

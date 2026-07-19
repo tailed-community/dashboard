@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { db, storage } from "../lib/firebase";
 import { sendCommunityWelcomeEmail } from "../lib/email-service";
+import { getPreferredLocaleForUid } from "../lib/locale";
 import { upsertStudentUser } from "../lib/user-management";
 import { z } from "zod";
 import Busboy from "busboy";
@@ -762,12 +763,16 @@ router.post("/:communityId/import-members", async (req: Request, res: Response) 
           // Send welcome email to new users
           try {
             const loginLink = `${process.env.FRONTEND_URL || 'https://community.tailed.ca'}/login`;
+            const locale = await getPreferredLocaleForUid(
+              upsertResult.userRecord.uid
+            );
             await sendCommunityWelcomeEmail(
               emailLower,
               member.firstName || emailLower.split("@")[0],
               communityData.name || 'Community',
               'the community', // No specific event
-              loginLink
+              loginLink,
+              locale
             );
           } catch (emailError) {
             console.error(`Failed to send welcome email to ${emailLower}:`, emailError);

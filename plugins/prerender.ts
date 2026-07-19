@@ -42,8 +42,8 @@ const STATIC_ROUTES: StaticRoute[] = [
     },
     {
         path: "/about",
-        title: "About Tail'ed — a Non-Profit Built by Students",
-        description: "Tail'ed is a non-profit platform built by students, for students: thousands of job listings, hackathons, and communities. Free forever.",
+        title: "About Tail'ed Community — a Non-Profit Built by Students",
+        description: "Tail'ed Community is a non-profit platform built by students, for students: thousands of job listings, hackathons, and communities. Free forever.",
     },
     {
         path: "/explore",
@@ -53,7 +53,7 @@ const STATIC_ROUTES: StaticRoute[] = [
     {
         path: "/spotlight",
         title: "Spotlight | Tail'ed",
-        description: "Student and community spotlights from the Tail'ed network.",
+        description: "Student and community spotlights from the Tail'ed Community network.",
     },
 ];
 
@@ -216,7 +216,7 @@ function buildLlmsTxt(jobs: ExternalJobLike[]): string {
     lines.push("# Tail'ed");
     lines.push("");
     lines.push(
-        "> Tail'ed is a non-profit, free-forever platform built by students, for students, aggregating tech internships and new-grad jobs plus student communities, hackathons, and events across Canada."
+        "> Tail'ed Community is a non-profit, free-forever platform built by students, for students, aggregating tech internships and new-grad jobs plus student communities, hackathons, and events across Canada."
     );
     lines.push("");
     lines.push(

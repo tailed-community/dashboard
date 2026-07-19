@@ -46,7 +46,7 @@ export default function ApplyJobPage() {
     const [needsAuth, setNeedsAuth] = useState(false);
     const [authLoading, setAuthLoading] = useState(false);
     const [authError, setAuthError] = useState<string | null>(null);
-    const [accessType, setAccessType] = useState<AccessType | null>(null);
+    const [, setAccessType] = useState<AccessType | null>(null);
 
     // Determine access type and initialize
     useEffect(() => {
@@ -474,7 +474,10 @@ export default function ApplyJobPage() {
     // Confirmation view
     if (isSubmitted) {
         return (
-            <ApplicationConfirmation jobData={jobData} tokenInfo={tokenInfo} />
+            <ApplicationConfirmation
+                jobData={jobData}
+                tokenInfo={tokenInfo ?? undefined}
+            />
         );
     }
 
@@ -506,13 +509,21 @@ export default function ApplyJobPage() {
                     <ApplicationForm
                         tokenInfo={{
                             applicant: {
+                                id: "",
+                                status: "Sent",
                                 firstName: "",
                                 lastName: "",
                                 email: studentAuth.currentUser?.email || "",
                             },
                             job: jobData.job,
                             organization: jobData.organization,
-                            token: { id: jobData.job.id },
+                            token: {
+                                id: jobData.job.id,
+                                createdAt: new Date().toISOString(),
+                                expires: new Date(
+                                    Date.now() + 30 * 24 * 60 * 60 * 1000
+                                ).toISOString(),
+                            },
                         }}
                         onSubmit={handleApplicationSubmit}
                     />

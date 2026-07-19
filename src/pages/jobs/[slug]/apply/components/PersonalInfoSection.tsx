@@ -1,9 +1,10 @@
 import React from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { type ApplicationFormData } from "../types";
 
 interface PersonalInfoSectionProps {
-  formData: FormData;
+  formData: ApplicationFormData;
   handleInputChange: (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => void;

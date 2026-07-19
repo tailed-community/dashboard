@@ -171,11 +171,9 @@ export function EventAwardsEditor({
     awardFields,
     appendAward,
     removeAward,
-    replaceAwards,
     watchAwards,
     registrations,
     loadingRegistrations,
-    removedAwardIds,
     setRemovedAwardIds,
 }: EditorProps) {
     return (
@@ -233,7 +231,9 @@ export function EventAwardsEditor({
                         const placeFieldName = `awards.${index}.place` as const;
                         const titleFieldName = `awards.${index}.title` as const;
                         const prizeFieldName = `awards.${index}.prizeDescription` as const;
-                        const selectedType = form.watch(typeFieldName);
+                        // Subscribe to type changes so this row re-renders when
+                        // the award type is switched (value read via getValues).
+                        form.watch(typeFieldName);
                         const selectedPlace = toMainPlaceNumber(form.getValues(placeFieldName));
                         const takenMainPlacesByOthers = new Set(
                             (watchAwards || [])

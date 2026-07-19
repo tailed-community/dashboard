@@ -72,14 +72,18 @@ export const sendLoginLink = async (
 
 export const completeSignIn = async () => {
   if (isSignInWithEmailLink(getAuth(), window.location.href)) {
-    const email =
-      localStorage.getItem("emailForSignIn") ||
-      window.prompt("Enter your email:");
-    if (!email) throw new Error("Email is required");
-
-    // Extract tenantId from the URL
+    // Extract params from the URL. Backend-generated sign-in links (e.g. the
+    // job-alert welcome email) embed the email so the flow works cross-device,
+    // where localStorage has no `emailForSignIn` from a prior sendLoginLink().
     const url = new URL(window.location.href);
     const tenantId = url.searchParams.get("tenantId");
+    const emailFromUrl = url.searchParams.get("email");
+
+    const email =
+      localStorage.getItem("emailForSignIn") ||
+      emailFromUrl ||
+      window.prompt("Enter your email:");
+    if (!email) throw new Error("Email is required");
 
     // Create a new auth instance with the exact tenantId from the URL
     const auth = tenantId ? getAuthForTenant(tenantId) : studentAuth;
@@ -204,8 +208,6 @@ export const signInWithGoogle = async () => {
 };
 
 export const signInWithGoogleCredential = async (props: any) => {
-  const { accessToken } = props;
-
   const provider = new GoogleAuthProvider();
   provider.addScope("https://www.googleapis.com/auth/userinfo.email");
   provider.addScope("https://www.googleapis.com/auth/userinfo.profile");

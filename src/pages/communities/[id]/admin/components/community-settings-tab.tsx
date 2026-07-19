@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from "react";
-import { Timestamp } from "firebase/firestore";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -28,7 +27,10 @@ import { toast } from "sonner";
 import { apiFetch } from "@/lib/fetch";
 import { getFileUrl } from "@/lib/firebase-client";
 
-type CommunityData = {
+// Shared with the parent admin page. The API serializes Firestore Timestamps
+// to JSON over the wire and the admin page revives them via `new Date(...)`,
+// so on the client these are plain `Date`s — never Firestore `Timestamp`s.
+export type CommunityData = {
     id: string;
     name: string;
     slug: string;
@@ -43,8 +45,8 @@ type CommunityData = {
     members: string[];
     createdBy: string;
     createdByName: string;
-    createdAt: Timestamp;
-    updatedAt: Timestamp;
+    createdAt: Date;
+    updatedAt: Date;
     status: string;
 };
 
@@ -186,7 +188,7 @@ export default function CommunitySettingsTab({ community, onUpdate }: Readonly<C
                 banner: newBanner,
                 logoUrl: newLogoUrl,
                 bannerUrl: newBannerUrl,
-                updatedAt: Timestamp.now(),
+                updatedAt: new Date(),
             });
 
             toast.success("Community updated successfully!");

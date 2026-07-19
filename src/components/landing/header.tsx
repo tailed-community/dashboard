@@ -28,6 +28,7 @@ import {
     LogOut,
     Settings,
     FileText,
+    Bell,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { FaCalendarAlt, FaGithub } from "react-icons/fa";
@@ -121,6 +122,12 @@ function UserAvatarMenu({ user, onLogout }: { user: any; onLogout: () => void })
                         <a href="/jobs/applied" className="cursor-pointer">
                             <FileText className="mr-2 h-4 w-4" />
                             <span>My Applications</span>
+                        </a>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                        <a href="/account/alerts" className="cursor-pointer">
+                            <Bell className="mr-2 h-4 w-4" />
+                            <span>My alerts</span>
                         </a>
                     </DropdownMenuItem>
                 </DropdownMenuGroup>
@@ -271,6 +278,15 @@ export function Header() {
                                             <span className="inline-flex items-center gap-2">
                                                 <FileText className="h-4 w-4" />
                                                 My Applications
+                                            </span>
+                                        </Link>
+                                        <Link
+                                            to="/account/alerts"
+                                            className="block w-full text-sm rounded-lg px-4 py-3 hover:bg-muted/60"
+                                        >
+                                            <span className="inline-flex items-center gap-2">
+                                                <Bell className="h-4 w-4" />
+                                                My alerts
                                             </span>
                                         </Link>
                                         <Link

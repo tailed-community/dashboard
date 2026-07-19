@@ -1,22 +1,8 @@
 import AccountPage from "@/pages/(dashboard)/account/account-new";
-import { useState, useEffect } from "react";
 
+// Slice 2: the account page now renders its own full-width PlaygroundShell
+// (header/footer + joy chrome), so this wrapper simply mounts it. The old
+// padded dashboard-frame divs were removed to avoid constraining the shell.
 export default function Page() {
-    const [_, setScrolled] = useState(false);
-    useEffect(() => {
-        const onScroll = () => {
-            setScrolled(window.scrollY > 30);
-        };
-        window.addEventListener("scroll", onScroll);
-        return () => window.removeEventListener("scroll", onScroll);
-    }, []);
-    return (
-        <>
-            <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-                <div className="min-h-[100vh] flex-1 rounded-xl md:min-h-min">
-                    <AccountPage />
-                </div>
-            </div>
-        </>
-    );
+    return <AccountPage />;
 }

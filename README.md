@@ -15,7 +15,7 @@
 
 ## 🌟 About
 
-Tail'ed is a comprehensive platform designed to empower tech students by providing tools for:
+Tail'ed Community is a comprehensive platform designed to empower tech students by providing tools for:
 
 - **Portfolio Building**: Showcase your projects and skills
 - **Community Connection**: Connect with fellow students and professionals

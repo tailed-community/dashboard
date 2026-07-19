@@ -7,13 +7,13 @@ interface ProtectedRouteProps {
 
 /**
  * ProtectedRoute - Prevents authenticated users from accessing auth pages
- * Redirects signed-in users to /dashboard
+ * Redirects signed-in users to /me ("Your space" hub)
  */
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
     const { user } = useAuth();
 
     if (user) {
-        return <Navigate to="/dashboard" replace />;
+        return <Navigate to="/me" replace />;
     }
 
     return <>{children}</>;

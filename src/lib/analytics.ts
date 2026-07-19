@@ -26,10 +26,19 @@ export type AnalyticsEvent =
   | "event_view"
   | "event_rsvp_started"
   | "event_rsvp_completed"
+  | "communities_view"
+  | "community_detail_view"
+  | "community_join"
+  | "community_leave"
   | "auth_started"
   | "auth_completed"
   | "profile_completed_section"
-  | "alert_unsubscribed";
+  | "alert_unsubscribed"
+  | "alert_edited"
+  | "alert_paused"
+  | "alert_resumed"
+  | "alert_deleted"
+  | "alert_batch_viewed";
 
 type AnalyticsProps = Record<string, string | number | boolean>;
 

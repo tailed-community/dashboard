@@ -45,7 +45,7 @@ export type JobData = {
   };
 };
 
-export interface FormData {
+export interface ApplicationFormData {
   firstName: string;
   lastName: string;
   email: string;
