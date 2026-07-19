@@ -3,6 +3,7 @@ import type { FocusEvent, MouseEvent, TouchEvent } from "react";
 import { Link } from "react-router-dom";
 import type { LinkProps } from "react-router-dom";
 import { preloadRoute } from "@/lib/route-preload";
+import { isTrackableLinkClick, startNavProgress } from "@/lib/nav-progress";
 
 /**
  * Returns event handlers that fire `preloadRoute(to)` on hover/focus/touch —
@@ -28,7 +29,7 @@ export function usePreloadOnIntent(to: string) {
  * SheetClose) and passes every other prop straight through.
  */
 export const PreloadLink = forwardRef<HTMLAnchorElement, LinkProps>(
-    function PreloadLink({ to, onMouseEnter, onFocus, onTouchStart, ...props }, ref) {
+    function PreloadLink({ to, onMouseEnter, onFocus, onTouchStart, onClick, ...props }, ref) {
         const toPath = typeof to === "string" ? to : (to.pathname ?? "");
 
         const handleMouseEnter = useCallback(
@@ -52,6 +53,21 @@ export const PreloadLink = forwardRef<HTMLAnchorElement, LinkProps>(
             },
             [toPath, onTouchStart]
         );
+        // Kicks off the top-of-viewport nav progress bar as early as
+        // possible (on click, before react-router even starts the
+        // transition). The document-level fallback listener in
+        // nav-progress.ts would also catch this click, but firing it here
+        // too costs nothing (startNavProgress is idempotent while active)
+        // and keeps the signal tied directly to the link that triggered it.
+        const handleClick = useCallback(
+            (event: MouseEvent<HTMLAnchorElement>) => {
+                if (isTrackableLinkClick(event, event.currentTarget)) {
+                    startNavProgress();
+                }
+                onClick?.(event);
+            },
+            [onClick]
+        );
 
         return (
             <Link
@@ -60,6 +76,7 @@ export const PreloadLink = forwardRef<HTMLAnchorElement, LinkProps>(
                 onMouseEnter={handleMouseEnter}
                 onFocus={handleFocus}
                 onTouchStart={handleTouchStart}
+                onClick={handleClick}
                 {...props}
             />
         );
