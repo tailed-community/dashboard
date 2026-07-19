@@ -1,5 +1,6 @@
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/use-auth";
+import { RouteFallback } from "@/components/route-fallback";
 
 interface ProtectedRouteProps {
     children: React.ReactNode;
@@ -19,7 +20,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     const { user, loading } = useAuth();
 
     if (loading) {
-        return null;
+        return <RouteFallback />;
     }
 
     if (user) {

@@ -114,7 +114,21 @@ export function PlaygroundMobileNav({
                     )}
 
                     <div className="mt-4 flex flex-col gap-1 border-t border-joy-ink/8 pt-4">
-                        {user || showSignedInShell ? (
+                        {!user && showSignedInShell ? (
+                            // Auth still resolving but a prior-session hint says signed-in —
+                            // show a neutral skeleton instead of the fully interactive
+                            // signed-in menu (real links + Log out), mirroring the desktop
+                            // skeleton shown for the same loading window.
+                            <div className="flex flex-col gap-2 px-4 py-1" aria-hidden="true">
+                                {Array.from({ length: 4 }).map((_, i) => (
+                                    <div
+                                        key={i}
+                                        className="h-8 w-2/3 animate-pulse rounded-lg bg-joy-ink/8"
+                                        style={{ animationDelay: `${i * 75}ms` }}
+                                    />
+                                ))}
+                            </div>
+                        ) : user ? (
                             <>
                                 <SheetClose asChild>
                                     <Link to={routes.me} className={linkClass(false)}>
