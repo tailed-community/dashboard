@@ -7,6 +7,18 @@ import { PrivateRoute } from "./components/private-route";
 import { NotFoundComponent } from "./components/not-found-component";
 import { JoyLayout } from "./layouts/joy-layout";
 import PublicJobPage from "./pages/(dashboard)/jobs/[slug]/page";
+// Core public/high-traffic surfaces — statically imported (not lazy) so they
+// ship in the main bundle and avoid a chunk-download wait on first visit.
+import HomePage from "./pages/home/page";
+import JoyJobsPage from "./pages/(dashboard)/jobs/joy-page";
+import JoyExternalJobPage from "./pages/(dashboard)/jobs/joy-external-page";
+import JoyEventsPage from "./pages/(public)/events/page";
+import JoyEventDetailPage from "./pages/(public)/events/[id]/page";
+import CommunitiesJoyPage from "./pages/communities/joy-page";
+import CommunityDetailJoyPage from "./pages/communities/[id]/joy-page";
+import SignIn from "./pages/(auth)/sign-in/page";
+import SignUp from "./pages/(auth)/signup/page";
+import YourSpacePage from "./pages/(dashboard)/me/page";
 
 // Loading component
 const LoadingFallback = () => (
@@ -22,14 +34,12 @@ const LoadingFallback = () => (
 );
 
 // Lazy loaded components
-const SignIn = lazy(() => import("./pages/(auth)/sign-in/page"));
-const SignUp = lazy(() => import("./pages/(auth)/signup/page"));
 const AuthCallback = lazy(() => import("./pages/(auth)/auth/callback/page"));
 // Old landing page — kept reachable at /legacy-home as a fallback (see
 // bottom of route table). Not linked from anywhere in the app.
 const LegacyLandingPage = lazy(() => import("./pages/landing/page"));
 // New joy home page (Phase G) — renders its own chrome via PlaygroundShell.
-const HomePage = lazy(() => import("./pages/home/page"));
+// (statically imported above — core high-traffic surface)
 const Account = lazy(() => import("./pages/(dashboard)/account/page"));
 const JobApplyPage = lazy(
     () => import("./pages/(dashboard)/jobs/[slug]/apply/page")
@@ -40,16 +50,14 @@ const AppliedJobsPage = lazy(
 // Joy jobs pages (Phase G) — self-contained, render their own chrome.
 // Old JobsPage/ExternalJobPage (./pages/(dashboard)/jobs/page,
 // ./pages/(dashboard)/jobs/external/page) are left on disk, unrouted.
-const JoyJobsPage = lazy(() => import("./pages/(dashboard)/jobs/joy-page"));
-const JoyExternalJobPage = lazy(
-    () => import("./pages/(dashboard)/jobs/joy-external-page")
-);
+// (JoyJobsPage / JoyExternalJobPage statically imported above — core
+// high-traffic surfaces)
 // Job-alerts management (spec 06) — self-contained joy shell, so declared as
 // top-level PrivateRoute-wrapped routes (like the /jobs joy pages), NOT under
 // DashboardLayout (which would double-header).
 // "Your space" hub (Slice 1) — joy-shell, auth-gated, replaces the old sidebar
 // dashboard as the signed-in home base.
-const YourSpacePage = lazy(() => import("./pages/(dashboard)/me/page"));
+// (YourSpacePage statically imported above — signed-in home base)
 const AlertsPage = lazy(() => import("./pages/(dashboard)/alerts/page"));
 const AlertDetailPage = lazy(() => import("./pages/(dashboard)/alerts/[id]/page"));
 // Anonymous self-ID survey (spec 08 §3.3) — same self-contained joy shell as
@@ -66,10 +74,8 @@ const CompanyDetailPage = lazy(() => import("./pages/companies/[id]/page"));
 // Joy events pages (Phase G) — self-contained, render their own chrome.
 // Old EventsPage/EventDetailPage (./pages/events/page, ./pages/events/[id]/page)
 // are left on disk, unrouted.
-const JoyEventsPage = lazy(() => import("./pages/(public)/events/page"));
-const JoyEventDetailPage = lazy(
-    () => import("./pages/(public)/events/[id]/page")
-);
+// (JoyEventsPage / JoyEventDetailPage statically imported above — core
+// high-traffic surfaces)
 const CreateEventPage = lazy(() => import("./pages/events/create/page"));
 const EditEventPage = lazy(() => import("./pages/events/[id]/edit"));
 const EventRegisterPage = lazy(() => import("./pages/events/[id]/register/page"));
@@ -79,10 +85,8 @@ const CustomEventFormPage = lazy(() => import("./pages/events/[id]/forms/custom/
 // Joy communities pages (Phase G) — self-contained, render their own chrome.
 // Old CommunitiesPage/CommunityDetailPage (./pages/communities/page,
 // ./pages/communities/[id]/page) are left on disk, unrouted.
-const CommunitiesJoyPage = lazy(() => import("./pages/communities/joy-page"));
-const CommunityDetailJoyPage = lazy(
-    () => import("./pages/communities/[id]/joy-page")
-);
+// (CommunitiesJoyPage / CommunityDetailJoyPage statically imported above —
+// core high-traffic surfaces)
 const CommunityAdminPage = lazy(() => import("./pages/communities/[id]/admin/page"));
 const CreateCommunityPage = lazy(
     () => import("./pages/communities/create/page")
