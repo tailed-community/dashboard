@@ -25,6 +25,7 @@ export function PlaygroundMobileNav({
     variant,
     cta,
     user,
+    showSignedInShell = !!user,
     onLogout,
 }: {
     routes: PlaygroundRoutes;
@@ -32,6 +33,13 @@ export function PlaygroundMobileNav({
     variant: "full" | "wordmark";
     cta?: PlaygroundHeaderCta;
     user: User | null;
+    /**
+     * While auth is still resolving, `user` is null but a prior-session hint
+     * may say the visitor was signed in — in that case the caller passes
+     * `true` here so we don't flash the signed-out "Sign in / Sign up" menu.
+     * Defaults to `!!user` for any other caller that hasn't opted in.
+     */
+    showSignedInShell?: boolean;
     onLogout: () => void;
 }) {
     const navLinks: { key: Exclude<PlaygroundActiveNav, null>; label: string; to: string; icon: typeof Briefcase }[] = [
@@ -105,7 +113,7 @@ export function PlaygroundMobileNav({
                     )}
 
                     <div className="mt-4 flex flex-col gap-1 border-t border-joy-ink/8 pt-4">
-                        {user ? (
+                        {user || showSignedInShell ? (
                             <>
                                 <SheetClose asChild>
                                     <Link to={routes.me} className={linkClass(false)}>

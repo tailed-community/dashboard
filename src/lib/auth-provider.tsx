@@ -7,9 +7,44 @@ import {
 } from "firebase/auth";
 import { studentAuth } from "./auth";
 
+const AUTH_HINT_KEY = "tailed:auth-hint";
+
+/**
+ * Best-effort read of the last-known sign-in state, written synchronously by
+ * a previous session so the very first render (before Firebase's async
+ * onAuthStateChanged has fired) can guess correctly instead of always
+ * assuming "signed out". Guarded because localStorage throws in some privacy
+ * modes (e.g. Safari private browsing, some ITP configurations).
+ */
+function readAuthHint(): boolean {
+    try {
+        return window.localStorage.getItem(AUTH_HINT_KEY) === "in";
+    } catch {
+        return false;
+    }
+}
+
+function writeAuthHint(signedIn: boolean) {
+    try {
+        window.localStorage.setItem(AUTH_HINT_KEY, signedIn ? "in" : "out");
+    } catch {
+        // Ignore — privacy mode or storage disabled. Worst case we fall back
+        // to the signed-out shell while loading next time.
+    }
+}
+
 interface AuthContextType {
     user: User | null;
     loading: boolean;
+    /**
+     * Best-effort guess of sign-in state from a prior session, sourced from
+     * localStorage and only meaningful while `loading` is true. Once
+     * `loading` is false, `user` is authoritative and this should be
+     * ignored. Lets chrome that switches between signed-in/signed-out UI
+     * (header, avatar menu, etc.) avoid flashing the wrong state on a hard
+     * reload while Firebase's async check is still in flight.
+     */
+    likelySignedIn: boolean;
 }
 
 export const AuthContext = createContext<AuthContextType | null>(null);
@@ -20,38 +55,40 @@ interface AuthProviderProps {
 
 export const AuthProvider = ({ children }: AuthProviderProps) => {
     const [user, setUser] = useState<User | null>(null);
-    const [loading, setLoading] = useState(true); // 🔹 Prevents app from rendering too soon
+    const [loading, setLoading] = useState(true);
+    // Seeded synchronously from localStorage at mount so it's correct on the
+    // very first render — no effect/render delay.
+    const [likelySignedIn, setLikelySignedIn] = useState<boolean>(() => readAuthHint());
 
     useEffect(() => {
-        // const app = getApp(); // Ensure Firebase app is initialized
+        let unsubscribe: (() => void) | undefined;
+        let cancelled = false;
 
-        setPersistence(studentAuth, browserLocalPersistence).then(() => {
-            const unsubscribe = onAuthStateChanged(studentAuth, (user) => {
-                setUser(user);
-                setLoading(false); // ✅ Firebase finished checking
+        setPersistence(studentAuth, browserLocalPersistence)
+            .catch((error) => {
+                // Persistence failures shouldn't block auth state from being
+                // observed — fall through and subscribe anyway.
+                console.error("Failed to set auth persistence:", error);
+            })
+            .finally(() => {
+                if (cancelled) return;
+                unsubscribe = onAuthStateChanged(studentAuth, (nextUser) => {
+                    setUser(nextUser);
+                    setLoading(false);
+                    const signedIn = !!nextUser;
+                    setLikelySignedIn(signedIn);
+                    writeAuthHint(signedIn);
+                });
             });
 
-            return () => unsubscribe();
-        });
+        return () => {
+            cancelled = true;
+            unsubscribe?.();
+        };
     }, []);
 
-    // Show loading state while Firebase auth initializes
-    if (loading) {
-        return (
-            <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 text-gray-700">
-                <div className="relative">
-                    <div className="h-12 w-12 border-4 border-gray-300 rounded-full"></div>
-                    <div className="absolute top-0 left-0 h-12 w-12 border-4 border-t-primary border-transparent rounded-full animate-spin"></div>
-                </div>
-                <p className="mt-4 text-sm font-medium text-gray-600 animate-pulse">
-                    Loading, please wait...
-                </p>
-            </div>
-        );
-    }
-
     return (
-        <AuthContext.Provider value={{ user, loading }}>
+        <AuthContext.Provider value={{ user, loading, likelySignedIn }}>
             {children}
         </AuthContext.Provider>
     );

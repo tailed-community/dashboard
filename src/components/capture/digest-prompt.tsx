@@ -28,11 +28,16 @@ interface DigestPromptProps {
  * blocked. Source: "digest_prompt".
  */
 export function DigestPrompt({ suppressed = false }: DigestPromptProps) {
-  const { user } = useAuth();
+  const { user, loading, likelySignedIn } = useAuth();
   const [visible, setVisible] = useState(false);
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
+    // Auth resolves asynchronously now — while it's still in flight, skip
+    // arming the listener if a prior session hints the visitor is signed
+    // in, so we don't briefly show a logged-out capture prompt to someone
+    // who turns out to be signed in a moment later.
+    if (loading && likelySignedIn) return;
     if (user) return;
     if (isJobAlertSubscribed()) return;
     if (typeof window === "undefined") return;
@@ -53,7 +58,7 @@ export function DigestPrompt({ suppressed = false }: DigestPromptProps) {
 
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
-  }, [user]);
+  }, [user, loading, likelySignedIn]);
 
   if (!visible || dismissed) return null;
 

@@ -15,12 +15,21 @@ interface PrivateRouteProps {
  * round-trip correctly WITHOUT having to bake the redirect into a one-time
  * sign-in link at generation time.
  *
- * Safe to redirect eagerly on `!user`: AuthProvider blocks the whole app behind a
- * loader until Firebase auth resolves, so `user` is already definitive here.
+ * AuthProvider no longer blocks the whole app behind a loader — it renders
+ * immediately and resolves Firebase auth in the background. So `user` is
+ * NOT definitive until `loading` is false: while `loading` is true we
+ * render nothing (rather than redirecting) to avoid bouncing a signed-in
+ * user to /sign-in on every hard reload before Firebase has had a chance to
+ * report back. Once `loading` is false, `user` is authoritative and the
+ * redirect below is safe.
  */
 export function PrivateRoute({ children }: PrivateRouteProps) {
-    const { user } = useAuth();
+    const { user, loading } = useAuth();
     const location = useLocation();
+
+    if (loading) {
+        return null;
+    }
 
     if (!user) {
         const dest = location.pathname + location.search;

@@ -31,8 +31,12 @@ export function PlaygroundHeader({
     cta?: PlaygroundHeaderCta;
 }) {
     const routes = usePlaygroundRoutes();
-    const { user } = useAuth();
+    const { user, loading, likelySignedIn } = useAuth();
     const navigate = useNavigate();
+    // While auth is still resolving (hard reload), avoid flashing "Sign in"
+    // for a visitor who was signed in last we knew — show a neutral
+    // skeleton instead. Once loading is false, `user` is authoritative.
+    const showSignedInShell = loading ? likelySignedIn : !!user;
 
     const navLinks: { key: Exclude<PlaygroundActiveNav, null>; label: string; to: string }[] = [
         { key: "jobs", label: "Jobs", to: routes.jobs },
@@ -95,6 +99,11 @@ export function PlaygroundHeader({
                 <div className="flex items-center gap-3">
                     {user ? (
                         <ProfileMenu user={user} onLogout={handleLogout} />
+                    ) : showSignedInShell ? (
+                        <div
+                            className="hidden h-8 w-8 animate-pulse rounded-full bg-joy-ink/10 sm:inline-block"
+                            aria-hidden="true"
+                        />
                     ) : (
                         <Link
                             to={routes.signIn}
@@ -119,6 +128,7 @@ export function PlaygroundHeader({
                         variant={variant}
                         cta={cta}
                         user={user}
+                        showSignedInShell={showSignedInShell}
                         onLogout={handleLogout}
                     />
                 </div>
