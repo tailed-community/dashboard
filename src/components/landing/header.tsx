@@ -198,8 +198,12 @@ function MobileNavLinks() {
 }
 
 export function Header() {
-    const { user } = useAuth();
+    const { user, loading, likelySignedIn } = useAuth();
     const navigate = useNavigate();
+    // While auth is still resolving (hard reload), avoid flashing the
+    // signed-out "Sign in / Join free" buttons for a visitor who was signed
+    // in last we knew. Once loading is false, `user` is authoritative.
+    const showSignedInShell = loading ? likelySignedIn : !!user;
     const [scrolled, setScrolled] = useState(false);
 
     useEffect(() => {
@@ -242,7 +246,12 @@ export function Header() {
                 <DesktopNav />
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
-                {user ? (
+                {!user && showSignedInShell ? (
+                    <div
+                        className="hidden nav:inline-flex h-8 w-8 animate-pulse rounded-full bg-brand-cream-200/70 dark:bg-brand-cream-800/70"
+                        aria-hidden="true"
+                    />
+                ) : user ? (
                     <>
                         <UserAvatarMenu user={user} onLogout={handleLogout} />
                         <Sheet>
