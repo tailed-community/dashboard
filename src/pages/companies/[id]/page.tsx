@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useState, useEffect, type ReactNode } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { apiFetch } from "@/lib/fetch";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -12,11 +12,8 @@ import {
     Globe,
     Calendar,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { HTMLContent } from "@/components/ui/html-content";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PlaygroundButton } from "@/components/playground/playground-button";
 import { toast } from "sonner";
 import { Seo } from "@/components/seo";
 
@@ -27,6 +24,25 @@ function truncate(text: string, max = 160): string {
 
 function isAbsoluteHttpUrl(url?: string | null): url is string {
     return !!url && /^https?:\/\//i.test(url);
+}
+
+/* ---- Local joy primitives (presentation only) ---- */
+
+/** Small joy tint chip. */
+function JoyChip({
+    children,
+    className = "",
+}: {
+    children: ReactNode;
+    className?: string;
+}) {
+    return (
+        <span
+            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold ${className}`}
+        >
+            {children}
+        </span>
+    );
 }
 
 type CompanyData = {
@@ -104,12 +120,12 @@ export default function CompanyDetailPage() {
                 const data = await response.json();
                 const companyData = data.company || data;
                 setCompany(companyData);
-                
+
                 // Set jobs from company data
                 if (companyData.jobs) {
                     setRelatedJobs(companyData.jobs.slice(0, 3));
                 }
-                
+
                 // Check if user is following this company (from profile)
                 if (user) {
                     try {
@@ -146,10 +162,10 @@ export default function CompanyDetailPage() {
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-brand-cream flex items-center justify-center">
+            <div className="flex min-h-[60vh] items-center justify-center">
                 <div className="flex flex-col items-center gap-4">
-                    <Loader2 className="h-8 w-8 animate-spin text-slate-600" />
-                    <p className="text-sm text-slate-600">Loading company...</p>
+                    <Loader2 className="h-8 w-8 animate-spin text-joy-grass" />
+                    <p className="text-sm text-joy-ink-muted">Loading company...</p>
                 </div>
             </div>
         );
@@ -247,7 +263,7 @@ export default function CompanyDetailPage() {
     const seoImage = isAbsoluteHttpUrl(company.logo) ? company.logo : undefined;
 
     return (
-        <div className="min-h-screen bg-brand-cream">
+        <div className="min-h-screen">
             <Seo
                 title={company.name}
                 description={seoDescription}
@@ -266,7 +282,7 @@ export default function CompanyDetailPage() {
                                 className="w-full aspect-square object-cover rounded-2xl"
                             />
                         ) : (
-                            <div className="w-full aspect-square bg-gradient-to-br from-purple-400 via-pink-400 to-rose-400 rounded-2xl flex items-center justify-center">
+                            <div className="w-full aspect-square bg-gradient-to-br from-joy-grass via-joy-grass-bright to-joy-sky rounded-2xl flex items-center justify-center">
                                 <Building2 className="w-16 h-16 text-white" />
                             </div>
                         )}
@@ -276,61 +292,61 @@ export default function CompanyDetailPage() {
                     <div className="lg:col-span-1 space-y-10">
                         {/* Header */}
                         <div className="space-y-4">
-                            <h1 className="text-4xl font-bold text-slate-900 leading-tight">
+                            <h1 className="joy-display text-4xl font-extrabold text-joy-ink leading-tight">
                                 {company.name}
                             </h1>
-                            <div className="flex items-center gap-3 text-sm flex-wrap">
+                            <div className="flex items-center gap-2 text-sm flex-wrap">
                                 {company.industry && (
-                                    <Badge variant="outline" className="rounded-full">
+                                    <JoyChip className="bg-joy-grass/10 text-joy-grass">
                                         {company.industry}
-                                    </Badge>
+                                    </JoyChip>
                                 )}
                                 {company.location && (
-                                    <Badge variant="outline" className="rounded-full">
-                                        <MapPin className="h-3 w-3 mr-1" />
+                                    <JoyChip className="bg-joy-sky/12 text-joy-sky-ink">
+                                        <MapPin className="h-3 w-3" />
                                         {company.location}
-                                    </Badge>
+                                    </JoyChip>
                                 )}
                             </div>
                         </div>
 
-                        <Separator />
+                        <div className="border-t border-joy-ink/8" />
 
                         {/* Description */}
                         {company.description && (
                             <div className="space-y-4">
-                                <h2 className="text-xl font-semibold text-slate-900">
+                                <h2 className="joy-display text-xl font-extrabold text-joy-ink">
                                     About {company.name}
                                 </h2>
-                                <HTMLContent 
-                                    content={company.description} 
-                                    className="text-slate-600 leading-relaxed"
+                                <HTMLContent
+                                    content={company.description}
+                                    className="text-joy-ink-muted leading-relaxed"
                                 />
                             </div>
                         )}
 
-                        <Separator />
+                        <div className="border-t border-joy-ink/8" />
 
                         {/* Company Details Grid */}
                         <div className="space-y-6">
                             {/* Website */}
                             {company.website && (
                                 <div className="flex gap-4">
-                                    <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
-                                        <Globe className="h-5 w-5 text-slate-600" />
+                                    <div className="w-10 h-10 rounded-xl bg-joy-grass/10 flex items-center justify-center flex-shrink-0">
+                                        <Globe className="h-5 w-5 text-joy-grass" />
                                     </div>
                                     <div className="flex-1">
-                                        <p className="text-sm font-medium text-slate-900">Website</p>
-                                        <Button
-                                            variant="link"
+                                        <p className="text-sm font-semibold text-joy-ink">Website</p>
+                                        <button
+                                            type="button"
                                             onClick={() => {
                                                 const url = company.website;
                                                 if (url) window.open(url, "_blank");
                                             }}
-                                            className="h-auto p-0 text-sm text-blue-600 hover:text-blue-700"
+                                            className="text-sm font-semibold text-joy-grass hover:underline"
                                         >
                                             {company.website.replace(/^https?:\/\//, '')}
-                                        </Button>
+                                        </button>
                                     </div>
                                 </div>
                             )}
@@ -338,12 +354,12 @@ export default function CompanyDetailPage() {
                             {/* Location */}
                             {company.location && (
                                 <div className="flex gap-4">
-                                    <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
-                                        <MapPin className="h-5 w-5 text-slate-600" />
+                                    <div className="w-10 h-10 rounded-xl bg-joy-sky/12 flex items-center justify-center flex-shrink-0">
+                                        <MapPin className="h-5 w-5 text-joy-sky-ink" />
                                     </div>
                                     <div className="flex-1">
-                                        <p className="text-sm font-medium text-slate-900">Location</p>
-                                        <p className="text-sm text-slate-600">{company.location}</p>
+                                        <p className="text-sm font-semibold text-joy-ink">Location</p>
+                                        <p className="text-sm text-joy-ink-muted">{company.location}</p>
                                     </div>
                                 </div>
                             )}
@@ -351,12 +367,12 @@ export default function CompanyDetailPage() {
                             {/* Company Size */}
                             {company.size && (
                                 <div className="flex gap-4">
-                                    <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
-                                        <Users className="h-5 w-5 text-slate-600" />
+                                    <div className="w-10 h-10 rounded-xl bg-joy-sun/25 flex items-center justify-center flex-shrink-0">
+                                        <Users className="h-5 w-5 text-joy-sun-ink" />
                                     </div>
                                     <div className="flex-1">
-                                        <p className="text-sm font-medium text-slate-900">Company Size</p>
-                                        <p className="text-sm text-slate-600">{company.size}</p>
+                                        <p className="text-sm font-semibold text-joy-ink">Company Size</p>
+                                        <p className="text-sm text-joy-ink-muted">{company.size}</p>
                                     </div>
                                 </div>
                             )}
@@ -364,52 +380,52 @@ export default function CompanyDetailPage() {
                             {/* Social Media */}
                             {((company.socialLinks && company.socialLinks.length > 0) || company.socialMedia?.linkedin || company.socialMedia?.twitter || company.socialMedia?.facebook) && (
                                 <div className="flex gap-4">
-                                    <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
-                                        <Share2 className="h-5 w-5 text-slate-600" />
+                                    <div className="w-10 h-10 rounded-xl bg-joy-grass/10 flex items-center justify-center flex-shrink-0">
+                                        <Share2 className="h-5 w-5 text-joy-grass" />
                                     </div>
                                     <div className="flex-1">
-                                        <p className="text-sm font-medium text-slate-900 mb-2">Social Media</p>
+                                        <p className="text-sm font-semibold text-joy-ink mb-2">Social Media</p>
                                         <div className="flex flex-wrap gap-2">
                                             {/* New socialLinks structure */}
                                             {company.socialLinks?.map((link, index) => (
-                                                <Button
+                                                <button
                                                     key={index}
-                                                    variant="outline"
-                                                    size="sm"
+                                                    type="button"
                                                     onClick={() => window.open(link.url, "_blank")}
+                                                    className="inline-flex items-center rounded-xl border-2 border-joy-ink/12 bg-white px-3 py-1.5 text-sm font-bold text-joy-ink transition hover:border-joy-grass/50"
                                                 >
                                                     {link.type.charAt(0).toUpperCase() + link.type.slice(1)}
-                                                </Button>
+                                                </button>
                                             ))}
                                             {/* Legacy socialMedia structure (fallback) */}
                                             {!company.socialLinks && (
                                                 <>
                                                     {company.socialMedia?.linkedin && (
-                                                        <Button
-                                                            variant="outline"
-                                                            size="sm"
+                                                        <button
+                                                            type="button"
                                                             onClick={() => window.open(company.socialMedia!.linkedin!, "_blank")}
+                                                            className="inline-flex items-center rounded-xl border-2 border-joy-ink/12 bg-white px-3 py-1.5 text-sm font-bold text-joy-ink transition hover:border-joy-grass/50"
                                                         >
                                                             LinkedIn
-                                                        </Button>
+                                                        </button>
                                                     )}
                                                     {company.socialMedia?.twitter && (
-                                                        <Button
-                                                            variant="outline"
-                                                            size="sm"
+                                                        <button
+                                                            type="button"
                                                             onClick={() => window.open(company.socialMedia!.twitter!, "_blank")}
+                                                            className="inline-flex items-center rounded-xl border-2 border-joy-ink/12 bg-white px-3 py-1.5 text-sm font-bold text-joy-ink transition hover:border-joy-grass/50"
                                                         >
                                                             Twitter
-                                                        </Button>
+                                                        </button>
                                                     )}
                                                     {company.socialMedia?.facebook && (
-                                                        <Button
-                                                            variant="outline"
-                                                            size="sm"
+                                                        <button
+                                                            type="button"
                                                             onClick={() => window.open(company.socialMedia!.facebook!, "_blank")}
+                                                            className="inline-flex items-center rounded-xl border-2 border-joy-ink/12 bg-white px-3 py-1.5 text-sm font-bold text-joy-ink transition hover:border-joy-grass/50"
                                                         >
                                                             Facebook
-                                                        </Button>
+                                                        </button>
                                                     )}
                                                 </>
                                             )}
@@ -422,13 +438,15 @@ export default function CompanyDetailPage() {
 
                     {/* Right Column - Action Sidebar */}
                     <div className="lg:col-span-1">
-                        <div className="sticky top-8 border border-slate-200 rounded-2xl p-6 space-y-6 bg-slate-50/50">
+                        <div className="sticky top-8 border border-joy-ink/8 rounded-2xl p-6 space-y-6 bg-white shadow-sm">
                             {/* Company Info Header */}
-                            <div className="text-center pb-4 border-b border-slate-200">
-                                <Building2 className="h-12 w-12 mx-auto mb-3 text-slate-600" />
-                                <h3 className="font-semibold text-slate-900">{company.name}</h3>
+                            <div className="text-center pb-4 border-b border-joy-ink/8">
+                                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-joy-grass/10">
+                                    <Building2 className="h-7 w-7 text-joy-grass" />
+                                </div>
+                                <h3 className="joy-display font-extrabold text-joy-ink">{company.name}</h3>
                                 {company.industry && (
-                                    <p className="text-sm text-slate-500 mt-1">{company.industry}</p>
+                                    <p className="text-sm text-joy-ink-muted mt-1">{company.industry}</p>
                                 )}
                             </div>
 
@@ -436,61 +454,63 @@ export default function CompanyDetailPage() {
                             <div className="space-y-3 text-sm">
                                 {company.location && (
                                     <div className="flex items-center gap-3">
-                                        <MapPin className="h-4 w-4 text-slate-500 flex-shrink-0" />
-                                        <span className="text-slate-700 line-clamp-1">{company.location}</span>
+                                        <MapPin className="h-4 w-4 text-joy-ink-muted flex-shrink-0" />
+                                        <span className="text-joy-ink line-clamp-1">{company.location}</span>
                                     </div>
                                 )}
                                 {company.size && (
                                     <div className="flex items-center gap-3">
-                                        <Users className="h-4 w-4 text-slate-500 flex-shrink-0" />
-                                        <span className="text-slate-700">{company.size}</span>
+                                        <Users className="h-4 w-4 text-joy-ink-muted flex-shrink-0" />
+                                        <span className="text-joy-ink">{company.size}</span>
                                     </div>
                                 )}
                             </div>
 
-                            <Separator />
+                            <div className="border-t border-joy-ink/8" />
 
                             {/* Action Buttons */}
                             <div className="space-y-3">
-                                <Button
+                                <button
+                                    type="button"
                                     onClick={handleFollow}
-                                    variant={isFollowing ? "outline" : "default"}
-                                    className="w-full rounded-lg"
-                                    size="lg"
                                     disabled={followLoading}
+                                    className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60 disabled:cursor-not-allowed disabled:opacity-50 ${
+                                        isFollowing
+                                            ? "border-2 border-joy-ink/12 bg-white text-joy-ink hover:border-joy-grass/50"
+                                            : "bg-joy-grass text-white shadow-[0_3px_0_var(--joy-grass-deep)] hover:brightness-105 active:translate-y-[2px]"
+                                    }`}
                                 >
                                     {followLoading ? (
                                         <>
-                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                            <Loader2 className="h-4 w-4 animate-spin" />
                                             {isFollowing ? "Unfollowing..." : "Following..."}
                                         </>
                                     ) : (
                                         isFollowing ? "Following" : "Follow Company"
                                     )}
-                                </Button>
+                                </button>
                                 <div className="flex gap-2">
-                                    <Button
-                                        variant="outline"
+                                    <button
+                                        type="button"
                                         onClick={handleShare}
-                                        className="flex-1 rounded-lg"
-                                        size="sm"
+                                        aria-label="Share"
+                                        className="inline-flex flex-1 items-center justify-center rounded-xl border-2 border-joy-ink/12 bg-white px-4 py-2 text-joy-ink transition hover:border-joy-grass/50"
                                     >
                                         <Share2 className="h-4 w-4" />
-                                    </Button>
+                                    </button>
                                 </div>
                                 {company.website && (
-                                    <Button
-                                        variant="outline"
+                                    <button
+                                        type="button"
                                         onClick={() => {
                                             const url = company.website;
                                             if (url) window.open(url, "_blank");
                                         }}
-                                        className="w-full rounded-lg"
-                                        size="sm"
+                                        className="inline-flex w-full items-center justify-center gap-2 rounded-xl border-2 border-joy-ink/12 bg-white px-4 py-2 text-sm font-bold text-joy-ink transition hover:border-joy-grass/50"
                                     >
-                                        <ExternalLink className="h-4 w-4 mr-2" />
+                                        <ExternalLink className="h-4 w-4" />
                                         Visit Website
-                                    </Button>
+                                    </button>
                                 )}
                             </div>
                         </div>
@@ -504,41 +524,36 @@ export default function CompanyDetailPage() {
                         {relatedJobs.length > 0 && (
                             <div className="space-y-6">
                                 <div className="flex items-center justify-between">
-                                    <h2 className="text-2xl font-bold text-slate-900">Open Positions</h2>
+                                    <h2 className="joy-display text-2xl font-extrabold text-joy-ink">Open Positions</h2>
                                     {relatedJobs.length >= 3 && company && (
-                                        <Link to={`/jobs?company=${company.id}`}>
-                                            <Button variant="outline" size="sm">
-                                                View All
-                                            </Button>
-                                        </Link>
+                                        <PlaygroundButton to={`/jobs?company=${company.id}`} variant="outline">
+                                            View All
+                                        </PlaygroundButton>
                                     )}
                                 </div>
                                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                                     {relatedJobs.map((job) => (
-                                        <Card 
-                                            key={job.id} 
-                                            className="hover:shadow-lg transition-shadow cursor-pointer"
+                                        <button
+                                            key={job.id}
+                                            type="button"
                                             onClick={() => navigate(`/jobs/${job.id}`)}
+                                            className="rounded-2xl border border-joy-ink/8 bg-white p-5 text-left shadow-sm transition hover:border-joy-grass/40 hover:shadow-md"
                                         >
-                                            <CardHeader>
-                                                <CardTitle className="text-lg line-clamp-2">{job.title}</CardTitle>
-                                            </CardHeader>
-                                            <CardContent>
-                                                <div className="space-y-3">
-                                                    <Badge variant="outline">{job.type}</Badge>
-                                                    <div className="flex items-center gap-2 text-sm text-slate-600">
-                                                        <MapPin className="h-4 w-4" />
-                                                        <span className="line-clamp-1">{job.location}</span>
-                                                    </div>
-                                                    {job.postingDate && (
-                                                        <div className="flex items-center gap-2 text-sm text-slate-500">
-                                                            <Calendar className="h-4 w-4" />
-                                                            <span>Posted {new Date(job.postingDate).toLocaleDateString()}</span>
-                                                        </div>
-                                                    )}
+                                            <h3 className="text-lg font-bold text-joy-ink line-clamp-2">{job.title}</h3>
+                                            <div className="mt-3 space-y-3">
+                                                <JoyChip className="bg-joy-grass/10 text-joy-grass">{job.type}</JoyChip>
+                                                <div className="flex items-center gap-2 text-sm text-joy-ink-muted">
+                                                    <MapPin className="h-4 w-4" />
+                                                    <span className="line-clamp-1">{job.location}</span>
                                                 </div>
-                                            </CardContent>
-                                        </Card>
+                                                {job.postingDate && (
+                                                    <div className="flex items-center gap-2 text-sm text-joy-ink-muted">
+                                                        <Calendar className="h-4 w-4" />
+                                                        <span>Posted {new Date(job.postingDate).toLocaleDateString()}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </button>
                                     ))}
                                 </div>
                             </div>
@@ -548,53 +563,50 @@ export default function CompanyDetailPage() {
                         {relatedEvents.length > 0 && (
                             <div className="space-y-6">
                                 <div className="flex items-center justify-between">
-                                    <h2 className="text-2xl font-bold text-slate-900">Upcoming Events</h2>
+                                    <h2 className="joy-display text-2xl font-extrabold text-joy-ink">Upcoming Events</h2>
                                     {relatedEvents.length >= 3 && (
-                                        <Link to="/events">
-                                            <Button variant="outline" size="sm">
-                                                View All
-                                            </Button>
-                                        </Link>
+                                        <PlaygroundButton to="/events" variant="outline">
+                                            View All
+                                        </PlaygroundButton>
                                     )}
                                 </div>
                                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                                     {relatedEvents.map((event) => (
-                                        <Card 
-                                            key={event.id} 
-                                            className="hover:shadow-lg transition-shadow cursor-pointer overflow-hidden"
+                                        <button
+                                            key={event.id}
+                                            type="button"
                                             onClick={() => navigate(`/events/${event.id}`)}
+                                            className="overflow-hidden rounded-2xl border border-joy-ink/8 bg-white text-left shadow-sm transition hover:border-joy-grass/40 hover:shadow-md"
                                         >
                                             {event.heroImageUrl && (
                                                 <div className="aspect-video w-full overflow-hidden">
-                                                    <img 
-                                                        src={event.heroImageUrl} 
+                                                    <img
+                                                        src={event.heroImageUrl}
                                                         alt={event.title}
                                                         className="w-full h-full object-cover"
                                                     />
                                                 </div>
                                             )}
-                                            <CardHeader>
-                                                <CardTitle className="text-lg line-clamp-2">{event.title}</CardTitle>
-                                            </CardHeader>
-                                            <CardContent>
-                                                <div className="space-y-3">
+                                            <div className="p-5">
+                                                <h3 className="text-lg font-bold text-joy-ink line-clamp-2">{event.title}</h3>
+                                                <div className="mt-3 space-y-3">
                                                     <div className="flex items-center gap-2">
-                                                        <Badge variant="outline">{event.category}</Badge>
-                                                        <Badge variant="secondary">{event.mode}</Badge>
+                                                        <JoyChip className="bg-joy-grass/10 text-joy-grass">{event.category}</JoyChip>
+                                                        <JoyChip className="bg-joy-sky/12 text-joy-sky-ink">{event.mode}</JoyChip>
                                                     </div>
-                                                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                                                    <div className="flex items-center gap-2 text-sm text-joy-ink-muted">
                                                         <Calendar className="h-4 w-4" />
                                                         <span>{new Date(event.datetime).toLocaleDateString()}</span>
                                                     </div>
                                                     {event.location && (
-                                                        <div className="flex items-center gap-2 text-sm text-slate-600">
+                                                        <div className="flex items-center gap-2 text-sm text-joy-ink-muted">
                                                             <MapPin className="h-4 w-4" />
                                                             <span className="line-clamp-1">{event.location}</span>
                                                         </div>
                                                     )}
                                                 </div>
-                                            </CardContent>
-                                        </Card>
+                                            </div>
+                                        </button>
                                     ))}
                                 </div>
                             </div>

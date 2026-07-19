@@ -131,7 +131,7 @@ export function fetchExternalJobs(): Promise<ExternalJob[]> {
       .then((jobs: TailedGithubJob[]) => normalizeTailedGithubJobs(jobs))
       .catch((error) => {
         externalJobsPromise = null;
-        console.error("Failed to fetch Tail'ed GitHub jobs:", error);
+        console.error("Failed to fetch Tail'ed Community GitHub jobs:", error);
         return [];
       });
   }

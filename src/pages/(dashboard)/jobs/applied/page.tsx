@@ -5,14 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { type Job } from "@/types/jobs";
-import {
-    Breadcrumb,
-    BreadcrumbItem,
-    BreadcrumbLink,
-    BreadcrumbList,
-    BreadcrumbPage,
-} from "@/components/ui/breadcrumb";
-import { BreadcrumbSeparator } from "@/components/ui/sidebar";
 import { useNavigate } from "react-router-dom";
 
 type AppliedJob = Job & {
@@ -24,15 +16,6 @@ export default function AppliedJobsPage() {
     const [appliedJobs, setAppliedJobs] = useState<AppliedJob[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [scrolled, setScrolled] = useState(false);
-
-    useEffect(() => {
-        const onScroll = () => {
-            setScrolled(window.scrollY > 30);
-        };
-        window.addEventListener("scroll", onScroll);
-        return () => window.removeEventListener("scroll", onScroll);
-    }, []);
 
     useEffect(() => {
         async function fetchAppliedJobs() {

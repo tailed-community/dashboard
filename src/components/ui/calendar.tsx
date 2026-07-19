@@ -70,7 +70,7 @@ Calendar.displayName = "Calendar";
 
 export { Calendar };
 
-function Chevron({ orientation = "left", ...props }) {
+function Chevron({ orientation = "left" }: { orientation?: string }) {
   switch (orientation) {
     case "left":
       return <ChevronLeftIcon className="h-4 w-4" />;

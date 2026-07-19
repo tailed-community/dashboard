@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { completeSignIn } from "@/lib/auth";
 import { apiFetch } from "@/lib/fetch";
 import { useSidebarContext } from "@/contexts/sidebar-context";
@@ -40,7 +41,13 @@ export default function AuthCallback() {
         }
       })
       .catch((error) => {
+        // Most likely an expired or already-used magic link. Don't dead-end the
+        // user on a blank callback screen — send them to sign-in for a fresh link.
         console.error("Sign-in error:", error);
+        toast.error("That sign-in link has expired", {
+          description: "Enter your email to get a fresh one.",
+        });
+        navigate("/sign-in");
       });
   }, [navigate]);
 

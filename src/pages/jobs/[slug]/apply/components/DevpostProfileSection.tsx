@@ -5,10 +5,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { type DevpostProfile } from "../types";
+import { type DevpostProfile, type ApplicationFormData } from "../types";
 
 interface DevpostProfileSectionProps {
-  formData: FormData;
+  formData: ApplicationFormData;
   handleInputChange: (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => void;

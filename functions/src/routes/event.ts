@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { DateTime } from "luxon";
 import { db, storage } from "../lib/firebase";
 import { sendCommunityWelcomeEmail, sendEventApprovalEmail } from "../lib/email-service";
+import { getPreferredLocaleForUid } from "../lib/locale";
 import { upsertStudentUser } from "../lib/user-management";
 import { z } from "zod";
 import Busboy from "busboy";
@@ -1861,12 +1862,16 @@ router.post("/:eventId/import-attendees", async (req: Request, res: Response) =>
           // Send welcome email to new users
           try {
             const loginLink = `${process.env.FRONTEND_URL || 'https://community.tailed.ca'}/login`;
+            const locale = await getPreferredLocaleForUid(
+              upsertResult.userRecord.uid
+            );
             await sendCommunityWelcomeEmail(
               emailLower,
               attendee.firstName || emailLower.split("@")[0],
               communityData.name || 'Community',
               eventData.title || 'Event',
-              loginLink
+              loginLink,
+              locale
             );
           } catch (emailError) {
             console.error(`Failed to send welcome email to ${emailLower}:`, emailError);
@@ -2513,11 +2518,15 @@ router.post("/:eventId/registrations/:registrationId/review", async (req: Reques
     if (status === "confirmed" && previousStatus !== "confirmed" && regData.email) {
       try {
         const eventLink = `${process.env.WEB_APP_URL || "https://community.tailed.ca"}/events/${resolvedEventId}`;
+        const locale = await getPreferredLocaleForUid(
+          regData.userId ? String(regData.userId) : null
+        );
         await sendEventApprovalEmail(
           String(regData.email),
           String(regData.firstName || "there"),
           String(eventData.title || "your event"),
-          eventLink
+          eventLink,
+          locale
         );
       } catch (emailError) {
         console.error("Failed to send approval email:", emailError);

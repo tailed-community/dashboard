@@ -5,8 +5,10 @@ import { fetchDigestJobs, type DigestJob } from "../lib/jobs-feed";
 import { matchJobsToSubscription, type DigestSubscriptionLike } from "../lib/digest-matching";
 import { sendJobsDigestEmail } from "../lib/email-service";
 import { buildUnsubscribeUrl } from "../lib/links";
+import { getPreferredLocaleForUid, type Locale } from "../lib/locale";
 
 const SUBSCRIPTIONS_COLLECTION = "jobAlertSubscriptions";
+const DIGEST_RUNS_COLLECTION = "digestRuns";
 const SUBSCRIPTION_BATCH_SIZE = 300;
 const MAX_JOBS_PER_EMAIL = 12;
 const SEND_CONCURRENCY = 5;
@@ -20,6 +22,8 @@ interface JobAlertSubscriptionDoc extends DigestSubscriptionLike {
   unsubscribeToken: string;
   createdAt: Timestamp | Date | null;
   lastSentJobDate: number | null;
+  /** owning profile uid (null for anonymous captures) — used to resolve locale. */
+  userId: string | null;
 }
 
 function toEpochMs(value: Timestamp | Date | null | undefined): number {
@@ -75,6 +79,7 @@ async function fetchActiveSubscriptions(): Promise<JobAlertSubscriptionDoc[]> {
         unsubscribeToken: data.unsubscribeToken,
         createdAt: data.createdAt ?? null,
         lastSentJobDate: typeof data.lastSentJobDate === "number" ? data.lastSentJobDate : null,
+        userId: typeof data.userId === "string" ? data.userId : null,
       });
     }
 
@@ -144,6 +149,20 @@ export async function runJobsDigest(
   const subscriptions = await fetchActiveSubscriptions();
   summary.subscribers = subscriptions.length;
 
+  // Cache profile→locale reads across the run: several subscriptions can share
+  // one owning uid, and we never want to re-read the same profile doc. Keyed by
+  // uid; anonymous captures (no userId) skip the lookup and default to "en".
+  const localeCache = new Map<string, Promise<Locale>>();
+  const resolveLocale = (uid: string | null): Promise<Locale> => {
+    if (!uid) return Promise.resolve("en");
+    let cached = localeCache.get(uid);
+    if (!cached) {
+      cached = getPreferredLocaleForUid(uid);
+      localeCache.set(uid, cached);
+    }
+    return cached;
+  };
+
   await runWithConcurrency(subscriptions, SEND_CONCURRENCY, async (sub) => {
     try {
       const watermark = computeWatermark(sub, now);
@@ -177,16 +196,35 @@ export async function runJobsDigest(
       }
 
       const unsubscribeUrl = buildUnsubscribeUrl(sub.unsubscribeToken);
+      const locale = await resolveLocale(sub.userId);
       await sendJobsDigestEmail(sub.email, toSend, {
         query: sub.query,
         unsubscribeUrl,
         totalMatchCount: matched.length,
+        locale,
       });
 
-      await db.collection(SUBSCRIPTIONS_COLLECTION).doc(sub.id).update({
-        lastSentAt: new Date(),
+      // Atomically advance the subscription watermark AND record the batch
+      // history (digestRuns) in a single WriteBatch so a partial failure can't
+      // leave the watermark moved without a corresponding run record.
+      const sentAt = new Date();
+      const subscriptionRef = db.collection(SUBSCRIPTIONS_COLLECTION).doc(sub.id);
+      const runRef = subscriptionRef.collection(DIGEST_RUNS_COLLECTION).doc();
+
+      const batch = db.batch();
+      batch.update(subscriptionRef, {
+        lastSentAt: sentAt,
         lastSentJobDate: newWatermark,
       });
+      batch.set(runRef, {
+        sentAt,
+        jobIds: toSend.map((job) => job.id),
+        jobCount: toSend.length,
+        matchedCount: matched.length,
+        watermarkBefore: sub.lastSentJobDate,
+        watermarkAfter: newWatermark,
+      });
+      await batch.commit();
 
       summary.emailsSent += 1;
     } catch (error) {

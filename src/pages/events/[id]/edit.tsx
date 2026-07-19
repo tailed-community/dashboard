@@ -8,7 +8,7 @@ import { CalendarDays, MapPin, Users, Loader2, Upload, Link as LinkIcon, ArrowLe
 import { apiFetch } from "@/lib/fetch";
 import { getFileUrl } from "@/lib/firebase-client";
 import { Button } from "@/components/ui/button";
-import { EventAwardsEditor, toMainPlaceNumber, getMainPlaceTitle } from "@/components/events/awards";
+import { EventAwardsEditor } from "@/components/events/awards";
 import {
     Card,
     CardContent,

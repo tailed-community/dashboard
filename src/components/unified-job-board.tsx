@@ -540,8 +540,10 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
         [allJobs, activeFilters, normalizedLocationsByJob, selectedCountry, selectedState]
     );
 
-    const sortByCountThenLabel = (
-        items: Array<{ value: string; label: string; count: number }>
+    const sortByCountThenLabel = <
+        T extends { value: string; label: string; count: number },
+    >(
+        items: T[]
     ) =>
         items.sort((a, b) => {
             if (b.count !== a.count) return b.count - a.count;
@@ -661,7 +663,9 @@ export function UnifiedJobBoard({ limit, variant = "full" }: UnifiedJobBoardProp
     }, [availableCities]);
 
     useEffect(() => {
-        const typeSet = new Set(availableTypeOptions.map((opt) => opt.value));
+        const typeSet = new Set<string>(
+            availableTypeOptions.map((opt) => opt.value)
+        );
         setSelectedTypes((prev) => {
             const next = prev.filter((type) => typeSet.has(type));
             return arraysHaveSameValues(prev, next) ? prev : next;

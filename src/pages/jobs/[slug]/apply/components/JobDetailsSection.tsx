@@ -4,11 +4,15 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { type GithubProfile } from "@/lib/github";
-import { type TokenInfo, type DevpostProfile } from "../types";
+import {
+  type TokenInfo,
+  type DevpostProfile,
+  type ApplicationFormData,
+} from "../types";
 import { HTMLContent } from "@/components/ui/html-content";
 
 interface JobDetailsSectionProps {
-  formData: FormData;
+  formData: ApplicationFormData;
   handleInputChange: (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => void;

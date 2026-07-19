@@ -47,6 +47,21 @@
   --color-brand-cream-800: var(--brand-cream-800);
   --color-brand-cream-900: var(--brand-cream-900);
   --color-brand-cream-950: var(--brand-cream-950);
+  --color-joy-surface: var(--joy-surface);
+  --color-joy-surface-sunk: var(--joy-surface-sunk);
+  --color-joy-surface-alt: var(--joy-surface-alt);
+  --color-joy-mint: var(--joy-mint);
+  --color-joy-ink: var(--joy-ink);
+  --color-joy-ink-muted: var(--joy-ink-muted);
+  --color-joy-grass: var(--joy-grass);
+  --color-joy-grass-deep: var(--joy-grass-deep);
+  --color-joy-grass-bright: var(--joy-grass-bright);
+  --color-joy-sky: var(--joy-sky);
+  --color-joy-sky-ink: var(--joy-sky-ink);
+  --color-joy-sun: var(--joy-sun);
+  --color-joy-sun-ink: var(--joy-sun-ink);
+  --font-joy-display: 'Baloo 2', ui-rounded, system-ui, sans-serif;
+  --font-joy-body: 'Nunito', ui-sans-serif, system-ui, sans-serif;
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -97,6 +112,19 @@
   --brand-cream-800: oklch(0.35 0.05 75);
   --brand-cream-900: oklch(0.25 0.05 75);
   --brand-cream-950: oklch(0.15 0.05 75);
+  --joy-surface: #FFFBF0;
+  --joy-surface-sunk: #FFF3DC;
+  --joy-surface-alt: #FFF6E0;
+  --joy-mint: #EAF6DC;
+  --joy-ink: #2B2118;
+  --joy-ink-muted: #6B5D4F;
+  --joy-grass: #2E7D02;
+  --joy-grass-deep: #1F5C01;
+  --joy-grass-bright: #58CC02;
+  --joy-sky: #1CB0F6;
+  --joy-sky-ink: #0A6FA8;
+  --joy-sun: #FFC800;
+  --joy-sun-ink: #8A6200;
   --sidebar: oklch(0.99 0 0);
   --sidebar-foreground: oklch(0.25 0.01 85);
   --sidebar-primary: oklch(0.25 0.01 85);
@@ -169,4 +197,36 @@
   .shadow-soft-xl {
     box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.05), 0 8px 10px -6px rgb(0 0 0 / 0.05);
   }
+}
+
+/* ---------------- Joy (design-lab playground) shared type + motion ----------------
+ * Ported from the per-page <style> blocks in src/pages/design-lab/playground*.tsx
+ * so they're globally available. The playground pages still carry their own
+ * copies for now (removed in a later phase). */
+.joy-display {
+  font-family: 'Baloo 2', ui-rounded, system-ui, sans-serif;
+}
+.joy-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes joyPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.joy-pulse-dot {
+  animation: joyPulse 2s ease-in-out infinite;
+}
+
+@keyframes joySwapIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.joy-swap {
+  animation: joySwapIn 0.32s ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .joy-pulse-dot, .joy-swap { animation: none; }
 }

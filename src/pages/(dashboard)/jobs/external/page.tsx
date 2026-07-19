@@ -266,7 +266,7 @@ export default function ExternalJobPage() {
         formatLocationForDisplay(jobLocations) || "Location not specified";
     const roleLabel =
         job.type === "internship" ? "Internship role" : "New-grad role";
-    const description = `Apply for ${job.title} at ${job.company_name}. ${roleLabel} in ${locationSummary}. Found on Tail'ed — free job board for students.`;
+    const description = `Apply for ${job.title} at ${job.company_name}. ${roleLabel} in ${locationSummary}. Found on Tail'ed Community — free job board for students.`;
     const path = `/jobs/e/${encodeURIComponent(job.id)}`;
     const canonicalUrl = `${SITE_URL}${path}`;
     const postedDate = formatPostedDate(job.date_posted);
@@ -363,7 +363,7 @@ export default function ExternalJobPage() {
                     <CardContent>
                         <p className="text-sm text-muted-foreground">
                             This listing is posted on {job.company_name}'s own careers
-                            site. Tail'ed surfaces it as part of our free job board for
+                            site. Tail'ed Community surfaces it as part of our free job board for
                             students — applying happens on the employer's site.
                         </p>
                     </CardContent>

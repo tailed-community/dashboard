@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { OpportunityCard, type Opportunity } from "@/components/explore/opportunity-card";
-import { Button } from "@/components/ui/button";
+import { PlaygroundButton } from "@/components/playground/playground-button";
 import { useAuth } from "@/hooks/use-auth";
 import { Separator } from "@/components/ui/separator";
 import { Loader2 } from "lucide-react";
@@ -16,7 +16,9 @@ export default function ExplorePage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [visibleCount, setVisibleCount] = useState(12);
-  const [totalCounts, setTotalCounts] = useState({
+  // Value intentionally unbound: only the setter is used today (counts are
+  // logged for debugging); keep the state so those writes stay cheap no-ops.
+  const [, setTotalCounts] = useState({
     featuredJobs: 0,
     internships: 0,
     newGrads: 0,
@@ -367,7 +369,7 @@ export default function ExplorePage() {
   }, [visibleCount, allFetchedData]);
 
   return (
-    <div className="min-h-screen bg-brand-cream">
+    <div style={{ colorScheme: "light" }}>
       <Seo
         title="Explore"
         description="Explore student communities, events, and opportunities on Tail'ed."
@@ -378,23 +380,23 @@ export default function ExplorePage() {
         <div className="mb-8">
           {user ? (
             <div className="mb-6">
-              <p className="text-sm font-medium text-gray-500 mb-1">
+              <p className="joy-mono text-sm font-medium text-joy-ink-muted mb-1">
                 {getCurrentDate()}
               </p>
-              <h1 className="text-4xl font-bold text-gray-900 mb-2">
+              <h1 className="joy-display text-4xl font-extrabold text-joy-ink mb-2">
                 {getGreeting()}, {getUserName()}
               </h1>
                 <Separator className="my-4" />
             </div>
           ) : (
             <>
-              
+
             </>
           )}
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+          <h1 className="joy-display text-3xl font-extrabold text-joy-ink mb-2">
                 Explore Opportunities
               </h1>
-              <p className="text-gray-600">
+              <p className="text-joy-ink-muted">
                 Discover internships, jobs, companies, and events
               </p>
         </div>
@@ -402,8 +404,8 @@ export default function ExplorePage() {
         {/* Loading State */}
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20">
-            <Loader2 className="h-8 w-8 animate-spin text-slate-600 mb-4" />
-            <p className="text-sm text-slate-600">Loading opportunities...</p>
+            <Loader2 className="h-8 w-8 animate-spin text-joy-grass mb-4" />
+            <p className="text-sm text-joy-ink-muted">Loading opportunities...</p>
           </div>
         ) : (
           <>
@@ -426,12 +428,10 @@ export default function ExplorePage() {
             {/* Load More Button */}
             {hasMore && opportunities.length > 0 && (
               <div className="flex justify-center">
-                <Button
+                <PlaygroundButton
                   variant="outline"
-                  size="lg"
                   className="px-8"
                   onClick={handleLoadMore}
-                  disabled={loadingMore}
                 >
                   {loadingMore ? (
                     <>
@@ -441,15 +441,15 @@ export default function ExplorePage() {
                   ) : (
                     "Load more opportunities"
                   )}
-                </Button>
+                </PlaygroundButton>
               </div>
             )}
 
             {/* Empty State */}
             {opportunities.length === 0 && (
               <div className="text-center py-20">
-                <p className="text-gray-500 text-lg">No opportunities available at the moment.</p>
-                <p className="text-gray-400 text-sm mt-2">Check back later for new events and communities!</p>
+                <p className="text-joy-ink-muted text-lg">No opportunities available at the moment.</p>
+                <p className="text-joy-ink-muted/70 text-sm mt-2">Check back later for new events and communities!</p>
               </div>
             )}
           </>

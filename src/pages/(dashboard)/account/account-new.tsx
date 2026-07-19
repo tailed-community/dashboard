@@ -1,5 +1,5 @@
 import type React from "react";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
 import {
     Upload,
     Loader2,
@@ -14,73 +14,45 @@ import {
     X,
     CheckCircle2,
     Circle,
+    Trophy,
 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/fetch";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { fetchGithubUserProfile, type GithubProfile } from "@/lib/github";
+import { fetchGithubUserProfile } from "@/lib/github";
 import { studentAuth, initializeStudentSession } from "@/lib/auth";
 import {
     linkWithPopup,
     GithubAuthProvider,
-    unlink,
     signInWithCredential,
 } from "firebase/auth";
 import { FirebaseError } from "firebase/app";
-import type { DevpostProfile } from "../jobs/[slug]/apply/types";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { getFileUrl } from "@/lib/firebase-client";
 import { trackEvent } from "@/lib/analytics";
+import { Seo } from "@/components/seo";
+import { PlaygroundShell } from "@/components/playground/playground-chrome";
+import { PlaygroundButton } from "@/components/playground/playground-button";
+import { LIVE_ROUTES } from "@/components/playground/playground-routes";
+import { AccountOnboardingCard } from "@/components/account/account-onboarding-card";
+import { ResumeQuickStart } from "@/components/account/resume-quick-start";
+import { EducationEditor } from "@/components/account/education-editor";
+import { ExperienceEditor } from "@/components/account/experience-editor";
+import { ProjectsEditor } from "@/components/account/projects-editor";
+import { WorkAuthorizationEditor } from "@/components/account/work-authorization-editor";
+import { SkillsStructuredEditor } from "@/components/account/skills-structured-editor";
+import { LanguagePreference } from "@/components/account/language-preference";
+import {
+    updateProfileFields,
+    calculateProfileScore,
+    type ProfileCompletion,
+    type StudentProfile,
+} from "@/lib/profile";
 
-type StudentProps = {
-    email: string;
-    id: string;
-    firstName: string;
-    lastName: string;
-    phone: string;
-    location: string;
-    school: string;
-    program: string;
-    graduationYear: string;
-    devpostUsername: string;
-    devpost?: DevpostProfile;
-    linkedinUrl: string;
-    portfolioUrl: string;
-    githubUsername: string;
-    github?: GithubProfile;
-    skills: string[];
-    resume: {
-        id: string;
-        name: string;
-        url: string;
-        uploadedAt: {
-            _seconds: number;
-            _nanoseconds: number;
-        };
-    };
-    appliedJobs: [];
-    organizations: string[];
-    profileScore?: {
-        score: number;
-        completed: {
-            devpost: boolean;
-            devpostUsername: boolean;
-            github: boolean;
-            githubUsername: boolean;
-            linkedinUrl: boolean;
-            portfolioUrl: boolean;
-            resume: boolean;
-            skills: boolean;
-        };
-    };
-};
+// The canonical profile shape now lives in `src/lib/profile.ts` (spec 08 §4.8).
+// Kept as a local alias so the rest of this file keeps compiling unchanged.
+type StudentProps = StudentProfile;
 
 type ActivityEvent = {
     id: string;
@@ -144,6 +116,207 @@ const apiService = {
     },
 };
 
+/* ------------------------------------------------------------------ *
+ * Joy layout primitives (Slice 2). Small, local helpers so the calm  *
+ * single-scroll account page reads consistently: white/cream section *
+ * cards on the joy-surface page bg, joy-display headings, chunky      *
+ * buttons. No shadcn Card/Tabs/Button chrome here anymore.            *
+ * ------------------------------------------------------------------ */
+
+/** White section card with the joy border + soft shadow. */
+function JoyCard({
+    children,
+    className = "",
+}: {
+    children: ReactNode;
+    className?: string;
+}) {
+    return (
+        <div
+            className={`rounded-2xl border border-joy-ink/8 bg-white p-6 shadow-sm ${className}`}
+        >
+            {children}
+        </div>
+    );
+}
+
+/** A top-level section: joy-display heading (+ optional anchor id) then content. */
+function Section({
+    id,
+    icon,
+    title,
+    description,
+    children,
+}: {
+    id?: string;
+    icon?: ReactNode;
+    title: string;
+    description?: string;
+    children: ReactNode;
+}) {
+    return (
+        <section id={id} className="scroll-mt-24">
+            <div className="mb-4 flex items-center gap-3">
+                {icon && (
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-joy-grass/10 text-joy-grass">
+                        {icon}
+                    </span>
+                )}
+                <div className="min-w-0">
+                    <h2 className="joy-display text-2xl font-extrabold leading-tight text-joy-ink">
+                        {title}
+                    </h2>
+                    {description && (
+                        <p className="text-sm text-joy-ink-muted">{description}</p>
+                    )}
+                </div>
+            </div>
+            <div className="space-y-4">{children}</div>
+        </section>
+    );
+}
+
+/** Chunky, joy-styled action button that (unlike PlaygroundButton) supports
+ *  disabled + a loading spinner — used for connect/verify/upload/delete flows. */
+function ActionButton({
+    onClick,
+    disabled,
+    loading,
+    variant = "outline",
+    className = "",
+    children,
+}: {
+    onClick: () => void;
+    disabled?: boolean;
+    loading?: boolean;
+    variant?: "primary" | "outline" | "danger";
+    className?: string;
+    children: ReactNode;
+}) {
+    const base =
+        "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60 disabled:cursor-not-allowed disabled:opacity-50";
+    const styles: Record<string, string> = {
+        primary:
+            "bg-joy-grass text-white shadow-[0_3px_0_var(--joy-grass-deep)] hover:brightness-105 active:translate-y-[2px]",
+        outline:
+            "border-2 border-joy-ink/12 bg-white text-joy-ink hover:border-joy-grass/50",
+        danger: "border-2 border-red-200 bg-white text-red-600 hover:border-red-300 hover:bg-red-50",
+    };
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            disabled={disabled}
+            className={`${base} ${styles[variant]} ${className}`}
+        >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : children}
+        </button>
+    );
+}
+
+/** Inline-edit text field: label (+ optional icon), input with a pencil/discard
+ *  toggle, and a validation message. Preserves the original per-field edit UX. */
+function EditableField({
+    id,
+    label,
+    icon,
+    value,
+    placeholder,
+    editing,
+    saving,
+    error,
+    className = "",
+    onChange,
+    onToggleEdit,
+    onDiscard,
+}: {
+    id: string;
+    label: string;
+    icon?: ReactNode;
+    value: string;
+    placeholder?: string;
+    editing: boolean;
+    saving: boolean;
+    error?: string;
+    className?: string;
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+    onToggleEdit: () => void;
+    onDiscard: () => void;
+}) {
+    return (
+        <div className={className}>
+            <Label
+                htmlFor={id}
+                className="flex items-center gap-2 text-sm font-semibold text-joy-ink"
+            >
+                {icon}
+                {label}
+            </Label>
+            <div className="mt-1.5 flex items-center gap-2">
+                <Input
+                    id={id}
+                    name={id}
+                    value={value}
+                    onChange={onChange}
+                    placeholder={placeholder}
+                    disabled={!editing || saving}
+                    className="bg-white"
+                />
+                <button
+                    type="button"
+                    onClick={editing ? onDiscard : onToggleEdit}
+                    disabled={saving}
+                    aria-label={editing ? `Discard ${label}` : `Edit ${label}`}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-joy-ink/12 bg-white text-joy-ink-muted transition hover:border-joy-grass/50 hover:text-joy-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60 disabled:opacity-50"
+                >
+                    {editing ? (
+                        <X className="h-4 w-4" />
+                    ) : (
+                        <PencilLine className="h-4 w-4" />
+                    )}
+                </button>
+            </div>
+            {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
+        </div>
+    );
+}
+
+/** Small joy tint chip. */
+function JoyChip({
+    children,
+    className = "",
+}: {
+    children: ReactNode;
+    className?: string;
+}) {
+    return (
+        <span
+            className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ${className}`}
+        >
+            {children}
+        </span>
+    );
+}
+
+/** Completeness checklist items — labels + which `profileScore.completed` key
+ *  drives each dot. Rendered data-driven so all 14 signals stay in one place. */
+const COMPLETENESS_FIELDS: { key: keyof ProfileCompletion; label: string }[] = [
+    { key: "firstName", label: "First Name" },
+    { key: "lastName", label: "Last Name" },
+    { key: "school", label: "School" },
+    { key: "program", label: "Program" },
+    { key: "graduationYear", label: "Graduation Year" },
+    { key: "location", label: "Location" },
+    { key: "githubUsername", label: "GitHub Username" },
+    { key: "github", label: "GitHub Profile" },
+    { key: "devpostUsername", label: "Devpost Username" },
+    { key: "devpost", label: "Devpost Profile" },
+    { key: "linkedinUrl", label: "LinkedIn" },
+    { key: "portfolioUrl", label: "Portfolio" },
+    { key: "resume", label: "Resume" },
+    { key: "skills", label: "Skills" },
+];
+
 export default function AccountPage() {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
@@ -180,6 +353,13 @@ export default function AccountPage() {
     const [hasChanges, setHasChanges] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    // De-tabbed layout (Slice 2): the page is now one calm vertical scroll.
+    // The onboarding card and resume quick-start deep-link by smooth-scrolling
+    // to a section anchor instead of switching a tab.
+    const scrollToSection = (id: string) => {
+        const el = document.getElementById(id);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
 
     const [resumeFile, setResumeFile] = useState<File | null>(null);
     const [isUploadingResume, setIsUploadingResume] = useState(false);
@@ -225,46 +405,12 @@ export default function AccountPage() {
     const [wins, setWins] = useState<WinItem[]>([]);
     const [isLoadingActivity, setIsLoadingActivity] = useState(false);
 
-    // Function to calculate profile completeness
-    const calculateProfileScore = (profileData: any) => {
-        const checks = {
-            // Identity basics — collected progressively post-signup, never gated.
-            firstName: !!profileData.firstName?.trim(),
-            lastName: !!profileData.lastName?.trim(),
-            school: !!profileData.school?.trim(),
-            program: !!profileData.program?.trim(),
-            graduationYear: !!String(profileData.graduationYear || "").trim(),
-            location: !!profileData.location?.trim(),
-            // Enrichment
-            githubUsername: !!profileData.githubUsername?.trim(),
-            github: !!(
-                profileData.github && Object.keys(profileData.github).length > 0
-            ),
-            devpostUsername: !!profileData.devpostUsername?.trim(),
-            devpost: !!(
-                profileData.devpost &&
-                Object.keys(profileData.devpost).length > 0
-            ),
-            resume: !!profileData.resume?.url,
-            skills: !!(
-                profileData.skills &&
-                Array.isArray(profileData.skills) &&
-                profileData.skills.length > 0
-            ),
-            linkedinUrl: !!profileData.linkedinUrl?.trim(),
-            portfolioUrl: !!profileData.portfolioUrl?.trim(),
-        };
+    // Profile completeness now lives in `src/lib/profile.ts` so the account
+    // page, the ambient profile menu, and `useProfileSummary` score identically.
 
-        // Calculate score: each field is worth an equal share of 100
-        const totalFields = Object.keys(checks).length;
-        const completedCount = Object.values(checks).filter(Boolean).length;
-        const score = Math.round((completedCount / totalFields) * 100);
-
-        return {
-            score,
-            completed: checks,
-        };
-    };
+    // One-time guard so the browser-language default is attempted at most once
+    // per mount and can NEVER overwrite a language the user has already saved.
+    const attemptedLanguageDefault = useRef(false);
 
     // Load student data
     useEffect(() => {
@@ -274,12 +420,53 @@ export default function AccountPage() {
                 const data = await apiService.getStudent();
                 setStudent(data);
                 setOriginalStudent(data);
+                maybeSeedBrowserLanguage(data);
             } catch (error) {
                 toast.error("Failed to load profile");
             } finally {
                 setIsLoading(false);
             }
         };
+
+        // Browser-language default on first load (spec 08 §5). If the loaded
+        // profile has NO `preferredLanguage` yet, detect it from the browser and
+        // persist it silently. Guarded so it fires once and only when the field
+        // is truly unset — a user's saved choice ("en"/"fr") is never touched.
+        const maybeSeedBrowserLanguage = (data: StudentProps | null) => {
+            if (attemptedLanguageDefault.current) return;
+            if (!data || (data as StudentProps).preferredLanguage) return;
+            attemptedLanguageDefault.current = true;
+
+            const langs =
+                (typeof navigator !== "undefined" &&
+                    (navigator.languages?.length
+                        ? navigator.languages
+                        : navigator.language
+                        ? [navigator.language]
+                        : [])) ||
+                [];
+            const detected = langs.some((l) =>
+                l?.toLowerCase().startsWith("fr")
+            )
+                ? "fr"
+                : "en";
+
+            updateProfileFields({ preferredLanguage: detected })
+                .then(() => {
+                    setStudent((prev) => ({
+                        ...prev,
+                        preferredLanguage: detected,
+                    }));
+                    setOriginalStudent((prev) =>
+                        prev ? { ...prev, preferredLanguage: detected } : prev
+                    );
+                })
+                .catch(() => {
+                    // Silent — a failed default just means we retry next mount.
+                    attemptedLanguageDefault.current = false;
+                });
+        };
+
         loadStudent();
     }, []);
 
@@ -336,10 +523,12 @@ export default function AccountPage() {
                 };
 
                 const fetchedParticipation = Array.isArray(data.participation)
-                    ? await mapEventsWithImages(data.participation)
+                    ? await mapEventsWithImages<ParticipationItem>(
+                          data.participation
+                      )
                     : [];
                 const fetchedWins = Array.isArray(data.wins)
-                    ? await mapEventsWithImages(data.wins)
+                    ? await mapEventsWithImages<WinItem>(data.wins)
                     : [];
 
                 setParticipation(fetchedParticipation);
@@ -594,10 +783,11 @@ export default function AccountPage() {
 
             if (preSaveCompleted) {
                 const postSaveCompleted = calculateProfileScore(student).completed;
-                const newlyCompletedFields = Object.keys(postSaveCompleted).filter(
+                const newlyCompletedFields = (
+                    Object.keys(postSaveCompleted) as (keyof ProfileCompletion)[]
+                ).filter(
                     (field) =>
-                        (postSaveCompleted as Record<string, boolean>)[field] &&
-                        !(preSaveCompleted as Record<string, boolean>)[field]
+                        postSaveCompleted[field] && !preSaveCompleted[field]
                 );
 
                 if (newlyCompletedFields.length > 0) {
@@ -648,6 +838,17 @@ export default function AccountPage() {
             setStudent(originalStudent);
             setHasChanges(false);
         }
+    };
+
+    // Apply a partial patch that a structured-builder section (Experience,
+    // Education, Projects, Work Authorization, structured Skills — spec 08 §3.1)
+    // has ALREADY persisted through its own `PATCH /profile/update`. We sync both
+    // `student` and `originalStudent` so the header "Save Changes" affordance does
+    // not appear for work that is already saved, and so the onboarding card and
+    // the rest of the page re-derive from the new values immediately.
+    const applyProfilePatch = (patch: Partial<StudentProps>) => {
+        setStudent((prev) => ({ ...prev, ...patch }));
+        setOriginalStudent((prev) => (prev ? { ...prev, ...patch } : prev));
     };
 
     const handleResumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1039,927 +1240,421 @@ export default function AccountPage() {
 
     if (isLoading) {
         return (
-            <div className="w-full max-w-6xl mx-auto p-4 space-y-6">
-                <Card>
-                    <CardContent className="p-6">
-                        <Skeleton className="h-32 w-full" />
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardContent className="p-6">
-                        <Skeleton className="h-64 w-full" />
-                    </CardContent>
-                </Card>
+            <div style={{ colorScheme: "light" }}>
+                <Seo
+                    title="Your profile"
+                    description="Edit your Tailed profile, resume, and connected accounts."
+                />
+                <PlaygroundShell routes={LIVE_ROUTES} showSwitcher={false}>
+                    <div className="mx-auto max-w-3xl space-y-6 px-5 pb-16 pt-10 md:pt-12">
+                        <div className="h-40 animate-pulse rounded-2xl border border-joy-ink/8 bg-white" />
+                        <div className="h-64 animate-pulse rounded-2xl border border-joy-ink/8 bg-white" />
+                    </div>
+                </PlaygroundShell>
             </div>
         );
     }
 
+    const completedCount = profileScore
+        ? Object.values(profileScore.completed).filter(Boolean).length
+        : 0;
+    const totalCount = profileScore
+        ? Object.keys(profileScore.completed).length
+        : 0;
+
     return (
-        <div className="w-full max-w-6xl mx-auto p-4 space-y-6">
-            {/* Header Card */}
-            <Card>
-                <CardContent className="p-6">
-                    <div className="flex items-center gap-6">
-                        <img
-                            src={
-                                student?.github?.avatarUrl ||
-                                "https://www.placeholderimage.online/images/generic/users-profile.jpg"
-                            }
-                            alt="Profile"
-                            className="w-24 h-24 rounded-full object-cover border-4 border-gray-100"
-                        />
-                        <div className="flex-1">
-                            <h1 className="text-3xl font-bold text-gray-900">
-                                {student.firstName} {student.lastName}
-                            </h1>
-                            <p className="text-gray-600 mt-1">
-                                {student.email}
-                            </p>
-                            <div className="flex items-center gap-2 mt-2">
-                                <Badge variant="secondary">
-                                    {student.school || "Not specified"}
-                                </Badge>
-                                <Badge variant="secondary">
-                                    {student.program || "Not specified"}
-                                </Badge>
+        <div style={{ colorScheme: "light" }}>
+            <Seo
+                title="Your profile"
+                description="Edit your Tailed profile, resume, and connected accounts."
+            />
+            <PlaygroundShell routes={LIVE_ROUTES} showSwitcher={false}>
+                <div className="mx-auto max-w-3xl space-y-8 px-5 pb-16 pt-10 md:pt-12">
+                    {/* Header card — identity + completeness, pinned at the top. */}
+                    <JoyCard>
+                        <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+                            <img
+                                src={
+                                    student?.github?.avatarUrl ||
+                                    "https://www.placeholderimage.online/images/generic/users-profile.jpg"
+                                }
+                                alt="Profile"
+                                className="h-20 w-20 shrink-0 rounded-full border-4 border-joy-grass/15 object-cover"
+                            />
+                            <div className="min-w-0 flex-1">
+                                <h1 className="joy-display text-2xl font-extrabold leading-tight text-joy-ink sm:text-3xl">
+                                    {student.firstName} {student.lastName}
+                                </h1>
+                                <p className="mt-1 text-sm text-joy-ink-muted">
+                                    {student.email}
+                                </p>
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    <JoyChip className="bg-joy-grass/10 text-joy-grass">
+                                        {student.school || "Not specified"}
+                                    </JoyChip>
+                                    <JoyChip className="bg-joy-sky/12 text-joy-sky-ink">
+                                        {student.program || "Not specified"}
+                                    </JoyChip>
+                                </div>
                             </div>
+                            {hasChanges && (
+                                <div className="flex shrink-0 items-center gap-2">
+                                    <PlaygroundButton
+                                        variant="outline"
+                                        onClick={handleCancelChanges}
+                                    >
+                                        Cancel
+                                    </PlaygroundButton>
+                                    <PlaygroundButton onClick={handleSaveChanges}>
+                                        {isSaving ? (
+                                            <>
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                Saving...
+                                            </>
+                                        ) : (
+                                            "Save changes"
+                                        )}
+                                    </PlaygroundButton>
+                                </div>
+                            )}
                         </div>
-                        {hasChanges && (
-                            <div className="flex gap-2">
-                                <Button
-                                    variant="outline"
-                                    onClick={handleCancelChanges}
-                                    disabled={isSaving}
-                                >
-                                    Cancel
-                                </Button>
-                                <Button
-                                    onClick={handleSaveChanges}
-                                    disabled={isSaving}
-                                    className="bg-black text-white hover:bg-gray-800"
-                                >
-                                    {isSaving ? (
-                                        <>
-                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                            Saving...
-                                        </>
-                                    ) : (
-                                        "Save Changes"
+
+                        {/* Profile completeness */}
+                        {profileScore && (
+                            <div className="mt-6 rounded-xl border border-joy-ink/8 bg-joy-surface p-4">
+                                <div className="mb-3 flex items-center justify-between gap-3">
+                                    <div>
+                                        <h3 className="joy-display text-lg font-extrabold text-joy-ink">
+                                            Profile completeness: {profileScore.score}%
+                                        </h3>
+                                        <p className="mt-1 text-sm text-joy-ink-muted">
+                                            Students with complete profiles have{" "}
+                                            <span className="font-bold text-joy-grass">
+                                                83% higher chance
+                                            </span>{" "}
+                                            of getting hired!
+                                        </p>
+                                    </div>
+                                    {profileScore.score === 100 && (
+                                        <JoyChip className="bg-joy-grass text-white">
+                                            Completed
+                                        </JoyChip>
                                     )}
-                                </Button>
+                                </div>
+                                <div className="mb-4 flex gap-1.5">
+                                    {Array.from({ length: totalCount }).map(
+                                        (_, index) => (
+                                            <div
+                                                key={index}
+                                                className={`h-2 flex-1 rounded-sm transition-all duration-300 ${
+                                                    index < completedCount
+                                                        ? "bg-joy-grass"
+                                                        : "bg-joy-ink/10"
+                                                }`}
+                                            />
+                                        )
+                                    )}
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                                    {COMPLETENESS_FIELDS.map((field) => {
+                                        const done =
+                                            !!profileScore.completed[
+                                                field.key
+                                            ];
+                                        return (
+                                            <div
+                                                key={field.key}
+                                                className="flex items-center gap-2 text-sm"
+                                            >
+                                                {done ? (
+                                                    <CheckCircle2 className="h-4 w-4 shrink-0 text-joy-grass" />
+                                                ) : (
+                                                    <Circle className="h-4 w-4 shrink-0 text-joy-ink/30" />
+                                                )}
+                                                <span
+                                                    className={
+                                                        done
+                                                            ? "text-joy-ink"
+                                                            : "text-joy-ink-muted"
+                                                    }
+                                                >
+                                                    {field.label}
+                                                </span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         )}
-                    </div>
+                    </JoyCard>
 
-                    {/* Profile Completeness Section */}
-                    {profileScore && (
-                        <div className="mt-6 p-4 bg-gradient-to-r from-slate-50 to-gray-50 rounded-lg border border-gray-200">
-                            <div className="flex items-center justify-between mb-3">
+                    {/* Onboarding CTA — curated first steps for soft accounts. Reads
+                        real signals off the profile; hides itself once every item is
+                        done (or the card is dismissed). See spec 08 §3.0. The tab
+                        CTA now smooth-scrolls to a section anchor. */}
+                    <AccountOnboardingCard
+                        profile={student}
+                        onGoToTab={scrollToSection}
+                    />
+
+                    {/* ---- Identity & contact ---- */}
+                    <Section
+                        id="identity"
+                        icon={<User className="h-5 w-5" />}
+                        title="Identity & contact"
+                        description="Who you are and how we reach you."
+                    >
+                        <JoyCard>
+                            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                                <EditableField
+                                    id="firstName"
+                                    label="First Name"
+                                    value={student.firstName || ""}
+                                    placeholder="First Name"
+                                    editing={isEditing.firstName}
+                                    saving={isSaving}
+                                    error={validationErrors.firstName}
+                                    onChange={handleInputChange}
+                                    onToggleEdit={() => handleToggleEdit("firstName")}
+                                    onDiscard={() => handleDiscardField("firstName")}
+                                />
+                                <EditableField
+                                    id="lastName"
+                                    label="Last Name"
+                                    value={student.lastName || ""}
+                                    placeholder="Last Name"
+                                    editing={isEditing.lastName}
+                                    saving={isSaving}
+                                    error={validationErrors.lastName}
+                                    onChange={handleInputChange}
+                                    onToggleEdit={() => handleToggleEdit("lastName")}
+                                    onDiscard={() => handleDiscardField("lastName")}
+                                />
                                 <div>
-                                    <h3 className="text-lg font-semibold text-gray-900">
-                                        Profile Completeness:{" "}
-                                        {profileScore.score}%
-                                    </h3>
-                                    <p className="text-sm text-gray-600 mt-1">
-                                        Students with complete profiles have{" "}
-                                        <span className="font-bold text-green-700">
-                                            83% higher chance
-                                        </span>{" "}
-                                        of getting hired!
-                                    </p>
-                                </div>
-                                {profileScore.score === 100 && (
-                                    <Badge className="bg-green-600 text-white">
-                                        Completed
-                                    </Badge>
-                                )}
-                            </div>
-                            <div className="flex gap-1.5 mb-3">
-                                {Array.from({
-                                    length: Object.keys(profileScore.completed)
-                                        .length,
-                                }).map((_, index) => {
-                                    const completedFields = Object.values(
-                                        profileScore.completed
-                                    ).filter(Boolean).length;
-                                    const isFilled = index < completedFields;
-                                    return (
-                                        <div
-                                            key={index}
-                                            className={`flex-1 h-2 rounded-sm transition-all duration-300 ${
-                                                isFilled
-                                                    ? "bg-green-600"
-                                                    : "bg-gray-300"
-                                            }`}
-                                        />
-                                    );
-                                })}
-                            </div>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                                <div className="flex items-center gap-2 text-sm">
-                                    {profileScore.completed.firstName ? (
-                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
-                                    ) : (
-                                        <Circle className="h-4 w-4 text-gray-400" />
-                                    )}
-                                    <span
-                                        className={
-                                            profileScore.completed.firstName
-                                                ? "text-green-700"
-                                                : "text-gray-500"
-                                        }
+                                    <Label
+                                        htmlFor="email"
+                                        className="text-sm font-semibold text-joy-ink"
                                     >
-                                        First Name
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2 text-sm">
-                                    {profileScore.completed.lastName ? (
-                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
-                                    ) : (
-                                        <Circle className="h-4 w-4 text-gray-400" />
-                                    )}
-                                    <span
-                                        className={
-                                            profileScore.completed.lastName
-                                                ? "text-green-700"
-                                                : "text-gray-500"
-                                        }
-                                    >
-                                        Last Name
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2 text-sm">
-                                    {profileScore.completed.school ? (
-                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
-                                    ) : (
-                                        <Circle className="h-4 w-4 text-gray-400" />
-                                    )}
-                                    <span
-                                        className={
-                                            profileScore.completed.school
-                                                ? "text-green-700"
-                                                : "text-gray-500"
-                                        }
-                                    >
-                                        School
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2 text-sm">
-                                    {profileScore.completed.program ? (
-                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
-                                    ) : (
-                                        <Circle className="h-4 w-4 text-gray-400" />
-                                    )}
-                                    <span
-                                        className={
-                                            profileScore.completed.program
-                                                ? "text-green-700"
-                                                : "text-gray-500"
-                                        }
-                                    >
-                                        Program
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2 text-sm">
-                                    {profileScore.completed.graduationYear ? (
-                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
-                                    ) : (
-                                        <Circle className="h-4 w-4 text-gray-400" />
-                                    )}
-                                    <span
-                                        className={
-                                            profileScore.completed
-                                                .graduationYear
-                                                ? "text-green-700"
-                                                : "text-gray-500"
-                                        }
-                                    >
-                                        Graduation Year
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2 text-sm">
-                                    {profileScore.completed.location ? (
-                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
-                                    ) : (
-                                        <Circle className="h-4 w-4 text-gray-400" />
-                                    )}
-                                    <span
-                                        className={
-                                            profileScore.completed.location
-                                                ? "text-green-700"
-                                                : "text-gray-500"
-                                        }
-                                    >
-                                        Location
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2 text-sm">
-                                    {profileScore.completed.githubUsername ? (
-                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
-                                    ) : (
-                                        <Circle className="h-4 w-4 text-gray-400" />
-                                    )}
-                                    <span
-                                        className={
-                                            profileScore.completed
-                                                .githubUsername
-                                                ? "text-green-700"
-                                                : "text-gray-500"
-                                        }
-                                    >
-                                        GitHub Username
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2 text-sm">
-                                    {profileScore.completed.github ? (
-                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
-                                    ) : (
-                                        <Circle className="h-4 w-4 text-gray-400" />
-                                    )}
-                                    <span
-                                        className={
-                                            profileScore.completed.github
-                                                ? "text-green-700"
-                                                : "text-gray-500"
-                                        }
-                                    >
-                                        GitHub Profile
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2 text-sm">
-                                    {profileScore.completed.devpostUsername ? (
-                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
-                                    ) : (
-                                        <Circle className="h-4 w-4 text-gray-400" />
-                                    )}
-                                    <span
-                                        className={
-                                            profileScore.completed
-                                                .devpostUsername
-                                                ? "text-green-700"
-                                                : "text-gray-500"
-                                        }
-                                    >
-                                        Devpost Username
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2 text-sm">
-                                    {profileScore.completed.devpost ? (
-                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
-                                    ) : (
-                                        <Circle className="h-4 w-4 text-gray-400" />
-                                    )}
-                                    <span
-                                        className={
-                                            profileScore.completed.devpost
-                                                ? "text-green-700"
-                                                : "text-gray-500"
-                                        }
-                                    >
-                                        Devpost Profile
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2 text-sm">
-                                    {profileScore.completed.linkedinUrl ? (
-                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
-                                    ) : (
-                                        <Circle className="h-4 w-4 text-gray-400" />
-                                    )}
-                                    <span
-                                        className={
-                                            profileScore.completed.linkedinUrl
-                                                ? "text-green-700"
-                                                : "text-gray-500"
-                                        }
-                                    >
-                                        LinkedIn
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2 text-sm">
-                                    {profileScore.completed.portfolioUrl ? (
-                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
-                                    ) : (
-                                        <Circle className="h-4 w-4 text-gray-400" />
-                                    )}
-                                    <span
-                                        className={
-                                            profileScore.completed.portfolioUrl
-                                                ? "text-green-700"
-                                                : "text-gray-500"
-                                        }
-                                    >
-                                        Portfolio
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2 text-sm">
-                                    {profileScore.completed.resume ? (
-                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
-                                    ) : (
-                                        <Circle className="h-4 w-4 text-gray-400" />
-                                    )}
-                                    <span
-                                        className={
-                                            profileScore.completed.resume
-                                                ? "text-green-700"
-                                                : "text-gray-500"
-                                        }
-                                    >
-                                        Resume
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2 text-sm">
-                                    {profileScore.completed.skills ? (
-                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
-                                    ) : (
-                                        <Circle className="h-4 w-4 text-gray-400" />
-                                    )}
-                                    <span
-                                        className={
-                                            profileScore.completed.skills
-                                                ? "text-green-700"
-                                                : "text-gray-500"
-                                        }
-                                    >
-                                        Skills
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
-
-            {/* Tabs Section */}
-            <Tabs defaultValue="profile" className="w-full">
-                <TabsList className="grid w-full grid-cols-4">
-                    <TabsTrigger
-                        value="profile"
-                        className="flex items-center gap-2"
-                    >
-                        <User className="h-4 w-4" />
-                        Profile
-                    </TabsTrigger>
-                    <TabsTrigger
-                        value="education"
-                        className="flex items-center gap-2"
-                    >
-                        <GraduationCap className="h-4 w-4" />
-                        Education
-                    </TabsTrigger>
-                    <TabsTrigger
-                        value="professional"
-                        className="flex items-center gap-2"
-                    >
-                        <Code className="h-4 w-4" />
-                        Professional
-                    </TabsTrigger>
-                    <TabsTrigger
-                        value="skills"
-                        className="flex items-center gap-2"
-                    >
-                        <FileText className="h-4 w-4" />
-                        Skills & Resume
-                    </TabsTrigger>
-                    <TabsTrigger
-                        value="activity"
-                        className="flex items-center gap-2"
-                    >
-                        <GraduationCap className="h-4 w-4" />
-                        Events & Wins
-                    </TabsTrigger>
-                </TabsList>
-
-                {/* Profile Tab */}
-                <TabsContent value="profile" className="space-y-4 mt-6">
-                    <Card>
-                        <CardContent className="p-6">
-                            <h2 className="text-xl font-semibold mb-4">
-                                Personal Information
-                            </h2>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div>
-                                    <Label htmlFor="firstName">
-                                        First Name
+                                        Email
                                     </Label>
-                                    <div className="flex items-center gap-2">
-                                        <Input
-                                            id="firstName"
-                                            name="firstName"
-                                            value={student.firstName || ""}
-                                            onChange={handleInputChange}
-                                            placeholder="First Name"
-                                            disabled={
-                                                !isEditing.firstName || isSaving
-                                            }
-                                        />
-                                        {isEditing.firstName ? (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() =>
-                                                    handleDiscardField(
-                                                        "firstName"
-                                                    )
-                                                }
-                                                disabled={isSaving}
-                                                className="flex-shrink-0"
-                                            >
-                                                <X className="h-4 w-4" />
-                                            </Button>
-                                        ) : (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() =>
-                                                    handleToggleEdit(
-                                                        "firstName"
-                                                    )
-                                                }
-                                                disabled={isSaving}
-                                                className="flex-shrink-0"
-                                            >
-                                                <PencilLine className="h-4 w-4" />
-                                            </Button>
-                                        )}
-                                    </div>
-                                    {validationErrors.firstName && (
-                                        <p className="text-sm text-red-600 mt-1">
-                                            {validationErrors.firstName}
-                                        </p>
-                                    )}
-                                </div>
-                                <div>
-                                    <Label htmlFor="lastName">Last Name</Label>
-                                    <div className="flex items-center gap-2">
-                                        <Input
-                                            id="lastName"
-                                            name="lastName"
-                                            value={student.lastName || ""}
-                                            onChange={handleInputChange}
-                                            placeholder="Last Name"
-                                            disabled={
-                                                !isEditing.lastName || isSaving
-                                            }
-                                        />
-                                        {isEditing.lastName ? (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() =>
-                                                    handleDiscardField(
-                                                        "lastName"
-                                                    )
-                                                }
-                                                disabled={isSaving}
-                                                className="flex-shrink-0"
-                                            >
-                                                <X className="h-4 w-4" />
-                                            </Button>
-                                        ) : (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() =>
-                                                    handleToggleEdit("lastName")
-                                                }
-                                                disabled={isSaving}
-                                                className="flex-shrink-0"
-                                            >
-                                                <PencilLine className="h-4 w-4" />
-                                            </Button>
-                                        )}
-                                    </div>
-                                    {validationErrors.lastName && (
-                                        <p className="text-sm text-red-600 mt-1">
-                                            {validationErrors.lastName}
-                                        </p>
-                                    )}
-                                </div>
-                                <div>
-                                    <Label htmlFor="email">Email</Label>
                                     <Input
                                         id="email"
                                         value={student.email}
                                         disabled
+                                        className="mt-1.5 bg-white"
                                     />
                                 </div>
-                                <div>
-                                    <Label htmlFor="phone">Phone Number</Label>
-                                    <div className="flex items-center gap-2">
-                                        <Input
-                                            id="phone"
-                                            name="phone"
-                                            value={student.phone || ""}
-                                            onChange={handleInputChange}
-                                            placeholder="+1 (555) 000-0000"
-                                            disabled={
-                                                !isEditing.phone || isSaving
-                                            }
-                                        />
-                                        {isEditing.phone ? (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() =>
-                                                    handleDiscardField("phone")
-                                                }
-                                                disabled={isSaving}
-                                                className="flex-shrink-0"
-                                            >
-                                                <X className="h-4 w-4" />
-                                            </Button>
-                                        ) : (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() =>
-                                                    handleToggleEdit("phone")
-                                                }
-                                                disabled={isSaving}
-                                                className="flex-shrink-0"
-                                            >
-                                                <PencilLine className="h-4 w-4" />
-                                            </Button>
-                                        )}
-                                    </div>
-                                    {validationErrors.phone && (
-                                        <p className="text-sm text-red-600 mt-1">
-                                            {validationErrors.phone}
-                                        </p>
-                                    )}
-                                </div>
-                                <div className="md:col-span-2">
-                                    <Label htmlFor="location">Location</Label>
-                                    <div className="flex items-center gap-2">
-                                        <Input
-                                            id="location"
-                                            name="location"
-                                            value={student.location || ""}
-                                            onChange={handleInputChange}
-                                            placeholder="City, Country"
-                                            disabled={
-                                                !isEditing.location || isSaving
-                                            }
-                                        />
-                                        {isEditing.location ? (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() =>
-                                                    handleDiscardField(
-                                                        "location"
-                                                    )
-                                                }
-                                                disabled={isSaving}
-                                                className="flex-shrink-0"
-                                            >
-                                                <X className="h-4 w-4" />
-                                            </Button>
-                                        ) : (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() =>
-                                                    handleToggleEdit("location")
-                                                }
-                                                disabled={isSaving}
-                                                className="flex-shrink-0"
-                                            >
-                                                <PencilLine className="h-4 w-4" />
-                                            </Button>
-                                        )}
-                                    </div>
-                                    {validationErrors.location && (
-                                        <p className="text-sm text-red-600 mt-1">
-                                            {validationErrors.location}
-                                        </p>
-                                    )}
-                                </div>
+                                <EditableField
+                                    id="phone"
+                                    label="Phone Number"
+                                    value={student.phone || ""}
+                                    placeholder="+1 (555) 000-0000"
+                                    editing={isEditing.phone}
+                                    saving={isSaving}
+                                    error={validationErrors.phone}
+                                    onChange={handleInputChange}
+                                    onToggleEdit={() => handleToggleEdit("phone")}
+                                    onDiscard={() => handleDiscardField("phone")}
+                                />
+                                <EditableField
+                                    id="location"
+                                    label="Location"
+                                    value={student.location || ""}
+                                    placeholder="City, Country"
+                                    editing={isEditing.location}
+                                    saving={isSaving}
+                                    error={validationErrors.location}
+                                    className="md:col-span-2"
+                                    onChange={handleInputChange}
+                                    onToggleEdit={() => handleToggleEdit("location")}
+                                    onDiscard={() => handleDiscardField("location")}
+                                />
                             </div>
-                        </CardContent>
-                    </Card>
-                </TabsContent>
+                            {/* Communication-language preference (spec 08 §5).
+                                Drives the language of emails + surveys only; does
+                                NOT switch the platform UI locale. */}
+                            <LanguagePreference
+                                preferredLanguage={student.preferredLanguage}
+                                onSaved={applyProfilePatch}
+                            />
+                        </JoyCard>
+                        {/* Work authorization — job-relevant, NOT anonymous; kept
+                            clearly separate from the demographic self-ID survey
+                            (spec 08 §4.5). */}
+                        <WorkAuthorizationEditor
+                            workAuthorization={student.workAuthorization}
+                            onSaved={applyProfilePatch}
+                        />
+                    </Section>
 
-                {/* Education Tab */}
-                <TabsContent value="education" className="space-y-4 mt-6">
-                    <Card>
-                        <CardContent className="p-6">
-                            <h2 className="text-xl font-semibold mb-4">
-                                Educational Background
-                            </h2>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div className="md:col-span-2">
-                                    <Label htmlFor="school">
-                                        University / College
-                                    </Label>
-                                    <div className="flex items-center gap-2">
-                                        <Input
-                                            id="school"
-                                            name="school"
-                                            value={student.school || ""}
-                                            onChange={handleInputChange}
-                                            placeholder="Harvard University"
-                                            disabled={
-                                                !isEditing.school || isSaving
-                                            }
-                                        />
-                                        {isEditing.school ? (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() =>
-                                                    handleDiscardField("school")
-                                                }
-                                                disabled={isSaving}
-                                                className="flex-shrink-0"
-                                            >
-                                                <X className="h-4 w-4" />
-                                            </Button>
-                                        ) : (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() =>
-                                                    handleToggleEdit("school")
-                                                }
-                                                disabled={isSaving}
-                                                className="flex-shrink-0"
-                                            >
-                                                <PencilLine className="h-4 w-4" />
-                                            </Button>
-                                        )}
-                                    </div>
-                                    {validationErrors.school && (
-                                        <p className="text-sm text-red-600 mt-1">
-                                            {validationErrors.school}
-                                        </p>
-                                    )}
-                                </div>
-                                <div>
-                                    <Label htmlFor="program">
-                                        Major / Program
-                                    </Label>
-                                    <div className="flex items-center gap-2">
-                                        <Input
-                                            id="program"
-                                            name="program"
-                                            value={student.program || ""}
-                                            onChange={handleInputChange}
-                                            placeholder="Computer Science"
-                                            disabled={
-                                                !isEditing.program || isSaving
-                                            }
-                                        />
-                                        {isEditing.program ? (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() =>
-                                                    handleDiscardField(
-                                                        "program"
-                                                    )
-                                                }
-                                                disabled={isSaving}
-                                                className="flex-shrink-0"
-                                            >
-                                                <X className="h-4 w-4" />
-                                            </Button>
-                                        ) : (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() =>
-                                                    handleToggleEdit("program")
-                                                }
-                                                disabled={isSaving}
-                                                className="flex-shrink-0"
-                                            >
-                                                <PencilLine className="h-4 w-4" />
-                                            </Button>
-                                        )}
-                                    </div>
-                                    {validationErrors.program && (
-                                        <p className="text-sm text-red-600 mt-1">
-                                            {validationErrors.program}
-                                        </p>
-                                    )}
-                                </div>
-                                <div>
-                                    <Label htmlFor="graduationYear">
-                                        Graduation Year
-                                    </Label>
-                                    <div className="flex items-center gap-2">
-                                        <Input
-                                            id="graduationYear"
-                                            name="graduationYear"
-                                            value={student.graduationYear || ""}
-                                            onChange={handleInputChange}
-                                            placeholder="2025"
-                                            disabled={
-                                                !isEditing.graduationYear ||
-                                                isSaving
-                                            }
-                                        />
-                                        {isEditing.graduationYear ? (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() =>
-                                                    handleDiscardField(
-                                                        "graduationYear"
-                                                    )
-                                                }
-                                                disabled={isSaving}
-                                                className="flex-shrink-0"
-                                            >
-                                                <X className="h-4 w-4" />
-                                            </Button>
-                                        ) : (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() =>
-                                                    handleToggleEdit(
-                                                        "graduationYear"
-                                                    )
-                                                }
-                                                disabled={isSaving}
-                                                className="flex-shrink-0"
-                                            >
-                                                <PencilLine className="h-4 w-4" />
-                                            </Button>
-                                        )}
-                                    </div>
-                                    {validationErrors.graduationYear && (
-                                        <p className="text-sm text-red-600 mt-1">
-                                            {validationErrors.graduationYear}
-                                        </p>
-                                    )}
-                                </div>
+                    {/* ---- Education & experience ---- */}
+                    <Section
+                        id="education"
+                        icon={<GraduationCap className="h-5 w-5" />}
+                        title="Education & experience"
+                        description="Your CV: schools, roles, and projects."
+                    >
+                        {/* Resume-drop fast start — reuses the EXISTING upload in
+                            the Skills & resume section; no parser (spec 08 Open-Q1). */}
+                        <ResumeQuickStart
+                            hasResume={!!student.resume?.name}
+                            profile={student}
+                            onGoToResumeUpload={() => scrollToSection("skills")}
+                            onMerged={applyProfilePatch}
+                        />
+                        <JoyCard>
+                            <h3 className="joy-display mb-4 text-lg font-extrabold text-joy-ink">
+                                Educational background
+                            </h3>
+                            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                                <EditableField
+                                    id="school"
+                                    label="University / College"
+                                    value={student.school || ""}
+                                    placeholder="Harvard University"
+                                    editing={isEditing.school}
+                                    saving={isSaving}
+                                    error={validationErrors.school}
+                                    className="md:col-span-2"
+                                    onChange={handleInputChange}
+                                    onToggleEdit={() => handleToggleEdit("school")}
+                                    onDiscard={() => handleDiscardField("school")}
+                                />
+                                <EditableField
+                                    id="program"
+                                    label="Major / Program"
+                                    value={student.program || ""}
+                                    placeholder="Computer Science"
+                                    editing={isEditing.program}
+                                    saving={isSaving}
+                                    error={validationErrors.program}
+                                    onChange={handleInputChange}
+                                    onToggleEdit={() => handleToggleEdit("program")}
+                                    onDiscard={() => handleDiscardField("program")}
+                                />
+                                <EditableField
+                                    id="graduationYear"
+                                    label="Graduation Year"
+                                    value={student.graduationYear || ""}
+                                    placeholder="2025"
+                                    editing={isEditing.graduationYear}
+                                    saving={isSaving}
+                                    error={validationErrors.graduationYear}
+                                    onChange={handleInputChange}
+                                    onToggleEdit={() =>
+                                        handleToggleEdit("graduationYear")
+                                    }
+                                    onDiscard={() =>
+                                        handleDiscardField("graduationYear")
+                                    }
+                                />
                             </div>
-                        </CardContent>
-                    </Card>
-                </TabsContent>
+                        </JoyCard>
 
-                {/* Professional Tab */}
-                <TabsContent value="professional" className="space-y-4 mt-6">
-                    {/* LinkedIn & Portfolio */}
-                    <Card>
-                        <CardContent className="p-6">
-                            <h2 className="text-xl font-semibold mb-4">
-                                Professional Links
-                            </h2>
+                        {/* Structured builder: additional education, experience,
+                            projects (spec 08 §4.2–4.3). Each editor self-persists
+                            via the shared PATCH /profile/update path and syncs local
+                            state through applyProfilePatch. The Education editor
+                            keeps its first entry mirrored to the flat
+                            school/program/gradYear scalars above (backend re-mirrors
+                            on every write). */}
+                        <EducationEditor
+                            profile={student}
+                            onSaved={applyProfilePatch}
+                        />
+                        <ExperienceEditor
+                            experiences={student.experiences}
+                            onSaved={applyProfilePatch}
+                        />
+                        <ProjectsEditor
+                            projects={student.projects}
+                            onSaved={applyProfilePatch}
+                        />
+                    </Section>
+
+                    {/* ---- Professional ---- */}
+                    <Section
+                        id="professional"
+                        icon={<Code className="h-5 w-5" />}
+                        title="Professional"
+                        description="Links and connected developer profiles."
+                    >
+                        {/* LinkedIn & Portfolio */}
+                        <JoyCard>
+                            <h3 className="joy-display mb-4 text-lg font-extrabold text-joy-ink">
+                                Professional links
+                            </h3>
                             <div className="space-y-4">
-                                <div>
-                                    <Label
-                                        htmlFor="linkedinUrl"
-                                        className="flex items-center gap-2"
-                                    >
-                                        <Linkedin className="h-4 w-4 text-blue-600" />
-                                        LinkedIn Profile URL
-                                    </Label>
-                                    <div className="flex items-center gap-2">
-                                        <Input
-                                            id="linkedinUrl"
-                                            name="linkedinUrl"
-                                            value={student.linkedinUrl || ""}
-                                            onChange={handleInputChange}
-                                            placeholder="https://linkedin.com/in/username"
-                                            disabled={
-                                                !isEditing.linkedinUrl ||
-                                                isSaving
-                                            }
-                                        />
-                                        {isEditing.linkedinUrl ? (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() =>
-                                                    handleDiscardField(
-                                                        "linkedinUrl"
-                                                    )
-                                                }
-                                                disabled={isSaving}
-                                            >
-                                                <X className="h-4 w-4" />
-                                            </Button>
-                                        ) : (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() =>
-                                                    handleToggleEdit(
-                                                        "linkedinUrl"
-                                                    )
-                                                }
-                                                disabled={isSaving}
-                                            >
-                                                <PencilLine className="h-4 w-4" />
-                                            </Button>
-                                        )}
-                                    </div>
-                                    {validationErrors.linkedinUrl && (
-                                        <p className="text-sm text-red-600 mt-1">
-                                            {validationErrors.linkedinUrl}
-                                        </p>
-                                    )}
-                                </div>
-                                <div>
-                                    <Label
-                                        htmlFor="portfolioUrl"
-                                        className="flex items-center gap-2"
-                                    >
-                                        <Globe className="h-4 w-4 text-purple-600" />
-                                        Portfolio Website
-                                    </Label>
-                                    <div className="flex items-center gap-2">
-                                        <Input
-                                            id="portfolioUrl"
-                                            name="portfolioUrl"
-                                            value={student.portfolioUrl || ""}
-                                            onChange={handleInputChange}
-                                            placeholder="https://yourwebsite.com"
-                                            disabled={
-                                                !isEditing.portfolioUrl ||
-                                                isSaving
-                                            }
-                                        />
-                                        {isEditing.portfolioUrl ? (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() =>
-                                                    handleDiscardField(
-                                                        "portfolioUrl"
-                                                    )
-                                                }
-                                                disabled={isSaving}
-                                            >
-                                                <X className="h-4 w-4" />
-                                            </Button>
-                                        ) : (
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() =>
-                                                    handleToggleEdit(
-                                                        "portfolioUrl"
-                                                    )
-                                                }
-                                                disabled={isSaving}
-                                            >
-                                                <PencilLine className="h-4 w-4" />
-                                            </Button>
-                                        )}
-                                    </div>
-                                    {validationErrors.portfolioUrl && (
-                                        <p className="text-sm text-red-600 mt-1">
-                                            {validationErrors.portfolioUrl}
-                                        </p>
-                                    )}
-                                </div>
+                                <EditableField
+                                    id="linkedinUrl"
+                                    label="LinkedIn Profile URL"
+                                    icon={
+                                        <Linkedin className="h-4 w-4 text-joy-sky-ink" />
+                                    }
+                                    value={student.linkedinUrl || ""}
+                                    placeholder="https://linkedin.com/in/username"
+                                    editing={isEditing.linkedinUrl}
+                                    saving={isSaving}
+                                    error={validationErrors.linkedinUrl}
+                                    onChange={handleInputChange}
+                                    onToggleEdit={() =>
+                                        handleToggleEdit("linkedinUrl")
+                                    }
+                                    onDiscard={() =>
+                                        handleDiscardField("linkedinUrl")
+                                    }
+                                />
+                                <EditableField
+                                    id="portfolioUrl"
+                                    label="Portfolio Website"
+                                    icon={<Globe className="h-4 w-4 text-joy-grass" />}
+                                    value={student.portfolioUrl || ""}
+                                    placeholder="https://yourwebsite.com"
+                                    editing={isEditing.portfolioUrl}
+                                    saving={isSaving}
+                                    error={validationErrors.portfolioUrl}
+                                    onChange={handleInputChange}
+                                    onToggleEdit={() =>
+                                        handleToggleEdit("portfolioUrl")
+                                    }
+                                    onDiscard={() =>
+                                        handleDiscardField("portfolioUrl")
+                                    }
+                                />
                             </div>
-                        </CardContent>
-                    </Card>
+                        </JoyCard>
 
-                    {/* GitHub */}
-                    <Card>
-                        <CardContent className="p-6">
-                            <div className="flex items-center justify-between mb-4">
-                                <h2 className="text-xl font-semibold flex items-center gap-2">
+                        {/* GitHub */}
+                        <JoyCard>
+                            <div className="mb-4 flex items-center justify-between gap-3">
+                                <h3 className="joy-display flex items-center gap-2 text-lg font-extrabold text-joy-ink">
                                     <Github className="h-5 w-5" />
                                     GitHub
-                                </h2>
+                                </h3>
                                 {student.github ? (
-                                    <Button
+                                    <ActionButton
                                         onClick={disconnectGithub}
-                                        variant="destructive"
-                                        size="sm"
+                                        variant="danger"
+                                        loading={isLoadingGithub}
                                         disabled={isLoadingGithub || isSaving}
                                     >
-                                        {isLoadingGithub ? (
-                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                        ) : (
-                                            "Disconnect"
-                                        )}
-                                    </Button>
+                                        Disconnect
+                                    </ActionButton>
                                 ) : (
-                                    <Button
+                                    <ActionButton
                                         onClick={connectGithub}
-                                        variant="outline"
-                                        size="sm"
+                                        loading={isLoadingGithub}
                                         disabled={isLoadingGithub || isSaving}
                                     >
-                                        {isLoadingGithub ? (
-                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                        ) : (
-                                            "Connect GitHub"
-                                        )}
-                                    </Button>
+                                        Connect GitHub
+                                    </ActionButton>
                                 )}
                             </div>
                             <div>
-                                <Label htmlFor="githubUsername">
+                                <Label
+                                    htmlFor="githubUsername"
+                                    className="text-sm font-semibold text-joy-ink"
+                                >
                                     GitHub Username
                                 </Label>
                                 <Input
@@ -1969,25 +1664,26 @@ export default function AccountPage() {
                                     onChange={handleInputChange}
                                     placeholder="username"
                                     disabled={isSaving}
+                                    className="mt-1.5 bg-white"
                                 />
                                 {githubError && (
-                                    <p className="text-sm text-red-600 mt-1">
+                                    <p className="mt-1 text-sm text-red-600">
                                         {githubError}
                                     </p>
                                 )}
                             </div>
 
                             {student.github && (
-                                <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                                <div className="mt-4 rounded-xl border border-joy-sky/25 bg-joy-sky/8 p-4">
                                     <div className="flex items-start gap-4">
                                         <img
                                             src={student.github.avatarUrl}
                                             alt={student.github.username}
-                                            className="w-16 h-16 rounded-full"
+                                            className="h-16 w-16 rounded-full"
                                         />
                                         <div className="flex-1">
                                             <div className="flex items-center gap-2">
-                                                <h4 className="font-medium text-gray-900">
+                                                <h4 className="font-bold text-joy-ink">
                                                     {student.github.name ||
                                                         student.github.username}
                                                 </h4>
@@ -1995,129 +1691,115 @@ export default function AccountPage() {
                                                     href={`https://github.com/${student.github.username}`}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="text-sm text-blue-600 hover:text-blue-800"
+                                                    className="text-sm text-joy-sky-ink hover:underline"
                                                 >
                                                     @{student.github.username}
                                                 </a>
                                             </div>
                                             {student.github.bio && (
-                                                <p className="text-sm text-gray-600 mt-1">
+                                                <p className="mt-1 text-sm text-joy-ink-muted">
                                                     {student.github.bio}
                                                 </p>
                                             )}
                                             <div className="mt-3 grid grid-cols-4 gap-4 text-center">
                                                 <div>
-                                                    <p className="text-lg font-semibold text-gray-900">
-                                                        {
-                                                            student.github
-                                                                .repoCount
-                                                        }
+                                                    <p className="text-lg font-bold text-joy-ink">
+                                                        {student.github.repoCount}
                                                     </p>
-                                                    <p className="text-xs text-gray-600">
+                                                    <p className="text-xs text-joy-ink-muted">
                                                         Repos
                                                     </p>
                                                 </div>
                                                 <div>
-                                                    <p className="text-lg font-semibold text-gray-900">
+                                                    <p className="text-lg font-bold text-joy-ink">
                                                         {
                                                             student.github
                                                                 .starsReceived
                                                         }
                                                     </p>
-                                                    <p className="text-xs text-gray-600">
+                                                    <p className="text-xs text-joy-ink-muted">
                                                         Stars
                                                     </p>
                                                 </div>
                                                 <div>
-                                                    <p className="text-lg font-semibold text-gray-900">
-                                                        {
-                                                            student.github
-                                                                .followers
-                                                        }
+                                                    <p className="text-lg font-bold text-joy-ink">
+                                                        {student.github.followers}
                                                     </p>
-                                                    <p className="text-xs text-gray-600">
+                                                    <p className="text-xs text-joy-ink-muted">
                                                         Followers
                                                     </p>
                                                 </div>
                                                 <div>
-                                                    <p className="text-lg font-semibold text-gray-900">
+                                                    <p className="text-lg font-bold text-joy-ink">
                                                         {
                                                             student.github
                                                                 .contributionCount
                                                         }
                                                     </p>
-                                                    <p className="text-xs text-gray-600">
+                                                    <p className="text-xs text-joy-ink-muted">
                                                         Contributions (Past 2
                                                         years)
                                                     </p>
                                                 </div>
                                             </div>
-                                            {student.github.topLanguages
-                                                .length > 0 && (
+                                            {student.github.topLanguages.length >
+                                                0 && (
                                                 <div className="mt-3 flex flex-wrap gap-2">
                                                     {student.github.topLanguages
                                                         .slice(0, 5)
                                                         .map((lang) => (
-                                                            <span
+                                                            <JoyChip
                                                                 key={lang}
-                                                                className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full"
+                                                                className="bg-joy-sky/15 text-joy-sky-ink"
                                                             >
                                                                 {lang}
-                                                            </span>
+                                                            </JoyChip>
                                                         ))}
                                                 </div>
                                             )}
                                         </div>
                                     </div>
-                                    <p className="text-xs text-gray-500 mt-3">
+                                    <p className="mt-3 text-xs text-joy-ink-muted">
                                         ✓ Profile connected and saved
                                     </p>
                                 </div>
                             )}
-                        </CardContent>
-                    </Card>
+                        </JoyCard>
 
-                    {/* Devpost */}
-                    <Card>
-                        <CardContent className="p-6">
-                            <div className="flex items-center justify-between mb-4">
-                                <h2 className="text-xl font-semibold">
+                        {/* Devpost */}
+                        <JoyCard>
+                            <div className="mb-4 flex items-center justify-between gap-3">
+                                <h3 className="joy-display text-lg font-extrabold text-joy-ink">
                                     Devpost
-                                </h2>
+                                </h3>
                                 {student.devpost ? (
-                                    <Button
+                                    <ActionButton
                                         onClick={removeDevpostConnection}
-                                        variant="destructive"
-                                        size="sm"
+                                        variant="danger"
+                                        loading={isLoadingDevpost}
                                         disabled={isLoadingDevpost || isSaving}
                                     >
-                                        {isLoadingDevpost ? (
-                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                        ) : (
-                                            "Remove Connection"
-                                        )}
-                                    </Button>
+                                        Remove Connection
+                                    </ActionButton>
                                 ) : (
-                                    <Button
+                                    <ActionButton
                                         onClick={fetchDevpostProfile}
-                                        variant="outline"
-                                        size="sm"
+                                        loading={isLoadingDevpost}
                                         disabled={
                                             isLoadingDevpost ||
                                             isSaving ||
                                             !student.devpostUsername
                                         }
                                     >
-                                        {isLoadingDevpost ? (
-                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                        ) : (
-                                            "Verify Profile"
-                                        )}
-                                    </Button>
+                                        Verify Profile
+                                    </ActionButton>
                                 )}
                             </div>
                             <div>
-                                <Label htmlFor="devpostUsername">
+                                <Label
+                                    htmlFor="devpostUsername"
+                                    className="text-sm font-semibold text-joy-ink"
+                                >
                                     Devpost Username
                                 </Label>
                                 <Input
@@ -2127,92 +1809,93 @@ export default function AccountPage() {
                                     onChange={handleInputChange}
                                     placeholder="username"
                                     disabled={isSaving}
+                                    className="mt-1.5 bg-white"
                                 />
                                 {devpostError && (
-                                    <p className="text-sm text-red-600 mt-1">
+                                    <p className="mt-1 text-sm text-red-600">
                                         {devpostError}
                                     </p>
                                 )}
                             </div>
 
                             {student.devpost && (
-                                <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                                <div className="mt-4 rounded-xl border border-joy-grass/25 bg-joy-grass/8 p-4">
                                     <div className="flex items-start gap-4">
                                         <div className="flex-1">
-                                            <h4 className="font-medium text-gray-900">
+                                            <h4 className="font-bold text-joy-ink">
                                                 {student.devpost.name ||
                                                     student.devpost.username}
                                             </h4>
-                                            <p className="text-sm text-gray-600">
+                                            <p className="text-sm text-joy-ink-muted">
                                                 @{student.devpost.username}
                                             </p>
                                             <div className="mt-3 grid grid-cols-4 gap-4 text-center">
                                                 <div>
-                                                    <p className="text-lg font-semibold text-gray-900">
+                                                    <p className="text-lg font-bold text-joy-ink">
                                                         {
-                                                            student.devpost
-                                                                .stats
+                                                            student.devpost.stats
                                                                 .projectCount
                                                         }
                                                     </p>
-                                                    <p className="text-xs text-gray-600">
+                                                    <p className="text-xs text-joy-ink-muted">
                                                         Projects
                                                     </p>
                                                 </div>
                                                 <div>
-                                                    <p className="text-lg font-semibold text-gray-900">
+                                                    <p className="text-lg font-bold text-joy-ink">
                                                         {
-                                                            student.devpost
-                                                                .stats
+                                                            student.devpost.stats
                                                                 .hackathonCount
                                                         }
                                                     </p>
-                                                    <p className="text-xs text-gray-600">
+                                                    <p className="text-xs text-joy-ink-muted">
                                                         Hackathons
                                                     </p>
                                                 </div>
                                                 <div>
-                                                    <p className="text-lg font-semibold text-gray-900">
+                                                    <p className="text-lg font-bold text-joy-ink">
                                                         {
-                                                            student.devpost
-                                                                .stats.winCount
+                                                            student.devpost.stats
+                                                                .winCount
                                                         }
                                                     </p>
-                                                    <p className="text-xs text-gray-600">
+                                                    <p className="text-xs text-joy-ink-muted">
                                                         Wins
                                                     </p>
                                                 </div>
                                                 <div>
-                                                    <p className="text-lg font-semibold text-gray-900">
+                                                    <p className="text-lg font-bold text-joy-ink">
                                                         {student.devpost
                                                             .achievements
-                                                            ?.firstPlaceWins ||
-                                                            0}
+                                                            ?.firstPlaceWins || 0}
                                                     </p>
-                                                    <p className="text-xs text-gray-600">
+                                                    <p className="text-xs text-joy-ink-muted">
                                                         1st Places
                                                     </p>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
-                                    <p className="text-xs text-gray-500 mt-3">
+                                    <p className="mt-3 text-xs text-joy-ink-muted">
                                         ✓ Profile verified and saved
                                     </p>
                                 </div>
                             )}
-                        </CardContent>
-                    </Card>
-                </TabsContent>
+                        </JoyCard>
+                    </Section>
 
-                {/* Skills & Resume Tab */}
-                <TabsContent value="skills" className="space-y-4 mt-6">
-                    {/* Skills */}
-                    <Card>
-                        <CardContent className="p-6">
-                            <h2 className="text-xl font-semibold mb-4">
+                    {/* ---- Skills & resume ---- */}
+                    <Section
+                        id="skills"
+                        icon={<FileText className="h-5 w-5" />}
+                        title="Skills & resume"
+                        description="Tag your strengths and keep your resume current."
+                    >
+                        {/* Skills */}
+                        <JoyCard>
+                            <h3 className="joy-display mb-4 text-lg font-extrabold text-joy-ink">
                                 Skills
-                            </h2>
+                            </h3>
                             <div className="space-y-4">
                                 <div className="flex gap-2">
                                     <Input
@@ -2221,25 +1904,25 @@ export default function AccountPage() {
                                             setNewSkill(e.target.value)
                                         }
                                         onKeyPress={(e) =>
-                                            e.key === "Enter" &&
-                                            handleAddSkill()
+                                            e.key === "Enter" && handleAddSkill()
                                         }
                                         placeholder="Add a skill (e.g., React, Python)"
                                         maxLength={50}
                                         disabled={skillsArray.length >= 15}
+                                        className="bg-white"
                                     />
-                                    <Button
+                                    <ActionButton
                                         onClick={handleAddSkill}
+                                        variant="primary"
                                         disabled={
                                             skillsArray.length >= 15 ||
                                             !newSkill.trim()
                                         }
-                                        className="bg-black text-white hover:bg-gray-800"
                                     >
                                         Add
-                                    </Button>
+                                    </ActionButton>
                                 </div>
-                                <p className="text-xs text-gray-500">
+                                <p className="text-xs text-joy-ink-muted">
                                     {skillsArray.length >= 15
                                         ? "Maximum skills reached"
                                         : `${
@@ -2249,50 +1932,56 @@ export default function AccountPage() {
                                 {skillsArray.length > 0 ? (
                                     <div className="flex flex-wrap gap-2">
                                         {skillsArray.map((skill, index) => (
-                                            <Badge
+                                            <JoyChip
                                                 key={index}
-                                                variant="secondary"
-                                                className="px-3 py-1.5"
+                                                className="bg-joy-grass/10 px-3 py-1.5 text-joy-grass"
                                             >
                                                 {skill}
                                                 <button
+                                                    type="button"
                                                     onClick={() =>
                                                         handleRemoveSkill(index)
                                                     }
-                                                    className="ml-2 hover:text-red-600 cursor-pointer"
+                                                    aria-label={`Remove ${skill}`}
+                                                    className="ml-2 cursor-pointer hover:text-red-600"
                                                 >
                                                     ×
                                                 </button>
-                                            </Badge>
+                                            </JoyChip>
                                         ))}
                                     </div>
                                 ) : (
-                                    <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
-                                        <p className="text-sm text-gray-500">
+                                    <div className="rounded-xl border border-joy-ink/8 bg-joy-surface p-4 text-center">
+                                        <p className="text-sm text-joy-ink-muted">
                                             No skills added yet. Add your first
                                             skill above!
                                         </p>
                                     </div>
                                 )}
                             </div>
-                        </CardContent>
-                    </Card>
+                        </JoyCard>
 
-                    {/* Resume */}
-                    <Card>
-                        <CardContent className="p-6">
-                            <h2 className="text-xl font-semibold mb-4">
+                        {/* Structured skills — tag with category/level while keeping
+                            the flat skills list above populated (spec 08 §4.4). */}
+                        <SkillsStructuredEditor
+                            skillsStructured={student.skillsStructured}
+                            onSaved={applyProfilePatch}
+                        />
+
+                        {/* Resume */}
+                        <JoyCard>
+                            <h3 className="joy-display mb-4 text-lg font-extrabold text-joy-ink">
                                 Resume
-                            </h2>
+                            </h3>
                             {student.resume?.name ? (
-                                <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center justify-between">
+                                <div className="mb-4 flex items-center justify-between rounded-xl border border-joy-grass/25 bg-joy-grass/8 p-4">
                                     <div className="flex items-center gap-3">
-                                        <Upload className="h-5 w-5 text-green-600" />
+                                        <Upload className="h-5 w-5 text-joy-grass" />
                                         <div>
-                                            <p className="font-medium">
+                                            <p className="font-bold text-joy-ink">
                                                 {student.resume.name}.pdf
                                             </p>
-                                            <p className="text-xs text-gray-500">
+                                            <p className="text-xs text-joy-ink-muted">
                                                 Uploaded{" "}
                                                 {new Date(
                                                     student.resume.uploadedAt
@@ -2307,29 +1996,24 @@ export default function AccountPage() {
                                                 href={student.resume.url}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
-                                                className="text-sm text-green-700 hover:underline"
+                                                className="text-sm font-bold text-joy-grass hover:underline"
                                             >
                                                 View
                                             </a>
                                         )}
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
+                                        <ActionButton
                                             onClick={handleDeleteResume}
+                                            variant="danger"
+                                            loading={isDeletingResume}
                                             disabled={isDeletingResume}
-                                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
                                         >
-                                            {isDeletingResume ? (
-                                                <Loader2 className="h-4 w-4 animate-spin" />
-                                            ) : (
-                                                "Delete"
-                                            )}
-                                        </Button>
+                                            Delete
+                                        </ActionButton>
                                     </div>
                                 </div>
                             ) : (
-                                <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                                    <p className="text-sm text-gray-500">
+                                <div className="mb-4 rounded-xl border border-joy-ink/8 bg-joy-surface p-4">
+                                    <p className="text-sm text-joy-ink-muted">
                                         No resume uploaded yet.
                                     </p>
                                 </div>
@@ -2341,62 +2025,72 @@ export default function AccountPage() {
                                     type="file"
                                     accept="application/pdf"
                                     onChange={handleResumeChange}
-                                    className="cursor-pointer"
+                                    className="cursor-pointer bg-white"
                                 />
-                                <Button
-                                    className="bg-black text-white hover:bg-gray-800"
+                                <ActionButton
+                                    variant="primary"
                                     disabled={!resumeFile || isUploadingResume}
+                                    loading={isUploadingResume}
                                     onClick={async () => {
                                         await handleResumeUpload();
                                         const updatedStudent =
                                             await apiService.getStudent();
                                         setStudent(updatedStudent as any);
-                                        setOriginalStudent(
-                                            updatedStudent as any
-                                        );
+                                        setOriginalStudent(updatedStudent as any);
                                     }}
                                 >
-                                    {isUploadingResume ? (
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                    ) : (
-                                        "Upload"
-                                    )}
-                                </Button>
+                                    Upload
+                                </ActionButton>
                             </div>
                             {resumeFile && (
-                                <p className="mt-2 text-sm text-gray-500">
+                                <p className="mt-2 text-sm text-joy-ink-muted">
                                     Ready to upload:{" "}
                                     <strong>{resumeFile.name}</strong>
                                 </p>
                             )}
-                        </CardContent>
-                    </Card>
-                </TabsContent>
+                        </JoyCard>
+                    </Section>
 
-                <TabsContent value="activity" className="space-y-6 mt-6">
-                    <Card>
-                        <CardContent className="p-6">
-                            <div className="flex items-center justify-between mb-4">
-                                <h2 className="text-xl font-semibold">Participation</h2>
-                                <Badge variant="secondary">{participation.length} events</Badge>
+                    {/* ---- Events & wins ---- */}
+                    <Section
+                        id="activity"
+                        icon={<Trophy className="h-5 w-5" />}
+                        title="Events & wins"
+                        description="Where you showed up and what you took home."
+                    >
+                        <JoyCard>
+                            <div className="mb-4 flex items-center justify-between">
+                                <h3 className="joy-display text-lg font-extrabold text-joy-ink">
+                                    Participation
+                                </h3>
+                                <JoyChip className="bg-joy-ink/6 text-joy-ink-muted">
+                                    {participation.length} events
+                                </JoyChip>
                             </div>
 
                             {isLoadingActivity ? (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                                     {Array.from({ length: 3 }).map((_, index) => (
-                                        <Skeleton key={index} className="h-56 w-full rounded-xl" />
+                                        <div
+                                            key={index}
+                                            className="h-56 w-full animate-pulse rounded-xl border border-joy-ink/8 bg-joy-surface"
+                                        />
                                     ))}
                                 </div>
                             ) : participation.length === 0 ? (
-                                <p className="text-sm text-gray-500">No participation events found.</p>
+                                <p className="text-sm text-joy-ink-muted">
+                                    No participation events found.
+                                </p>
                             ) : (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                                     {participation.map((item, index) => (
                                         <button
                                             key={`${item.event.id}-${index}`}
                                             type="button"
-                                            onClick={() => navigate(buildEventHref(item.event))}
-                                            className="text-left rounded-xl border border-slate-200 bg-white hover:border-slate-300 hover:shadow-md transition overflow-hidden"
+                                            onClick={() =>
+                                                navigate(buildEventHref(item.event))
+                                            }
+                                            className="overflow-hidden rounded-xl border border-joy-ink/8 bg-white text-left transition hover:border-joy-grass/40 hover:shadow-md"
                                         >
                                             {item.event.heroImageUrl ? (
                                                 <img
@@ -2405,39 +2099,53 @@ export default function AccountPage() {
                                                     className="h-32 w-full object-cover"
                                                 />
                                             ) : (
-                                                <div className="h-32 w-full bg-slate-100" />
+                                                <div className="h-32 w-full bg-joy-surface" />
                                             )}
-                                            <div className="p-3 space-y-2">
-                                                <Badge variant="outline" className="text-xs">Participation</Badge>
-                                                <p className="font-semibold text-sm leading-tight">{item.event.title}</p>
-                                                <p className="text-xs text-slate-600 line-clamp-3">
-                                                    {truncateText(item.event.description, 140) || "No description provided."}
+                                            <div className="space-y-2 p-3">
+                                                <JoyChip className="bg-joy-grass/10 text-joy-grass">
+                                                    Participation
+                                                </JoyChip>
+                                                <p className="text-sm font-bold leading-tight text-joy-ink">
+                                                    {item.event.title}
+                                                </p>
+                                                <p className="line-clamp-3 text-xs text-joy-ink-muted">
+                                                    {truncateText(
+                                                        item.event.description,
+                                                        140
+                                                    ) || "No description provided."}
                                                 </p>
                                             </div>
                                         </button>
                                     ))}
                                 </div>
                             )}
-                        </CardContent>
-                    </Card>
+                        </JoyCard>
 
-                    <Card>
-                        <CardContent className="p-6">
-                            <div className="flex items-center justify-between mb-4">
-                                <h2 className="text-xl font-semibold">Wins & Awards</h2>
-                                <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">{wins.length} awards</Badge>
+                        <JoyCard>
+                            <div className="mb-4 flex items-center justify-between">
+                                <h3 className="joy-display text-lg font-extrabold text-joy-ink">
+                                    Wins & awards
+                                </h3>
+                                <JoyChip className="bg-joy-sun/25 text-joy-sun-ink">
+                                    {wins.length} awards
+                                </JoyChip>
                             </div>
 
                             {isLoadingActivity ? (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                                     {Array.from({ length: 3 }).map((_, index) => (
-                                        <Skeleton key={index} className="h-64 w-full rounded-xl" />
+                                        <div
+                                            key={index}
+                                            className="h-64 w-full animate-pulse rounded-xl border border-joy-ink/8 bg-joy-surface"
+                                        />
                                     ))}
                                 </div>
                             ) : wins.length === 0 ? (
-                                <p className="text-sm text-gray-500">No wins recorded yet.</p>
+                                <p className="text-sm text-joy-ink-muted">
+                                    No wins recorded yet.
+                                </p>
                             ) : (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                                     {wins.map((item, index) => {
                                         const isFirstPlace = item.award.place === 1;
 
@@ -2445,44 +2153,72 @@ export default function AccountPage() {
                                             <button
                                                 key={`${item.award.id}-${index}`}
                                                 type="button"
-                                                onClick={() => navigate(buildEventHref(item.event))}
-                                                className={`text-left rounded-xl border transition overflow-hidden hover:shadow-md ${
+                                                onClick={() =>
+                                                    navigate(
+                                                        buildEventHref(item.event)
+                                                    )
+                                                }
+                                                className={`overflow-hidden rounded-xl border text-left transition hover:shadow-md ${
                                                     isFirstPlace
-                                                        ? "border-amber-300 bg-gradient-to-b from-amber-50 to-white"
-                                                        : "border-slate-200 bg-white hover:border-slate-300"
+                                                        ? "border-joy-sun/70 bg-joy-sun/10"
+                                                        : "border-joy-ink/8 bg-white hover:border-joy-grass/40"
                                                 }`}
                                             >
                                                 {item.event.heroImageUrl ? (
                                                     <img
-                                                        src={item.event.heroImageUrl}
+                                                        src={
+                                                            item.event.heroImageUrl
+                                                        }
                                                         alt={item.event.title}
                                                         className="h-32 w-full object-cover"
                                                     />
                                                 ) : (
                                                     <div
                                                         className={`h-32 w-full ${
-                                                            isFirstPlace ? "bg-amber-100" : "bg-slate-100"
+                                                            isFirstPlace
+                                                                ? "bg-joy-sun/25"
+                                                                : "bg-joy-surface"
                                                         }`}
                                                     />
                                                 )}
-                                                <div className="p-3 space-y-2">
-                                                    <Badge
+                                                <div className="space-y-2 p-3">
+                                                    <JoyChip
                                                         className={
                                                             isFirstPlace
-                                                                ? "bg-amber-500 text-white hover:bg-amber-500"
-                                                                : "bg-indigo-100 text-indigo-800 hover:bg-indigo-100"
+                                                                ? "bg-joy-sun text-joy-sun-ink"
+                                                                : "bg-joy-sky/12 text-joy-sky-ink"
                                                         }
                                                     >
                                                         {isFirstPlace
                                                             ? "1st Place Award"
                                                             : item.award.place
-                                                            ? `${item.award.place}${item.award.place === 2 ? "nd" : item.award.place === 3 ? "rd" : "th"} Place Award`
+                                                            ? `${item.award.place}${
+                                                                  item.award
+                                                                      .place === 2
+                                                                      ? "nd"
+                                                                      : item.award
+                                                                            .place ===
+                                                                        3
+                                                                      ? "rd"
+                                                                      : "th"
+                                                              } Place Award`
                                                             : "Special Award"}
-                                                    </Badge>
-                                                    <p className="font-semibold text-sm leading-tight">{item.award.title}</p>
-                                                    <p className="text-xs text-slate-700">{item.event.title}</p>
-                                                    <p className="text-xs text-slate-600 line-clamp-3">
-                                                        {truncateText(item.award.prizeDescription || item.event.description, 140) || "No description provided."}
+                                                    </JoyChip>
+                                                    <p className="text-sm font-bold leading-tight text-joy-ink">
+                                                        {item.award.title}
+                                                    </p>
+                                                    <p className="text-xs text-joy-ink">
+                                                        {item.event.title}
+                                                    </p>
+                                                    <p className="line-clamp-3 text-xs text-joy-ink-muted">
+                                                        {truncateText(
+                                                            item.award
+                                                                .prizeDescription ||
+                                                                item.event
+                                                                    .description,
+                                                            140
+                                                        ) ||
+                                                            "No description provided."}
                                                     </p>
                                                 </div>
                                             </button>
@@ -2490,10 +2226,10 @@ export default function AccountPage() {
                                     })}
                                 </div>
                             )}
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-            </Tabs>
+                        </JoyCard>
+                    </Section>
+                </div>
+            </PlaygroundShell>
         </div>
     );
 }

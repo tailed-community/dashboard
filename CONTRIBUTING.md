@@ -4,7 +4,7 @@ We're excited that you're interested in contributing to Tail'ed! This document p
 
 ## 🎯 Project Vision
 
-Tail'ed is a platform designed to empower tech students by providing tools for portfolio building, community connection, internship opportunities, and skill development. Every contribution should align with this mission.
+Tail'ed Community is a platform designed to empower tech students by providing tools for portfolio building, community connection, internship opportunities, and skill development. Every contribution should align with this mission.
 
 ## 🚀 Quick Start for Contributors
 

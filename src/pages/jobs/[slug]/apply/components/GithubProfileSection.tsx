@@ -18,9 +18,10 @@ import { Badge } from "@/components/ui/badge";
 import { type GithubProfile } from "@/lib/github";
 import { studentAuth, isAnonymousUser } from "@/lib/auth";
 import { getContributionColor, getLanguageColor } from "../utils";
+import { type ApplicationFormData } from "../types";
 
 interface GithubProfileSectionProps {
-  formData: FormData;
+  formData: ApplicationFormData;
   handleInputChange: (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => void;
@@ -42,7 +43,7 @@ export default function GithubProfileSection({
 
   // Check authentication status when component mounts
   useEffect(() => {
-    const unsubscribe = studentAuth.onAuthStateChanged((user) => {
+    const unsubscribe = studentAuth.onAuthStateChanged(() => {
       setIsAnonymous(isAnonymousUser());
     });
 
@@ -209,7 +210,7 @@ function renderGithubProfileDetails(githubProfile: GithubProfile) {
             <div className="flex flex-wrap gap-2">
               {githubProfile.topLanguages.map((lang, index) => (
                 <Badge key={index} variant="secondary">
-                  {lang.name || lang} (
+                  {lang} (
                   {githubProfile.languageDistribution?.[index]?.percentage || 0}
                   %)
                 </Badge>

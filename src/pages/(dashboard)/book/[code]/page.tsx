@@ -1,12 +1,20 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { DateTime } from "luxon";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, MapPin, Building2, CalendarIcon, Clock, CheckCircle2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
+
+/** Joy-styled native button that (unlike PlaygroundButton) supports disabled +
+ *  loading spinners — used for the confirm / cancel / reschedule flows. */
+const joyBtnBase =
+  "inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60 disabled:cursor-not-allowed disabled:opacity-50";
+const joyBtnVariants: Record<string, string> = {
+  primary:
+    "bg-joy-grass text-white shadow-[0_3px_0_var(--joy-grass-deep)] hover:brightness-105 active:translate-y-[2px]",
+  outline: "border-2 border-joy-ink/12 bg-white text-joy-ink hover:border-joy-grass/50",
+  danger: "border-2 border-red-200 bg-white text-red-600 hover:border-red-300 hover:bg-red-50",
+};
 
 interface TimeBlock {
   id: string;
@@ -254,12 +262,9 @@ export default function BookingPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 text-gray-700">
-        <div className="relative">
-          <div className="h-12 w-12 border-4 border-gray-300 rounded-full"></div>
-          <div className="absolute top-0 left-0 h-12 w-12 border-4 border-t-primary border-transparent rounded-full animate-spin"></div>
-        </div>
-        <p className="mt-4 text-sm font-medium text-gray-600 animate-pulse">
+      <div className="mx-auto max-w-2xl px-5 py-16 text-center">
+        <Loader2 className="mx-auto h-8 w-8 animate-spin text-joy-grass" />
+        <p className="mt-3 text-sm font-medium text-joy-ink-muted">
           Loading booking information...
         </p>
       </div>
@@ -268,79 +273,79 @@ export default function BookingPage() {
 
   if (error) {
     return (
-      <div className="container mx-auto py-12 max-w-2xl">
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
+      <div className="mx-auto max-w-2xl px-5 py-10">
+        <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">
+          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+          <p className="text-sm">{error}</p>
+        </div>
       </div>
     );
   }
 
   if (success) {
     return (
-      <div className="container mx-auto py-12 max-w-2xl">
-        <Card>
-          <CardHeader className="text-center">
-            <div className="mx-auto w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-4">
-              <CheckCircle2 className="h-6 w-6 text-green-600" />
+      <div className="mx-auto max-w-2xl px-5 py-10">
+        <div className="rounded-2xl border border-joy-ink/8 bg-white p-6 shadow-sm">
+          <div className="text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-joy-grass/10">
+              <CheckCircle2 className="h-6 w-6 text-joy-grass" />
             </div>
-            <CardTitle>Interview Scheduled!</CardTitle>
-            <CardDescription>
+            <h1 className="joy-display text-2xl font-extrabold text-joy-ink">Interview Scheduled!</h1>
+            <p className="mt-1 text-sm text-joy-ink-muted">
               Your interview has been successfully booked
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+            </p>
+          </div>
+          <div className="mt-4 space-y-4">
             {selectedSlot && (
-              <div className="bg-muted p-4 rounded-lg space-y-2">
-                <div className="flex items-center gap-2 text-sm">
-                  <CalendarIcon className="h-4 w-4" />
-                  <span className="font-medium">{formatDate(selectedSlot.start)}</span>
+              <div className="space-y-2 rounded-xl border border-joy-ink/8 bg-joy-surface p-4">
+                <div className="flex items-center gap-2 text-sm text-joy-ink">
+                  <CalendarIcon className="h-4 w-4 text-joy-ink-muted" />
+                  <span className="font-bold">{formatDate(selectedSlot.start)}</span>
                 </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <Clock className="h-4 w-4" />
+                <div className="flex items-center gap-2 text-sm text-joy-ink">
+                  <Clock className="h-4 w-4 text-joy-ink-muted" />
                   <span>
                     {formatTime(selectedSlot.start)} - {formatTime(selectedSlot.end)}
                   </span>
                 </div>
                 {bookingData && (
                   <>
-                    <div className="flex items-center gap-2 text-sm">
-                      <Building2 className="h-4 w-4" />
+                    <div className="flex items-center gap-2 text-sm text-joy-ink">
+                      <Building2 className="h-4 w-4 text-joy-ink-muted" />
                       <span>{bookingData.organizationName}</span>
                     </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <MapPin className="h-4 w-4" />
+                    <div className="flex items-center gap-2 text-sm text-joy-ink">
+                      <MapPin className="h-4 w-4 text-joy-ink-muted" />
                       <span>{bookingData.jobLocation}</span>
                     </div>
                   </>
                 )}
               </div>
             )}
-            <p className="text-sm text-muted-foreground text-center">
+            <p className="text-center text-sm text-joy-ink-muted">
               You will receive a confirmation email with the interview details and a calendar invite.
             </p>
             <div className="flex gap-2 pt-4">
-              <Button
+              <button
+                type="button"
                 onClick={handleReschedule}
-                variant="outline"
-                className="flex-1 cursor-pointer"
+                className={`${joyBtnBase} ${joyBtnVariants.outline} flex-1`}
                 disabled={cancelling}
               >
                 Reschedule
-              </Button>
-              <Button
+              </button>
+              <button
+                type="button"
                 onClick={handleCancelBooking}
-                variant="destructive"
-                className="flex-1 cursor-pointer"
+                className={`${joyBtnBase} ${joyBtnVariants.danger} flex-1`}
                 disabled={cancelling}
               >
-                {cancelling && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {cancelling && <Loader2 className="h-4 w-4 animate-spin" />}
                 Cancel Interview
-              </Button>
+              </button>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     );
   }
@@ -351,35 +356,35 @@ export default function BookingPage() {
   const slotDuration = bookingData?.availabilityMeta?.config?.duration ?? 30;
 
   return (
-    <div className="container mx-auto py-12 max-w-6xl">
+    <div className="mx-auto max-w-5xl px-5 py-10">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">Schedule Your Interview</h1>
+        <h1 className="joy-display mb-2 text-3xl font-extrabold text-joy-ink">Schedule Your Interview</h1>
         <div className="space-y-1">
-          <div className="flex items-center gap-2 text-muted-foreground">
+          <div className="flex items-center gap-2 text-joy-ink-muted">
             <Building2 className="h-4 w-4" />
             <span>{bookingData.organizationName}</span>
           </div>
-          <div className="flex items-center gap-2 text-muted-foreground">
+          <div className="flex items-center gap-2 text-joy-ink-muted">
             <CalendarIcon className="h-4 w-4" />
             <span>{bookingData.jobTitle}</span>
           </div>
-          <div className="flex items-center gap-2 text-muted-foreground">
+          <div className="flex items-center gap-2 text-joy-ink-muted">
             <MapPin className="h-4 w-4" />
             <span>{bookingData.jobLocation}</span>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         {/* Calendar Section */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Select a Date</CardTitle>
-            <CardDescription>
+        <div className="rounded-2xl border border-joy-ink/8 bg-white p-6 shadow-sm">
+          <div className="mb-4">
+            <h2 className="joy-display text-lg font-extrabold text-joy-ink">Select a Date</h2>
+            <p className="text-sm text-joy-ink-muted">
               Choose a date to see available time slots
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+            </p>
+          </div>
+          <div>
             <Calendar
               mode="single"
               selected={selectedDate}
@@ -413,102 +418,101 @@ export default function BookingPage() {
               }}
               className="rounded-md border"
             />
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {/* Time Slots Section */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Available Time Slots</CardTitle>
-            <CardDescription>
+        <div className="rounded-2xl border border-joy-ink/8 bg-white p-6 shadow-sm">
+          <div className="mb-4">
+            <h2 className="joy-display text-lg font-extrabold text-joy-ink">Available Time Slots</h2>
+            <p className="text-sm text-joy-ink-muted">
               {selectedDate
                 ? `${formatDate(selectedDate)} - Select a ${slotDuration}-minute slot`
                 : "Select a date to see available times"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+            </p>
+          </div>
+          <div>
             {!selectedDate ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <CalendarIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
+              <div className="py-12 text-center text-joy-ink-muted">
+                <CalendarIcon className="mx-auto mb-2 h-12 w-12 opacity-40" />
                 <p>Please select a date</p>
               </div>
             ) : availableSlots.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <Clock className="h-12 w-12 mx-auto mb-2 opacity-50" />
+              <div className="py-12 text-center text-joy-ink-muted">
+                <Clock className="mx-auto mb-2 h-12 w-12 opacity-40" />
                 <p>No available time slots for this date</p>
               </div>
             ) : (
-              <div className="space-y-2 max-h-96 overflow-y-auto">
+              <div className="max-h-96 space-y-2 overflow-y-auto">
                 {availableSlots.map((slot, index) => (
                   <button
                     key={index}
                     onClick={() => slot.available && setSelectedSlot(slot)}
                     disabled={!slot.available}
-                    className={`w-full p-3 rounded-lg border text-left transition-colors ${selectedSlot === slot
-                      ? "bg-primary text-primary-foreground border-primary cursor-pointer"
+                    className={`w-full rounded-xl border p-3 text-left transition-colors ${selectedSlot === slot
+                      ? "border-joy-grass bg-joy-grass/10 text-joy-ink cursor-pointer"
                       : slot.available
-                        ? "hover:bg-muted border-border cursor-pointer"
-                        : "opacity-50 cursor-not-allowed bg-muted"
+                        ? "border-joy-ink/12 hover:border-joy-grass/50 hover:bg-joy-grass-bright/8 cursor-pointer"
+                        : "cursor-not-allowed border-joy-ink/8 bg-joy-surface opacity-50"
                       }`}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Clock className="h-4 w-4" />
-                        <span className="font-medium">
+                        <span className="font-bold">
                           {formatTime(slot.start)} - {formatTime(slot.end)}
                         </span>
                       </div>
                       {!slot.available && (
-                        <span className="text-xs">Unavailable</span>
+                        <span className="text-xs text-joy-ink-muted">Unavailable</span>
                       )}
                     </div>
                   </button>
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
 
       {/* Confirmation Section */}
       {selectedSlot && (
-        <Card className="mt-6">
-          <CardHeader>
-            <CardTitle>Confirm Your Booking</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="bg-muted p-4 rounded-lg space-y-2">
-              <div className="flex items-center gap-2">
-                <CalendarIcon className="h-4 w-4" />
-                <span className="font-medium">{formatDate(selectedSlot.start)}</span>
+        <div className="mt-6 rounded-2xl border border-joy-ink/8 bg-white p-6 shadow-sm">
+          <h2 className="joy-display mb-4 text-lg font-extrabold text-joy-ink">Confirm Your Booking</h2>
+          <div className="space-y-4">
+            <div className="space-y-2 rounded-xl border border-joy-ink/8 bg-joy-surface p-4">
+              <div className="flex items-center gap-2 text-joy-ink">
+                <CalendarIcon className="h-4 w-4 text-joy-ink-muted" />
+                <span className="font-bold">{formatDate(selectedSlot.start)}</span>
               </div>
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4" />
+              <div className="flex items-center gap-2 text-joy-ink">
+                <Clock className="h-4 w-4 text-joy-ink-muted" />
                 <span>
                   {formatTime(selectedSlot.start)} - {formatTime(selectedSlot.end)} ({slotDuration} minutes)
                 </span>
               </div>
             </div>
             <div className="flex gap-2">
-              <Button
+              <button
+                type="button"
                 onClick={handleBookSlot}
                 disabled={booking}
-                className="flex-1 cursor-pointer"
+                className={`${joyBtnBase} ${joyBtnVariants.primary} flex-1`}
               >
-                {booking && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {booking && <Loader2 className="h-4 w-4 animate-spin" />}
                 Confirm Booking
-              </Button>
-              <Button
+              </button>
+              <button
+                type="button"
                 onClick={() => setSelectedSlot(null)}
-                variant="outline"
                 disabled={booking}
-                className="cursor-pointer"
+                className={`${joyBtnBase} ${joyBtnVariants.outline}`}
               >
                 Cancel
-              </Button>
+              </button>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
     </div>
   );

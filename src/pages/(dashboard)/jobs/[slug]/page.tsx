@@ -15,18 +15,9 @@ import {
     ExternalLink,
     Building2,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardFooter,
-    CardHeader,
-    CardTitle,
-} from "@/components/ui/card";
+import { PlaygroundButton } from "@/components/playground/playground-button";
 import { type Job, type Organization } from "@/types/jobs";
 import { HTMLContent } from "@/components/ui/html-content";
-import { Separator } from "@/components/ui/separator";
 import { Seo } from "@/components/seo";
 
 function stripHtml(html: string): string {
@@ -169,35 +160,31 @@ export default function PublicJobPage() {
 
     if (loading) {
         return (
-            <div className="flex min-h-screen items-center justify-center">
-                <div className="text-center">
-                    <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
-                    <p className="mt-2 text-muted-foreground">Loading job...</p>
-                </div>
+            <div className="mx-auto max-w-3xl px-5 py-16 text-center">
+                <Loader2 className="mx-auto h-8 w-8 animate-spin text-joy-grass" />
+                <p className="mt-2 text-joy-ink-muted">Loading job...</p>
             </div>
         );
     }
 
     if (error || !job) {
         return (
-            <div className="flex min-h-screen flex-col items-center justify-center p-4">
-                <div className="w-full max-w-md text-center">
-                    <h1 className="text-2xl font-bold text-destructive">
-                        Error
-                    </h1>
-                    <p className="mt-2 text-muted-foreground">
-                        {error ||
-                            "This job posting is not available or has expired."}
-                    </p>
-                    <Button className="mt-4" asChild>
-                        <Link to="/jobs">Return to Home</Link>
-                    </Button>
+            <div className="mx-auto max-w-md px-5 py-16 text-center">
+                <h1 className="joy-display text-2xl font-extrabold text-joy-ink">
+                    Error
+                </h1>
+                <p className="mt-2 text-joy-ink-muted">
+                    {error ||
+                        "This job posting is not available or has expired."}
+                </p>
+                <div className="mt-5 flex justify-center">
+                    <PlaygroundButton to="/jobs">Return to Home</PlaygroundButton>
                 </div>
             </div>
         );
     }
 
-    const orgName = organization?.name ?? "Tail'ed partner";
+    const orgName = organization?.name ?? "Tail'ed Community partner";
     const seoDescription = job.description
         ? truncate(stripHtml(job.description), 160)
         : `${job.title} at ${orgName} — apply now on Tail'ed, the free job board for students.`;
@@ -252,7 +239,7 @@ export default function PublicJobPage() {
     }
 
     return (
-        <div className="min-h-screen bg-background p-4 md:p-8">
+        <div className="mx-auto max-w-3xl px-5 py-10">
             <Seo
                 title={`${job.title} at ${orgName}`}
                 description={seoDescription}
@@ -260,170 +247,155 @@ export default function PublicJobPage() {
                 image={seoImage}
                 jsonLd={jobPostingJsonLd}
             />
-            <div className="mx-auto max-w-5xl">
-                <Link
-                    to=".."
-                    onClick={(e) => {
-                        e.preventDefault();
-                        navigate(-1);
-                    }}
-                    className="mb-6 flex items-center text-sm text-muted-foreground hover:text-foreground"
-                >
-                    <ArrowLeft className="mr-1 h-4 w-4" />
-                    Back
-                </Link>
+            <Link
+                to=".."
+                onClick={(e) => {
+                    e.preventDefault();
+                    navigate(-1);
+                }}
+                className="mb-6 inline-flex items-center text-sm font-semibold text-joy-ink-muted transition hover:text-joy-ink"
+            >
+                <ArrowLeft className="mr-1 h-4 w-4" />
+                Back
+            </Link>
 
-                <Card className="border shadow-md">
-                    <CardHeader>
-                        {organization && (
-                            <div className="flex items-center gap-3 mb-4">
-                                {organization.logo ? (
-                                    <img
-                                        src={organization.logo}
-                                        alt={`${organization.name} logo`}
-                                        className="h-20 w-20 object-contain"
-                                    />
-                                ) : (
-                                    <div className="h-10 w-10 bg-muted flex items-center justify-center rounded-md">
-                                        <Building2 className="h-6 w-6 text-muted-foreground" />
-                                    </div>
-                                )}
-                                <Link 
-                                    to={`/companies/${organization.slug || organization.id}`}
-                                    className="text-lg text-muted-foreground hover:text-foreground transition-colors hover:underline"
-                                >
-                                    {organization.name}
-                                </Link>
+            <div className="rounded-2xl border border-joy-ink/8 bg-white p-6 shadow-sm md:p-8">
+                {/* Header */}
+                {organization && (
+                    <div className="mb-4 flex items-center gap-3">
+                        {organization.logo ? (
+                            <img
+                                src={organization.logo}
+                                alt={`${organization.name} logo`}
+                                className="h-20 w-20 object-contain"
+                            />
+                        ) : (
+                            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-joy-grass/10 text-joy-grass">
+                                <Building2 className="h-6 w-6" />
                             </div>
                         )}
+                        <Link
+                            to={`/companies/${organization.slug || organization.id}`}
+                            className="text-lg font-semibold text-joy-ink-muted transition-colors hover:text-joy-ink hover:underline"
+                        >
+                            {organization.name}
+                        </Link>
+                    </div>
+                )}
 
-                        <div className="flex items-start justify-between">
-                            <div>
-                                <CardTitle className="text-2xl">
-                                    {job.title}
-                                </CardTitle>
-                                <CardDescription className="mt-2">
-                                    <div className="flex flex-wrap items-center gap-3">
-                                        <div className="flex items-center text-muted-foreground">
-                                            <Briefcase className="mr-1 h-4 w-4" />
-                                            <span>{job.type}</span>
-                                        </div>
-                                        <div className="flex items-center text-muted-foreground">
-                                            <MapPin className="mr-1 h-4 w-4" />
-                                            <span>{job.location}</span>
-                                        </div>
-                                        <div className="flex items-center text-muted-foreground">
-                                            <Calendar className="mr-1 h-4 w-4" />
-                                            <span>
-                                                Posted{" "}
-                                                {job.postingDate
-                                                    ? formatDate(
-                                                          job.postingDate
-                                                      )
-                                                    : "Recently"}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </CardDescription>
-                            </div>
-
-                            {/* Status badge removed from here */}
+                <div>
+                    <h1 className="joy-display text-2xl font-extrabold leading-tight text-joy-ink sm:text-3xl">
+                        {job.title}
+                    </h1>
+                    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-joy-ink-muted">
+                        <div className="flex items-center">
+                            <Briefcase className="mr-1 h-4 w-4" />
+                            <span>{job.type}</span>
                         </div>
-                    </CardHeader>
-                    <CardContent className="space-y-6">
-                        {/* Job description section */}
-                        {job.description && (
-                            <div>
+                        <div className="flex items-center">
+                            <MapPin className="mr-1 h-4 w-4" />
+                            <span>{job.location}</span>
+                        </div>
+                        <div className="flex items-center">
+                            <Calendar className="mr-1 h-4 w-4" />
+                            <span>
+                                Posted{" "}
+                                {job.postingDate
+                                    ? formatDate(job.postingDate)
+                                    : "Recently"}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Body */}
+                <div className="mt-6 space-y-6">
+                    {/* Job description section */}
+                    {job.description && (
+                        <div>
+                            <HTMLContent
+                                content={
+                                    job.description ||
+                                    "<p>No description provided.</p>"
+                                }
+                                className="text-md"
+                            />
+                        </div>
+                    )}
+
+                    {/* Job requirements section */}
+                    {job.requirements &&
+                        job.requirements.replace(/<[^>]*>/g, "").trim().length >
+                            0 && (
+                            <>
+                                <div className="border-t border-joy-ink/8" />
                                 <div>
                                     <HTMLContent
                                         content={
-                                            job.description ||
-                                            "<p>No description provided.</p>"
+                                            job.requirements ||
+                                            "<p>No requirements provided.</p>"
                                         }
+                                        skills={job?.skills || []}
                                         className="text-md"
                                     />
                                 </div>
-                            </div>
+                            </>
                         )}
 
-                        {/* Job requirements section */}
-                        {job.requirements &&
-                            job.requirements.replace(/<[^>]*>/g, "").trim()
-                                .length > 0 && (
-                                <>
-                                    <Separator />
-                                    <div>
-                                        <HTMLContent
-                                            content={
-                                                job.requirements ||
-                                                "<p>No requirements provided.</p>"
-                                            }
-                                            skills={job?.skills || []}
-                                            className="text-md"
-                                        />
-                                    </div>
-                                </>
+                    {/* Additional information section */}
+                    <div className="mt-4 border-t border-joy-ink/8 pt-4">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            {job.postingDate && (
+                                <div>
+                                    <p className="text-sm font-semibold text-joy-ink">
+                                        Posted on
+                                    </p>
+                                    <p className="text-sm text-joy-ink-muted">
+                                        {formatDate(job.postingDate)}
+                                    </p>
+                                </div>
                             )}
 
-                        {/* Additional information section */}
-                        <div className="border-t pt-4 mt-4">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                {job.postingDate && (
-                                    <div>
-                                        <p className="text-sm font-medium">
-                                            Posted on
-                                        </p>
-                                        <p className="text-sm text-muted-foreground">
-                                            {formatDate(job.postingDate)}
-                                        </p>
-                                    </div>
-                                )}
-
-                                {job.endPostingDate && (
-                                    <div>
-                                        <p className="text-sm font-medium">
-                                            Application Deadline
-                                        </p>
-                                        <p className="text-sm text-muted-foreground">
-                                            {formatDate(job.endPostingDate)}
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
+                            {job.endPostingDate && (
+                                <div>
+                                    <p className="text-sm font-semibold text-joy-ink">
+                                        Application Deadline
+                                    </p>
+                                    <p className="text-sm text-joy-ink-muted">
+                                        {formatDate(job.endPostingDate)}
+                                    </p>
+                                </div>
+                            )}
                         </div>
-                    </CardContent>
-                    <CardFooter>
-                        {hasApplied ? (
-                            <Button
-                                className="w-full cursor-not-allowed"
-                                disabled
-                                variant="secondary"
-                            >
-                                Applied
-                            </Button>
-                        ) : (
-                            <Button className="w-full" asChild>
-                                <Link
-                                    to={`/jobs/${slug}/apply${
-                                        token
-                                            ? `?token=${encodeURIComponent(
-                                                  token
-                                              )}`
-                                            : sharedId
-                                            ? `?sharedId=${encodeURIComponent(
-                                                  sharedId
-                                              )}`
-                                            : ""
-                                    }`}
-                                    className="flex items-center justify-center gap-2"
-                                >
-                                    Apply for this position
-                                    <ExternalLink className="h-4 w-4" />
-                                </Link>
-                            </Button>
-                        )}
-                    </CardFooter>
-                </Card>
+                    </div>
+                </div>
+
+                {/* Footer / CTA */}
+                <div className="mt-8">
+                    {hasApplied ? (
+                        <button
+                            type="button"
+                            disabled
+                            className="inline-flex w-full cursor-not-allowed items-center justify-center rounded-xl bg-joy-ink/8 px-5 py-2.5 text-sm font-bold text-joy-ink-muted"
+                        >
+                            Applied
+                        </button>
+                    ) : (
+                        <PlaygroundButton
+                            to={`/jobs/${slug}/apply${
+                                token
+                                    ? `?token=${encodeURIComponent(token)}`
+                                    : sharedId
+                                    ? `?sharedId=${encodeURIComponent(sharedId)}`
+                                    : ""
+                            }`}
+                            className="w-full"
+                        >
+                            Apply for this position
+                            <ExternalLink className="h-4 w-4" />
+                        </PlaygroundButton>
+                    )}
+                </div>
             </div>
         </div>
     );

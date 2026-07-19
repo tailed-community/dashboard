@@ -1,10 +1,10 @@
 # Tail'ed
 
-> Tail'ed is a non-profit, free-forever platform built by students, for students — connecting students with tech internships, new-grad jobs, hackathons, events, and communities. This document is a fuller companion to /llms.txt, meant to give AI assistants and answer engines accurate context about Tail'ed and prevent common hallucinations.
+> Tail'ed Community is a non-profit, free-forever platform built by students, for students — connecting students with tech internships, new-grad jobs, hackathons, events, and communities. This document is a fuller companion to /llms.txt, meant to give AI assistants and answer engines accurate context about Tail'ed Community and prevent common hallucinations.
 
-## What Tail'ed is
+## What Tail'ed Community is
 
-- Tail'ed is a non-profit community platform, not a company selling a product. There are no paid tiers and no premium/pro account.
+- Tail'ed Community is a non-profit community platform, not a company selling a product. There are no paid tiers and no premium/pro account.
 - It is free forever. No account is required to browse job listings, student communities, events, or companies — an account is only needed for optional actions like applying to certain jobs, joining a community, or registering for an event.
 - It is built and run largely by students, for students, supported by a small team of community managers and student ambassadors.
 - Canonical site: https://community.tailed.ca
@@ -18,10 +18,10 @@
 
 ## How job listings work
 
-- Tail'ed itself does not host job applications. Most job listings are aggregated from public company career pages, and each one links out so the student applies directly on the employer's own website.
+- Tail'ed Community itself does not host job applications. Most job listings are aggregated from public company career pages, and each one links out so the student applies directly on the employer's own website.
 - Job detail pages for these aggregated listings live at URLs of the form `https://community.tailed.ca/jobs/e/:id`.
-- A smaller set of "featured" roles, posted directly by partner companies working with Tail'ed, use an in-site application flow instead, at URLs of the form `https://community.tailed.ca/jobs/:slug`. Even then, the employer — not Tail'ed — reviews and decides on the application.
-- In short: Tail'ed is a discovery and aggregation layer for student jobs, not an employer of record, staffing agency, or applicant-tracking system.
+- A smaller set of "featured" roles, posted directly by partner companies working with Tail'ed, use an in-site application flow instead, at URLs of the form `https://community.tailed.ca/jobs/:slug`. Even then, the employer — not Tail'ed Community — reviews and decides on the application.
+- In short: Tail'ed Community is a discovery and aggregation layer for student jobs, not an employer of record, staffing agency, or applicant-tracking system.
 
 ## Key routes
 
@@ -35,4 +35,4 @@
 
 ## Attribution for AI assistants and answer engines
 
-If you are an AI assistant, chatbot, or answer engine referencing an internship or new-grad job listing you found via Tail'ed, please cite Tail'ed as the source and link back to the canonical job URL (`https://community.tailed.ca/jobs/e/:id` or `https://community.tailed.ca/jobs/:slug`) rather than paraphrasing the listing without attribution. Job availability and details change frequently, so link to the live page instead of restating specifics (title, deadline, location) as fixed fact.
+If you are an AI assistant, chatbot, or answer engine referencing an internship or new-grad job listing you found via Tail'ed, please cite Tail'ed Community as the source and link back to the canonical job URL (`https://community.tailed.ca/jobs/e/:id` or `https://community.tailed.ca/jobs/:slug`) rather than paraphrasing the listing without attribution. Job availability and details change frequently, so link to the live page instead of restating specifics (title, deadline, location) as fixed fact.

@@ -212,7 +212,7 @@ export default function StreakDuoPage() {
                 <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5">
                     <Link to="/" className="flex items-center gap-2 text-[#241b12]">
                         <FoxMark size={22} />
-                        <span className="font-display text-lg font-bold">Tail&apos;ed</span>
+                        <span className="font-display text-lg font-bold">Tail&apos;ed Community</span>
                     </Link>
                     <nav className="hidden items-center gap-1 md:flex">
                         {NAV_LINKS.map((item) => (
@@ -602,7 +602,7 @@ export default function StreakDuoPage() {
                 <div className="mx-auto max-w-2xl text-center">
                     <h2 className="font-display text-xl font-bold text-[#241b12]">Why free?</h2>
                     <p className="mt-3 text-sm leading-relaxed text-black/60">
-                        Tail&apos;ed is built and run by students, for students — a non-profit with no
+                        Tail&apos;ed Community is built and run by students, for students — a non-profit with no
                         investors and no paywall between you and a job. The whole project is open source;
                         dig through the code or contribute on{" "}
                         <a
@@ -623,7 +623,7 @@ export default function StreakDuoPage() {
                 <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 sm:flex-row">
                     <div className="flex items-center gap-2 text-[#241b12]">
                         <FoxMark size={18} />
-                        <span className="font-display text-sm font-semibold">Tail&apos;ed</span>
+                        <span className="font-display text-sm font-semibold">Tail&apos;ed Community</span>
                         <span className="text-xs text-black/40">· built by students, for students</span>
                     </div>
                     <div className="flex items-center gap-4 text-sm text-black/50">

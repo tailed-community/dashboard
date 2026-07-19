@@ -102,7 +102,7 @@ export function LoginForm({ className, mode = "sign-in", ...props }: LoginProps)
 
                             <h1 className="text-2xl font-bold">
                                 {isSignUp
-                                    ? "Join Tail'ed — free forever"
+                                    ? "Join Tail'ed Community — free forever"
                                     : m.welcome_back()}
                             </h1>
                             <p className="text-balance text-muted-foreground">

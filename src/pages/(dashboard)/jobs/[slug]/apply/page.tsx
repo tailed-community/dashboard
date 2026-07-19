@@ -1,28 +1,12 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "@/lib/fetch";
-import {
-    Loader2,
-    Mail,
-    Apple,
-    Linkedin,
-    CheckCircle,
-    Lock,
-} from "lucide-react";
-import { FcGoogle } from "react-icons/fc";
-import { Button } from "@/components/ui/button";
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-    CardFooter,
-} from "@/components/ui/card";
+import { Loader2, Mail, CheckCircle, Lock } from "lucide-react";
+import { PlaygroundButton } from "@/components/playground/playground-button";
 import ApplicationForm from "./application-form";
 import ApplicationConfirmation from "./confirmation";
 import { getFileUrl } from "@/lib/firebase-client";
-import { studentAuth, signInWithGoogle } from "@/lib/auth";
+import { studentAuth } from "@/lib/auth";
 import { type TokenInfo, type JobData } from "./types";
 import { EmailLoginForm } from "@/pages/(auth)/sign-in/email-login-form";
 
@@ -45,11 +29,10 @@ export default function ApplyJobPage() {
     const [error, setError] = useState<string | null>(null);
     const [isSubmitted, setIsSubmitted] = useState(false);
     const [needsAuth, setNeedsAuth] = useState(false);
-    const [authLoading, setAuthLoading] = useState(false);
-    const [authError, setAuthError] = useState<string | null>(null);
-    const [accessType, setAccessType] = useState<AccessType | null>(null);
+    const [authError] = useState<string | null>(null);
+    const [, setAccessType] = useState<AccessType | null>(null);
     const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false);
-    const [checkingApplication, setCheckingApplication] = useState(false);
+    const [, setCheckingApplication] = useState(false);
 
     // Determine access type and initialize
     useEffect(() => {
@@ -206,55 +189,6 @@ export default function ApplyJobPage() {
         }
     }
 
-    // Fetch application details after authentication for private token flow
-    async function fetchPrivateTokenDetails() {
-        try {
-            setIsLoading(true);
-
-            // Empty implementation for private token flow
-            // This would fetch the complete application details after authentication
-
-            // TODO: Implement private token details fetch
-
-            setIsLoading(false);
-        } catch (err) {
-            setError(
-                err instanceof Error
-                    ? err.message
-                    : "An unexpected error occurred"
-            );
-            console.error(err);
-            setIsLoading(false);
-        }
-    }
-
-    const handleGoogleSignIn = async () => {
-        try {
-            setAuthLoading(true);
-            setAuthError(null);
-
-            await signInWithGoogle();
-            setNeedsAuth(false);
-
-            // Check if user has already applied after authentication
-            await checkIfAlreadyApplied();
-
-            // Fetch application details after authentication
-            if (token) {
-                // Private token flow
-                fetchPrivateTokenDetails();
-            } else {
-                // Public job flow - empty implementation
-                setIsLoading(false);
-            }
-        } catch (err) {
-            setAuthError("Authentication failed. Please try again.");
-            console.error(err);
-        } finally {
-            setAuthLoading(false);
-        }
-    };
-
     async function handleApplicationSubmit(formData: any) {
         try {
             setIsLoading(true);
@@ -338,7 +272,7 @@ export default function ApplyJobPage() {
     // Authentication Step UI
     const renderAuthStep = () => {
         return (
-            <div className="container mx-auto py-8 px-4">
+            <div className="mx-auto max-w-4xl px-5 py-10">
                 <div className="mb-8 flex flex-col items-center justify-center text-center">
                     {jobData?.organization?.logo ? (
                         <img
@@ -346,38 +280,38 @@ export default function ApplyJobPage() {
                             alt={`${
                                 jobData.organization.name || "Company"
                             } logo`}
-                            className="h-16 w-auto mb-4"
+                            className="mb-4 h-16 w-auto"
                         />
                     ) : null}
 
-                    <h1 className="text-3xl font-bold">
+                    <h1 className="joy-display text-3xl font-extrabold text-joy-ink">
                         {jobData?.job.title || "Job Application"}
                     </h1>
                     {jobData?.organization?.name && (
-                        <p className="text-xl mt-2 text-muted-foreground">
+                        <p className="mt-2 text-xl text-joy-ink-muted">
                             {jobData.organization.name}
                         </p>
                     )}
                 </div>
 
-                <div className="w-full max-w-4xl mx-auto grid gap-8 md:grid-cols-2">
+                <div className="mx-auto grid w-full max-w-4xl gap-8 md:grid-cols-2">
                     <div className="flex flex-col justify-center">
-                        <h2 className="text-2xl font-bold tracking-tight mb-4">
+                        <h2 className="joy-display mb-4 text-2xl font-extrabold tracking-tight text-joy-ink">
                             Sign in to apply for this position
                         </h2>
-                        <p className="text-muted-foreground mb-6">
+                        <p className="mb-6 text-joy-ink-muted">
                             To ensure a seamless application experience, we need
                             to verify your identity first.
                         </p>
 
                         <div className="space-y-4">
                             <div className="flex items-start">
-                                <CheckCircle className="h-5 w-5 mr-2 text-primary mt-0.5" />
+                                <CheckCircle className="mr-2 mt-0.5 h-5 w-5 text-joy-grass" />
                                 <div>
-                                    <h3 className="font-medium">
+                                    <h3 className="font-bold text-joy-ink">
                                         Save your progress
                                     </h3>
-                                    <p className="text-sm text-muted-foreground">
+                                    <p className="text-sm text-joy-ink-muted">
                                         Continue your application anytime, even
                                         on different devices
                                     </p>
@@ -385,12 +319,12 @@ export default function ApplyJobPage() {
                             </div>
 
                             <div className="flex items-start">
-                                <CheckCircle className="h-5 w-5 mr-2 text-primary mt-0.5" />
+                                <CheckCircle className="mr-2 mt-0.5 h-5 w-5 text-joy-grass" />
                                 <div>
-                                    <h3 className="font-medium">
+                                    <h3 className="font-bold text-joy-ink">
                                         Auto-fill your application
                                     </h3>
-                                    <p className="text-sm text-muted-foreground">
+                                    <p className="text-sm text-joy-ink-muted">
                                         We'll use your profile information to
                                         speed up the process
                                     </p>
@@ -398,12 +332,12 @@ export default function ApplyJobPage() {
                             </div>
 
                             <div className="flex items-start">
-                                <CheckCircle className="h-5 w-5 mr-2 text-primary mt-0.5" />
+                                <CheckCircle className="mr-2 mt-0.5 h-5 w-5 text-joy-grass" />
                                 <div>
-                                    <h3 className="font-medium">
+                                    <h3 className="font-bold text-joy-ink">
                                         Verify your identity
                                     </h3>
-                                    <p className="text-sm text-muted-foreground">
+                                    <p className="text-sm text-joy-ink-muted">
                                         Stand out to employers with a verified
                                         application
                                     </p>
@@ -412,79 +346,50 @@ export default function ApplyJobPage() {
                         </div>
                     </div>
 
-                    <Card className="w-full">
-                        <CardHeader className="space-y-1">
-                            <CardTitle className="text-2xl">
+                    <div className="w-full rounded-2xl border border-joy-ink/8 bg-white p-6 shadow-sm">
+                        <div className="space-y-1">
+                            <h2 className="joy-display text-2xl font-extrabold text-joy-ink">
                                 Sign in to continue
-                            </CardTitle>
-                            <CardDescription>
+                            </h2>
+                            <p className="text-sm text-joy-ink-muted">
                                 Choose your preferred sign-in method below
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
+                            </p>
+                        </div>
+                        <div className="mt-4 space-y-4">
                             {authError && (
-                                <div className="p-3 text-sm text-red-500 bg-red-50 rounded-md">
+                                <div className="rounded-xl bg-red-50 p-3 text-sm text-red-600">
                                     {authError}
                                 </div>
                             )}
 
                             <div className="space-y-2">
-                                {/* <Button
-                                    variant="outline"
-                                    className="w-full"
-                                    onClick={handleGoogleSignIn}
-                                    disabled={authLoading}
-                                >
-                                    {authLoading ? (
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    ) : (
-                                        <FcGoogle className="mr-2 h-4 w-4" />
-                                    )}
-                                    Continue with Google
-                                </Button> */}
-
-                                <Button
+                                <PlaygroundButton
                                     variant="outline"
                                     className="w-full"
                                     onClick={() => setShowEmailLogin(true)}
                                 >
-                                    <Mail className="mr-2 h-4 w-4" />
+                                    <Mail className="h-4 w-4" />
                                     Continue with Email
-                                </Button>
-
-                                {/* <Button
-                                    variant="outline"
-                                    className="w-full"
-                                    disabled
-                                >
-                                    <SiLinkedin className="mr-2 h-4 w-4" />
-                                    Continue with LinkedIn
-                                </Button>
-
-                                <Button
-                                    variant="outline"
-                                    className="w-full"
-                                    disabled
-                                >
-                                    <SiApple className="mr-2 h-4 w-4" />
-                                    Continue with Apple
-                                </Button> */}
+                                </PlaygroundButton>
                             </div>
-                        </CardContent>
-                        <CardFooter>
-                            <div className="flex items-center w-full text-xs text-muted-foreground">
-                                <Lock className="h-3 w-3 mr-1" />
+                        </div>
+                        <div className="mt-6">
+                            <div className="flex w-full items-center text-xs text-joy-ink-muted">
+                                <Lock className="mr-1 h-3 w-3" />
                                 <p>
                                     Your information is securely encrypted. See
                                     our{" "}
-                                    <a href="/privacy" className="underline">
+                                    <a
+                                        href="/privacy"
+                                        className="font-semibold underline hover:text-joy-ink"
+                                    >
                                         Privacy Policy
                                     </a>
                                     .
                                 </p>
                             </div>
-                        </CardFooter>
-                    </Card>
+                        </div>
+                    </div>
                 </div>
             </div>
         );
@@ -493,25 +398,25 @@ export default function ApplyJobPage() {
     // If showing email login, render the EmailLoginForm component
     if (showEmailLogin) {
         return (
-            <EmailLoginForm
-                className={"w-full h-full justify-center max-w-md m-auto"}
-                onChangeLoginType={() => setShowEmailLogin(false)}
-                redirectUrl={window.location.pathname + window.location.search} // Pass current URL pathname + query params (token/sharedId) as redirectUrl
-                // {...props}
-            />
+            <div className="mx-auto max-w-md px-5 py-10">
+                <EmailLoginForm
+                    className={"w-full justify-center"}
+                    onChangeLoginType={() => setShowEmailLogin(false)}
+                    redirectUrl={window.location.pathname + window.location.search} // Pass current URL pathname + query params (token/sharedId) as redirectUrl
+                    // {...props}
+                />
+            </div>
         );
     }
 
     // Loading state
     if (isLoading && !needsAuth) {
         return (
-            <div className="flex min-h-screen items-center justify-center">
-                <div className="text-center">
-                    <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
-                    <p className="mt-2 text-muted-foreground">
-                        Loading application...
-                    </p>
-                </div>
+            <div className="mx-auto max-w-2xl px-5 py-16 text-center">
+                <Loader2 className="mx-auto h-8 w-8 animate-spin text-joy-grass" />
+                <p className="mt-2 text-joy-ink-muted">
+                    Loading application...
+                </p>
             </div>
         );
     }
@@ -519,18 +424,15 @@ export default function ApplyJobPage() {
     // Error state
     if (error) {
         return (
-            <div className="flex min-h-screen flex-col items-center justify-center p-4">
-                <div className="w-full max-w-md text-center">
-                    <h1 className="text-2xl font-bold text-destructive">
-                        Application Error
-                    </h1>
-                    <p className="mt-2 text-muted-foreground">{error}</p>
-                    <Button
-                        className="mt-4"
-                        onClick={() => navigate("/jobs")}
-                    >
+            <div className="mx-auto max-w-md px-5 py-16 text-center">
+                <h1 className="joy-display text-2xl font-extrabold text-joy-ink">
+                    Application Error
+                </h1>
+                <p className="mt-2 text-joy-ink-muted">{error}</p>
+                <div className="mt-5 flex justify-center">
+                    <PlaygroundButton onClick={() => navigate("/jobs")}>
                         Return to Home
-                    </Button>
+                    </PlaygroundButton>
                 </div>
             </div>
         );
@@ -544,55 +446,53 @@ export default function ApplyJobPage() {
     // Already applied view
     if (hasAlreadyApplied) {
         return (
-            <div className="min-h-screen bg-background flex items-center justify-center p-4">
-                <div className="w-full max-w-md">
-                    <Card>
-                        <CardHeader className="text-center">
-                            {jobData?.organization?.logo && (
-                                <img
-                                    src={jobData.organization.logo}
-                                    alt={`${jobData.organization.name} logo`}
-                                    className="h-16 w-auto mx-auto mb-4"
-                                />
-                            )}
-                            <CardTitle className="text-2xl">
-                                Already Applied
-                            </CardTitle>
-                            <CardDescription>
-                                You have already submitted an application for
-                                this position.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="rounded-lg bg-muted p-4">
-                                <h3 className="font-semibold mb-2">
-                                    {jobData?.job?.title || "Job Position"}
-                                </h3>
-                                <p className="text-sm text-muted-foreground">
-                                    {jobData?.organization?.name || "Company"}
-                                </p>
-                            </div>
-                            <p className="text-sm text-muted-foreground">
-                                You can view the status of all your applications
-                                on your applications page.
+            <div className="mx-auto max-w-md px-5 py-10">
+                <div className="rounded-2xl border border-joy-ink/8 bg-white p-6 shadow-sm">
+                    <div className="text-center">
+                        {jobData?.organization?.logo && (
+                            <img
+                                src={jobData.organization.logo}
+                                alt={`${jobData.organization.name} logo`}
+                                className="mx-auto mb-4 h-16 w-auto"
+                            />
+                        )}
+                        <h1 className="joy-display text-2xl font-extrabold text-joy-ink">
+                            Already Applied
+                        </h1>
+                        <p className="mt-1 text-sm text-joy-ink-muted">
+                            You have already submitted an application for this
+                            position.
+                        </p>
+                    </div>
+                    <div className="mt-4 space-y-4">
+                        <div className="rounded-xl border border-joy-ink/8 bg-joy-surface p-4">
+                            <h3 className="mb-2 font-bold text-joy-ink">
+                                {jobData?.job?.title || "Job Position"}
+                            </h3>
+                            <p className="text-sm text-joy-ink-muted">
+                                {jobData?.organization?.name || "Company"}
                             </p>
-                        </CardContent>
-                        <CardFooter className="flex flex-col gap-2">
-                            <Button
-                                className="w-full"
-                                onClick={() => navigate("/jobs/applied")}
-                            >
-                                View My Applications
-                            </Button>
-                            <Button
-                                variant="outline"
-                                className="w-full"
-                                onClick={() => navigate(`/jobs/${slug}`)}
-                            >
-                                Back to Job Details
-                            </Button>
-                        </CardFooter>
-                    </Card>
+                        </div>
+                        <p className="text-sm text-joy-ink-muted">
+                            You can view the status of all your applications on
+                            your applications page.
+                        </p>
+                    </div>
+                    <div className="mt-6 flex flex-col gap-2">
+                        <PlaygroundButton
+                            className="w-full"
+                            onClick={() => navigate("/jobs/applied")}
+                        >
+                            View My Applications
+                        </PlaygroundButton>
+                        <PlaygroundButton
+                            variant="outline"
+                            className="w-full"
+                            onClick={() => navigate(`/jobs/${slug}`)}
+                        >
+                            Back to Job Details
+                        </PlaygroundButton>
+                    </div>
                 </div>
             </div>
         );
@@ -601,13 +501,16 @@ export default function ApplyJobPage() {
     // Confirmation view
     if (isSubmitted) {
         return (
-            <ApplicationConfirmation jobData={jobData} tokenInfo={tokenInfo} />
+            <ApplicationConfirmation
+                jobData={jobData}
+                tokenInfo={tokenInfo ?? undefined}
+            />
         );
     }
 
     // Application form
     return (
-        <div className="min-h-screen bg-background">
+        <div>
             {token && tokenInfo ? (
                 // Private token flow - with tokenInfo
                 <ApplicationForm
@@ -616,7 +519,7 @@ export default function ApplyJobPage() {
                 />
             ) : jobData ? (
                 // Public flow - with job data
-                <div className="container mx-auto py-8 px-4">
+                <div className="mx-auto max-w-3xl px-5 py-10">
                     {/* <div className="mb-8 flex flex-col items-center justify-center text-center">
             {jobData.organization?.logo && (
               <img 
@@ -633,24 +536,28 @@ export default function ApplyJobPage() {
                     <ApplicationForm
                         tokenInfo={{
                             applicant: {
+                                id: "",
+                                status: "Sent",
                                 firstName: "",
                                 lastName: "",
                                 email: studentAuth.currentUser?.email || "",
                             },
                             job: jobData.job,
                             organization: jobData.organization,
-                            token: { id: jobData.job.id },
+                            token: {
+                                id: jobData.job.id,
+                                createdAt: new Date().toISOString(),
+                                expires: new Date(
+                                    Date.now() + 30 * 24 * 60 * 60 * 1000
+                                ).toISOString(),
+                            },
                         }}
                         onSubmit={handleApplicationSubmit}
                     />
                 </div>
             ) : (
-                <div className="flex min-h-screen items-center justify-center">
-                    <div className="text-center">
-                        <p className="text-muted-foreground">
-                            No job data available
-                        </p>
-                    </div>
+                <div className="mx-auto max-w-2xl px-5 py-16 text-center">
+                    <p className="text-joy-ink-muted">No job data available</p>
                 </div>
             )}
         </div>

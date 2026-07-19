@@ -289,7 +289,7 @@ export default function AfterHoursPage() {
                         to="/"
                         className="flex items-center gap-2 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C6CFF]/70"
                     >
-                        <span className="ah-display text-lg font-bold text-[#EDEFF4]">Tail&apos;ed</span>
+                        <span className="ah-display text-lg font-bold text-[#EDEFF4]">Tail&apos;ed Community</span>
                         {activeCount !== null ? (
                             <span className="hidden items-center gap-1.5 sm:flex">
                                 <span className="ah-pulse-dot h-1.5 w-1.5 rounded-full bg-[#4ADE80]" aria-hidden="true" />
@@ -697,7 +697,7 @@ export default function AfterHoursPage() {
                         Built after hours, by students.
                     </h2>
                     <p className="mt-4 text-sm leading-relaxed text-white/60">
-                        Tail&apos;ed is a non-profit run by students who were also sick of job boards — no
+                        Tail&apos;ed Community is a non-profit run by students who were also sick of job boards — no
                         investors, no premium tier, no selling your resume. This site gets built between
                         lectures and late-night commits, and every line of it is public. If it helps you land
                         the role, that&apos;s the whole business model.
@@ -754,7 +754,7 @@ export default function AfterHoursPage() {
             <footer className="border-t border-white/10 px-5 py-8">
                 <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 sm:flex-row">
                     <div className="flex items-center gap-2">
-                        <span className="ah-display text-sm font-semibold text-[#EDEFF4]">Tail&apos;ed</span>
+                        <span className="ah-display text-sm font-semibold text-[#EDEFF4]">Tail&apos;ed Community</span>
                         <span className="text-xs text-white/40">· shipped after class, free forever</span>
                     </div>
                     <div className="flex items-center gap-4 text-sm text-white/50">

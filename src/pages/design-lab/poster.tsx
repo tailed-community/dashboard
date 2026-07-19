@@ -363,7 +363,7 @@ export default function PosterPage() {
                 <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 pb-5 pt-7">
                     <Link to="/" className={`flex items-center gap-2.5 rounded ${FOCUS_RING}`}>
                         <span className="relative inline-block">
-                            <span className="poster-display text-xl font-black tracking-tight">Tail&apos;ed</span>
+                            <span className="poster-display text-xl font-black tracking-tight">Tail&apos;ed Community</span>
                             <svg
                                 className="pointer-events-none absolute -bottom-1.5 left-0 h-2 w-full"
                                 viewBox="0 0 100 8"
@@ -432,7 +432,7 @@ export default function PosterPage() {
                     </h1>
 
                     <p className="mt-6 max-w-xl text-lg font-medium leading-snug text-black/70">
-                        Tail&apos;ed is a non-profit run by students who were also sick of job
+                        Tail&apos;ed Community is a non-profit run by students who were also sick of job
                         boards. No recruiters, no premium tier, no selling your resume.
                     </p>
 
@@ -786,7 +786,7 @@ export default function PosterPage() {
                         Why is this free?
                     </h2>
                     <p className="mt-4 text-lg leading-relaxed">
-                        Tail&apos;ed is a non-profit built by students, for students. We
+                        Tail&apos;ed Community is a non-profit built by students, for students. We
                         don&apos;t sell your data, and there is no premium tier hiding the good
                         jobs. Every line of code is public.
                     </p>
@@ -858,7 +858,7 @@ export default function PosterPage() {
             {/* ---------------- Footer ---------------- */}
             <footer className="border-t-2 border-[#1C1C1C] bg-[#1C1C1C] px-5 py-8 text-[#FFFDF8]">
                 <div className="poster-mono mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 text-xs uppercase tracking-wide sm:flex-row">
-                    <p>&copy; Tail&apos;ed — non-profit, built by students.</p>
+                    <p>&copy; Tail&apos;ed Community — non-profit, built by students.</p>
                     <nav className="flex flex-wrap items-center justify-center gap-4">
                         <Link
                             to="/about"

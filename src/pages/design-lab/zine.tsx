@@ -312,7 +312,7 @@ export default function ZinePage() {
                         to="/"
                         className="zine-display text-xl focus-visible:outline focus-visible:outline-4 focus-visible:outline-black focus-visible:outline-offset-2 sm:text-2xl"
                     >
-                        TAIL&apos;ED
+                        TAIL&apos;ED COMMUNITY
                     </Link>
                     <nav className="hidden items-center gap-6 text-sm font-bold uppercase tracking-wide md:flex">
                         <Link to="/jobs" className="hover:underline focus-visible:outline focus-visible:outline-4 focus-visible:outline-black focus-visible:outline-offset-2">
@@ -368,7 +368,7 @@ export default function ZinePage() {
 
                 <p className="mt-6 max-w-2xl text-lg font-medium leading-snug sm:text-xl">
                     No recruiters. No premium tier. No selling your resume.
-                    Tail&apos;ed is a non-profit run by students who were also
+                    Tail&apos;ed Community is a non-profit run by students who were also
                     sick of job boards.
                 </p>
 
@@ -704,7 +704,7 @@ export default function ZinePage() {
                         WHY IS THIS FREE?
                     </h2>
                     <p className="mt-5 text-lg leading-relaxed sm:text-xl">
-                        Tail&apos;ed is a{" "}
+                        Tail&apos;ed Community is a{" "}
                         <span className="relative inline-block font-bold">
                             non-profit
                             <svg
@@ -804,7 +804,7 @@ export default function ZinePage() {
             {/* Footer */}
             <footer className="border-t-2 border-black bg-black px-4 py-8 text-white sm:px-6">
                 <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 font-mono text-xs uppercase tracking-wide sm:flex-row">
-                    <p>&copy; Tail&apos;ed &mdash; non-profit, built by students.</p>
+                    <p>&copy; Tail&apos;ed Community &mdash; non-profit, built by students.</p>
                     <nav className="flex flex-wrap items-center justify-center gap-4">
                         <Link to="/about" className="hover:text-[#ffd43b] focus-visible:outline focus-visible:outline-4 focus-visible:outline-white focus-visible:outline-offset-2">
                             About

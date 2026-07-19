@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { db, studentAuth, storage } from "../lib/firebase";
 import { logger } from "firebase-functions";
 import { FieldPath, FieldValue } from "firebase-admin/firestore";
+import { parseResumePdf } from "../lib/resume-parser";
 
 const router = express.Router();
 
@@ -158,6 +159,300 @@ const normalizeStringArray = (value: unknown): string[] => {
             .filter((item) => item.length > 0)
     )];
 };
+
+// --- Structured profile-builder validation (spec 08 §4.1–4.5) ----------------
+// Follows this file's existing per-field conventions: validate shape/types,
+// trim strings, generate/preserve `id`, and return a 400-friendly `error`
+// string on bad input. Arrays are capped sanely so a malformed/oversized
+// payload can't bloat the doc.
+
+const MAX_STRUCTURED_ARRAY = 25;
+const YEAR_MONTH_RE = /^\d{4}-\d{2}$/;
+
+const EMPLOYMENT_TYPES = [
+    "internship",
+    "part-time",
+    "full-time",
+    "volunteer",
+    "co-op",
+    "other",
+];
+const SKILL_CATEGORIES = ["language", "framework", "tool", "soft", "other"];
+const SKILL_LEVELS = ["beginner", "intermediate", "advanced"];
+const WORK_AUTH_ANSWERS = ["yes", "no", "prefer-not-to-say"];
+const WORK_AUTH_STATUSES = [
+    "citizen",
+    "permanent-resident",
+    "study-permit",
+    "work-permit",
+    "other",
+    "prefer-not-to-say",
+];
+
+type SanitizeResult<T> =
+    | { error: string; value?: undefined }
+    | { error?: undefined; value: T };
+
+const trimmedString = (value: unknown): string =>
+    typeof value === "string" ? value.trim() : "";
+
+const optionalTrimmed = (value: unknown): string | undefined => {
+    if (typeof value !== "string") return undefined;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const preserveOrNewId = (value: unknown): string =>
+    typeof value === "string" && value.trim().length > 0
+        ? value.trim()
+        : crypto.randomUUID();
+
+const normalizeSource = (value: unknown): "manual" | "resume-parse" => {
+    const source = trimmedString(value);
+    return source === "resume-parse" ? "resume-parse" : "manual";
+};
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+    typeof value === "object" && value !== null && !Array.isArray(value);
+
+function sanitizeExperiences(input: unknown): SanitizeResult<any[]> {
+    if (!Array.isArray(input)) {
+        return { error: "experiences must be an array" };
+    }
+    if (input.length > MAX_STRUCTURED_ARRAY) {
+        return {
+            error: `Maximum ${MAX_STRUCTURED_ARRAY} experiences allowed`,
+        };
+    }
+    const out: any[] = [];
+    for (const raw of input) {
+        if (!isPlainObject(raw)) {
+            return { error: "Each experience must be an object" };
+        }
+        const title = trimmedString(raw.title);
+        const organization = trimmedString(raw.organization);
+        if (!title) return { error: "Experience title is required" };
+        if (!organization) {
+            return { error: "Experience organization is required" };
+        }
+        const entry: any = {
+            id: preserveOrNewId(raw.id),
+            title,
+            organization,
+            source: normalizeSource(raw.source),
+        };
+        const employmentType = optionalTrimmed(raw.employmentType);
+        if (employmentType) {
+            if (!EMPLOYMENT_TYPES.includes(employmentType)) {
+                return { error: "Invalid experience employmentType" };
+            }
+            entry.employmentType = employmentType;
+        }
+        const location = optionalTrimmed(raw.location);
+        if (location) entry.location = location;
+        const startDate = optionalTrimmed(raw.startDate);
+        if (startDate) {
+            if (!YEAR_MONTH_RE.test(startDate)) {
+                return { error: "Experience startDate must be YYYY-MM" };
+            }
+            entry.startDate = startDate;
+        }
+        const current = raw.current === true;
+        if (current) {
+            entry.current = true;
+            entry.endDate = null;
+        } else {
+            const endDate = optionalTrimmed(raw.endDate);
+            if (endDate) {
+                if (!YEAR_MONTH_RE.test(endDate)) {
+                    return { error: "Experience endDate must be YYYY-MM" };
+                }
+                entry.endDate = endDate;
+            } else {
+                entry.endDate = null;
+            }
+        }
+        const description = optionalTrimmed(raw.description);
+        if (description) entry.description = description;
+        out.push(entry);
+    }
+    return { value: out };
+}
+
+function sanitizeEducationArray(input: unknown): SanitizeResult<any[]> {
+    if (!Array.isArray(input)) {
+        return { error: "education must be an array" };
+    }
+    if (input.length > MAX_STRUCTURED_ARRAY) {
+        return { error: `Maximum ${MAX_STRUCTURED_ARRAY} education entries` };
+    }
+    const out: any[] = [];
+    for (const raw of input) {
+        if (!isPlainObject(raw)) {
+            return { error: "Each education entry must be an object" };
+        }
+        const school = trimmedString(raw.school);
+        const program = trimmedString(raw.program);
+        if (!school) return { error: "Education school is required" };
+        if (!program) return { error: "Education program is required" };
+        const entry: any = {
+            id: preserveOrNewId(raw.id),
+            school,
+            program,
+            source: normalizeSource(raw.source),
+        };
+        const fieldOfStudy = optionalTrimmed(raw.fieldOfStudy);
+        if (fieldOfStudy) entry.fieldOfStudy = fieldOfStudy;
+        const graduationYear = optionalTrimmed(raw.graduationYear);
+        if (graduationYear) {
+            if (!/^\d{4}$/.test(graduationYear)) {
+                return { error: "Education graduationYear must be a 4-digit year" };
+            }
+            entry.graduationYear = graduationYear;
+        }
+        const startYear = optionalTrimmed(raw.startYear);
+        if (startYear) {
+            if (!/^\d{4}$/.test(startYear)) {
+                return { error: "Education startYear must be a 4-digit year" };
+            }
+            entry.startYear = startYear;
+        }
+        if (raw.current === true) entry.current = true;
+        out.push(entry);
+    }
+    return { value: out };
+}
+
+function sanitizeProjects(input: unknown): SanitizeResult<any[]> {
+    if (!Array.isArray(input)) {
+        return { error: "projects must be an array" };
+    }
+    if (input.length > MAX_STRUCTURED_ARRAY) {
+        return { error: `Maximum ${MAX_STRUCTURED_ARRAY} projects allowed` };
+    }
+    const out: any[] = [];
+    for (const raw of input) {
+        if (!isPlainObject(raw)) {
+            return { error: "Each project must be an object" };
+        }
+        const name = trimmedString(raw.name);
+        if (!name) return { error: "Project name is required" };
+        const entry: any = {
+            id: preserveOrNewId(raw.id),
+            name,
+            source: normalizeSource(raw.source),
+        };
+        const description = optionalTrimmed(raw.description);
+        if (description) entry.description = description;
+        const role = optionalTrimmed(raw.role);
+        if (role) entry.role = role;
+        const url = optionalTrimmed(raw.url);
+        if (url) entry.url = url;
+        const startDate = optionalTrimmed(raw.startDate);
+        if (startDate) {
+            if (!YEAR_MONTH_RE.test(startDate)) {
+                return { error: "Project startDate must be YYYY-MM" };
+            }
+            entry.startDate = startDate;
+        }
+        const endDate = optionalTrimmed(raw.endDate);
+        if (endDate) {
+            if (!YEAR_MONTH_RE.test(endDate)) {
+                return { error: "Project endDate must be YYYY-MM" };
+            }
+            entry.endDate = endDate;
+        }
+        if (Array.isArray(raw.skills)) {
+            const skills = [
+                ...new Set(
+                    raw.skills
+                        .filter((s): s is string => typeof s === "string")
+                        .map((s) => s.trim())
+                        .filter((s) => s.length > 0)
+                ),
+            ].slice(0, MAX_STRUCTURED_ARRAY);
+            if (skills.length > 0) entry.skills = skills;
+        }
+        out.push(entry);
+    }
+    return { value: out };
+}
+
+function sanitizeSkillsStructured(
+    input: unknown
+): SanitizeResult<{ structured: any[]; names: string[] }> {
+    if (!Array.isArray(input)) {
+        return { error: "skillsStructured must be an array" };
+    }
+    if (input.length > MAX_STRUCTURED_ARRAY) {
+        return { error: `Maximum ${MAX_STRUCTURED_ARRAY} skills allowed` };
+    }
+    const structured: any[] = [];
+    const seen = new Set<string>();
+    for (const raw of input) {
+        if (!isPlainObject(raw)) {
+            return { error: "Each skill must be an object" };
+        }
+        const name = trimmedString(raw.name);
+        if (!name) return { error: "Skill name is required" };
+        const key = name.toLowerCase();
+        if (seen.has(key)) continue; // dedupe by name (case-insensitive)
+        seen.add(key);
+        const entry: any = { name };
+        const category = optionalTrimmed(raw.category);
+        if (category) {
+            if (!SKILL_CATEGORIES.includes(category)) {
+                return { error: "Invalid skill category" };
+            }
+            entry.category = category;
+        }
+        const level = optionalTrimmed(raw.level);
+        if (level) {
+            if (!SKILL_LEVELS.includes(level)) {
+                return { error: "Invalid skill level" };
+            }
+            entry.level = level;
+        }
+        structured.push(entry);
+    }
+    return {
+        value: { structured, names: structured.map((s) => s.name) },
+    };
+}
+
+function sanitizeWorkAuthorization(input: unknown): SanitizeResult<any> {
+    if (!isPlainObject(input)) {
+        return { error: "workAuthorization must be an object" };
+    }
+    // Server stamps its own updatedAt (never trust the client clock).
+    const entry: any = { updatedAt: new Date() };
+    if (input.authorizedToWorkInCanada !== undefined) {
+        const answer = trimmedString(input.authorizedToWorkInCanada);
+        if (!WORK_AUTH_ANSWERS.includes(answer)) {
+            return { error: "Invalid authorizedToWorkInCanada" };
+        }
+        entry.authorizedToWorkInCanada = answer;
+    }
+    for (const key of [
+        "requiresSponsorshipNow",
+        "requiresSponsorshipFuture",
+    ] as const) {
+        const value = input[key];
+        if (value === undefined) continue;
+        if (value !== null && typeof value !== "boolean") {
+            return { error: `${key} must be a boolean or null` };
+        }
+        entry[key] = value;
+    }
+    if (input.status !== undefined) {
+        const status = trimmedString(input.status);
+        if (!WORK_AUTH_STATUSES.includes(status)) {
+            return { error: "Invalid work authorization status" };
+        }
+        entry.status = status;
+    }
+    return { value: entry };
+}
 
 const buildActivityEventSummary = (
     doc: FirebaseFirestore.QueryDocumentSnapshot | FirebaseFirestore.DocumentSnapshot
@@ -897,6 +1192,96 @@ router.patch("/update", async (req, res) => {
             }
         }
 
+        // Validation: Communication language (optional; spec 08 §5 "Language &
+        // localization"). Whitelist to "en"/"fr"; `null` clears via the generic
+        // FieldValue.delete() branch below. Drives the language of all student
+        // communications — it does NOT change the platform UI locale.
+        if (
+            updates.preferredLanguage !== undefined &&
+            updates.preferredLanguage !== null
+        ) {
+            if (
+                updates.preferredLanguage !== "en" &&
+                updates.preferredLanguage !== "fr"
+            ) {
+                return res.status(400).json({
+                    error: "Validation error",
+                    message: 'preferredLanguage must be "en" or "fr"',
+                });
+            }
+        }
+
+        // Validation: Structured profile-builder fields (spec 08 §4.1–4.5).
+        // Each is optional; when present we validate + normalize in place so the
+        // generic trim/merge loop below writes the sanitized value verbatim.
+        if (updates.experiences !== undefined) {
+            const result = sanitizeExperiences(updates.experiences);
+            if (result.error) {
+                return res.status(400).json({
+                    error: "Validation error",
+                    message: result.error,
+                });
+            }
+            updates.experiences = result.value;
+        }
+
+        if (updates.education !== undefined) {
+            const result = sanitizeEducationArray(updates.education);
+            if (result.error) {
+                return res.status(400).json({
+                    error: "Validation error",
+                    message: result.error,
+                });
+            }
+            updates.education = result.value;
+        }
+
+        if (updates.projects !== undefined) {
+            const result = sanitizeProjects(updates.projects);
+            if (result.error) {
+                return res.status(400).json({
+                    error: "Validation error",
+                    message: result.error,
+                });
+            }
+            updates.projects = result.value;
+        }
+
+        if (updates.workAuthorization !== undefined) {
+            const result = sanitizeWorkAuthorization(updates.workAuthorization);
+            if (result.error) {
+                return res.status(400).json({
+                    error: "Validation error",
+                    message: result.error,
+                });
+            }
+            updates.workAuthorization = result.value;
+        }
+
+        // Structured skills: validate, then mirror the names into the flat
+        // `skills: string[]` for back-compat with existing consumers — but only
+        // when the client did NOT send an explicit `skills` array in the same
+        // request (so an explicit flat-skills edit always wins and is never
+        // clobbered by a stale structured list).
+        if (updates.skillsStructured !== undefined) {
+            const result = sanitizeSkillsStructured(updates.skillsStructured);
+            // `error === undefined` (rather than a truthiness check) lets TS
+            // narrow the SanitizeResult union so `result.value` is defined
+            // below; no sanitizer ever returns an empty-string error.
+            if (result.error !== undefined) {
+                return res.status(400).json({
+                    error: "Validation error",
+                    message: result.error,
+                });
+            }
+            updates.skillsStructured = result.value.structured;
+            if (updates.skills === undefined) {
+                // Cap the flat mirror at 15 to respect the existing skills
+                // validator below (structured keeps the full set).
+                updates.skills = result.value.names.slice(0, 15);
+            }
+        }
+
         // Validation: Skills (optional, array of strings)
         if (updates.skills && Array.isArray(updates.skills)) {
             // Flatten and trim all skills, also split by comma if any skill contains comma
@@ -921,6 +1306,43 @@ router.patch("/update", async (req, res) => {
 
             // Update the skills with processed array
             updates.skills = processedSkills;
+        }
+
+        // Validation: Onboarding state (optional; card dismiss / mark-celebrated).
+        // Only the two derived-state exceptions from spec 08 §5 are persisted:
+        // `dismissedAt` (card stays hidden) and `celebratedAt` (celebration once).
+        // We stamp our own server time when a flag is set, and delete it on null,
+        // consistent with the FieldValue.delete() convention below.
+        if (updates.onboardingState !== undefined) {
+            const incoming = updates.onboardingState;
+            if (
+                typeof incoming !== "object" ||
+                incoming === null ||
+                Array.isArray(incoming)
+            ) {
+                return res.status(400).json({
+                    error: "Validation error",
+                    message: "onboardingState must be an object",
+                });
+            }
+
+            const allowedKeys = ["dismissedAt", "celebratedAt"] as const;
+            const sanitizedOnboardingState: Record<string, any> = {};
+            for (const key of allowedKeys) {
+                if (!(key in incoming)) {
+                    continue;
+                }
+                const value = incoming[key];
+                if (value === null) {
+                    // Explicit clear.
+                    sanitizedOnboardingState[key] = FieldValue.delete();
+                } else {
+                    // Any truthy signal → stamp server time (never trust client clock).
+                    sanitizedOnboardingState[key] = new Date();
+                }
+            }
+
+            updates.onboardingState = sanitizedOnboardingState;
         }
 
         // Trim all string fields before saving
@@ -948,6 +1370,41 @@ router.patch("/update", async (req, res) => {
 
         // Merge current data with updates to get the full profile state
         const fullProfileData = { ...currentData, ...trimmedUpdates };
+
+        // Back-compat mirror (spec 08 §4.2): the flat school/program/graduationYear
+        // scalars stay AUTHORITATIVE for the required-set / card done-check. We
+        // additionally mirror them into the primary education entry (education[0])
+        // whenever the scalars or the education array are touched in this request,
+        // so `education[0]` always reflects the source-of-truth scalars.
+        const scalarsOrEducationTouched =
+            updates.school !== undefined ||
+            updates.program !== undefined ||
+            updates.graduationYear !== undefined ||
+            updates.education !== undefined;
+        if (scalarsOrEducationTouched) {
+            const effSchool = trimmedString(fullProfileData.school);
+            const effProgram = trimmedString(fullProfileData.program);
+            const effGrad = trimmedString(fullProfileData.graduationYear);
+            if (effSchool || effProgram || effGrad) {
+                const education = Array.isArray(trimmedUpdates.education)
+                    ? [...trimmedUpdates.education]
+                    : Array.isArray((currentData as any)?.education)
+                    ? [...(currentData as any).education]
+                    : [];
+                const primary: any = { ...(education[0] || {}) };
+                if (!primary.id) primary.id = crypto.randomUUID();
+                primary.school = effSchool;
+                primary.program = effProgram;
+                if (effGrad) primary.graduationYear = effGrad;
+                if (primary.source !== "resume-parse") {
+                    primary.source = "manual";
+                }
+                education[0] = primary;
+                trimmedUpdates.education = education;
+                fullProfileData.education = education;
+            }
+        }
+
         const profileScore = calculateProfileScore(fullProfileData);
         trimmedUpdates.profileScore = profileScore;
 
@@ -1704,6 +2161,83 @@ router.post("/organizations/:id/unsubscribe", async (req, res) => {
         return res.status(500).json({
             error: "Failed to unsubscribe from organization",
             details: error instanceof Error ? error.message : String(error),
+        });
+    }
+});
+
+/**
+ * POST /profile/parse-resume
+ * Deterministic, offline resume parsing (spec 08 Open-Q1). Loads the caller's
+ * already-uploaded resume PDF from Storage, extracts its text with `pdf-parse`
+ * (a local library — no network, no per-call cost), and applies rule-based
+ * heuristics to return structured SUGGESTIONS shaped like the app's Experience /
+ * Education / Project / SkillEntry types. Each parsed entry is tagged
+ * `source: "resume-parse"`.
+ *
+ * This endpoint DOES NOT write anything to the profile — the user confirms and
+ * merges on the client (which then saves via PATCH /profile/update). Parsing is
+ * always available; a readable-but-empty resume returns empty arrays so the
+ * client shows the friendly "add manually" path.
+ */
+router.post("/parse-resume", async (req, res) => {
+    const userId = req.user?.uid;
+    if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    if (!storage) {
+        logger.error("Storage is not initialized for resume parsing");
+        return res.status(500).json({
+            error: "resume_parse_failed",
+            message:
+                "We couldn't read your resume automatically. You can fill in your details manually.",
+        });
+    }
+
+    try {
+        // Look up the caller's current resume metadata.
+        const profileDoc = await db.collection("profiles").doc(userId).get();
+        const resume = profileDoc.exists
+            ? profileDoc.data()?.resume
+            : undefined;
+
+        if (!resume || !resume.id) {
+            return res.status(400).json({
+                error: "no_resume",
+                message:
+                    "Upload a resume first, then try pre-filling from it.",
+            });
+        }
+
+        // Load the PDF bytes from Storage — same path convention as the
+        // PATCH /main-resume handler above.
+        const filePath = `profiles/${userId}/resumes/main_resume/${resume.id}.pdf`;
+        const file = storage.bucket().file(filePath);
+
+        const [exists] = await file.exists();
+        if (!exists) {
+            logger.warn(`Resume file not found for parsing: ${filePath}`);
+            return res.status(400).json({
+                error: "no_resume",
+                message:
+                    "We couldn't find your uploaded resume. Try re-uploading it.",
+            });
+        }
+
+        const [buffer] = await file.download();
+
+        const suggestions = await parseResumePdf(buffer);
+
+        logger.info(`Resume parsed for user ${userId}`);
+
+        return res.status(200).json(suggestions);
+    } catch (error) {
+        // Never leak the key or a stack trace to the client.
+        logger.error("Error parsing resume:", error);
+        return res.status(502).json({
+            error: "resume_parse_failed",
+            message:
+                "We couldn't read your resume automatically. You can fill in your details manually.",
         });
     }
 });

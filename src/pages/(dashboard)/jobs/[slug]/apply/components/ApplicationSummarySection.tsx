@@ -1,4 +1,3 @@
-import React from "react";
 import { CheckCircle, AlertCircle, Sparkles, ArrowLeft } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";

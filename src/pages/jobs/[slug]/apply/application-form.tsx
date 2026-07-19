@@ -35,7 +35,7 @@ import { FirebaseError } from "firebase/app";
 import {
     type TokenInfo,
     type DevpostProfile,
-    type FormData as ApplicationFormData,
+    type ApplicationFormData,
 } from "./types";
 
 interface ApplicationFormProps {
@@ -106,6 +106,11 @@ export default function ApplicationForm({
                 await initializeStudentSession();
             }
 
+            const currentUser = studentAuth.currentUser;
+            if (!currentUser) {
+                throw new Error("Failed to initialize student session");
+            }
+
             // Create GitHub provider
             const githubProvider = new GithubAuthProvider();
 
@@ -114,7 +119,7 @@ export default function ApplicationForm({
             // githubProvider.addScope("repo");
 
             // Check if the user already has GitHub provider linked
-            const providerData = studentAuth.currentUser?.providerData || [];
+            const providerData = currentUser.providerData || [];
             const githubProviderData = providerData.find(
                 (p) => p.providerId === "github.com"
             );
@@ -127,7 +132,7 @@ export default function ApplicationForm({
                 try {
                     // Try to relink to get a fresh token
                     const result = await linkWithPopup(
-                        studentAuth.currentUser,
+                        currentUser,
                         githubProvider
                     );
                     const credential =
@@ -161,7 +166,7 @@ export default function ApplicationForm({
                 // User is not linked with GitHub yet, proceed with normal linking
                 try {
                     const result = await linkWithPopup(
-                        studentAuth.currentUser,
+                        currentUser,
                         githubProvider
                     );
                     const credential =
