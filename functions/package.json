@@ -8,13 +8,16 @@
     "build": "tsc",
     "build:watch": "tsc --watch",
     "dev": "nodemon src/index.ts",
-    "serve": "cd .. && cross-env NODE_ENV=development firebase emulators:start --only functions --import .data --export-on-exit",
+    "serve": "cd .. && firebase emulators:start --only functions --import .data --export-on-exit --project=local",
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",
     "digest:dry": "npm run build && cross-env DIGEST_DRY_RUN=true node lib/scripts/run-digest-dry.js",
     "onboarding:dry": "npm run build && cross-env ONBOARDING_DRY_RUN=true node lib/scripts/run-onboarding-emails-dry.js",
+    "deploy:dev": "firebase deploy --only functions --project=dev",
+    "deploy:prod": "firebase deploy --only functions --project=prod",
     "deploy": "firebase deploy --only functions",
-    "logs": "firebase functions:log"
+    "logs": "firebase functions:log",
+    "test": "vitest run"
   },
   "engines": {
     "node": "22"
@@ -54,7 +57,8 @@
     "husky": "^9.1.7",
     "nodemon": "^3.1.10",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.9"
   },
   "overrides": {
     "@tootallnate/once": "^3.0.1"

@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "tailed-community-fb11e"
+    "default": "tailed-community-fb11e",
+    "local": "demo-tailed1",
+    "dev": "tailed-community-dev",
+    "prod": "tailed-community-fb11e"
   }
 }

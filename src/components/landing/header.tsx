@@ -51,7 +51,7 @@ function Logo() {
             <div className="flex items-center h-16 w-40">
                 <AspectRatio ratio={3042 / 968}>
                     <img
-                        src="/Tailed_Community_logo.png"
+                        src="/tailed-community-logo.png"
                         alt="Tail'ed Community logo"
                         className="object-contain h-full w-full"
                     />
@@ -236,7 +236,7 @@ export function Header() {
                     <div className="flex items-center h-16 w-40">
                         <AspectRatio ratio={3042 / 968}>
                             <img
-                                src="/Tailed_Community_logo.png"
+                                src="/tailed-community-logo.png"
                                 alt="Tail'ed Community logo"
                                 className="object-contain h-full w-full"
                             />

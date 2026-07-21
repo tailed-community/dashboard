@@ -3,6 +3,7 @@
  * routes/alerts.ts so the jobs-digest cron (and any future callers) build
  * the same unsubscribe URL the same way.
  */
+import { apiPublicUrl, frontendUrl } from "./env";
 
 /**
  * Builds the public unsubscribe link for a job-alert subscription. Points
@@ -10,10 +11,7 @@
  * must not require a logged-in session or a frontend route.
  */
 export function buildUnsubscribeUrl(token: string): string {
-  const base =
-    process.env.API_PUBLIC_URL ||
-    "https://us-central1-tailed-community-dev.cloudfunctions.net/app";
-  return `${base.replace(/\/$/, "")}/alerts/unsubscribe?token=${encodeURIComponent(token)}`;
+  return `${apiPublicUrl()}/alerts/unsubscribe?token=${encodeURIComponent(token)}`;
 }
 
 /**
@@ -24,8 +22,7 @@ export function buildJobDetailUrl(
   jobId: string,
   utm: { source: string; medium: string }
 ): string {
-  const frontendUrl = process.env.FRONTEND_URL || "https://community.tailed.ca";
-  const base = `${frontendUrl.replace(/\/$/, "")}/jobs/e/${encodeURIComponent(jobId)}`;
+  const base = `${frontendUrl()}/jobs/e/${encodeURIComponent(jobId)}`;
   const params = new URLSearchParams({
     utm_source: utm.source,
     utm_medium: utm.medium,

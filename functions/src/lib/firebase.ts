@@ -1,7 +1,6 @@
 import admin from "firebase-admin";
 import dotenv from "dotenv";
 import { getFirestore } from "firebase-admin/firestore";
-import { TENANT_IDS } from "../routes/auth";
 import type { Request, Response, NextFunction } from "express";
 
 dotenv.config();
@@ -19,18 +18,23 @@ if (!admin.apps.length) {
   admin.initializeApp(firebaseConfig);
 }
 
-const tenantManager = admin.auth().tenantManager();
+export const auth = admin.auth();
 
-export const auth = admin.auth(); // Default auth without tenant
-
-export const createTenantAuth = async (tenantId: string) => {
-  if (!tenantId) {
-    return auth; // Return default auth if no tenantId
-  }
-  return tenantManager.authForTenant(tenantId);
-};
-
-export const studentAuth = async () => createTenantAuth(TENANT_IDS.STUDENTS);
+/**
+ * @deprecated Use `auth` directly.
+ *
+ * This project does not use Firebase Auth multi-tenancy. `FB_TENANT_ID` was
+ * never set in any deployed environment, so `createTenantAuth` always fell
+ * through to the default auth pool and every user lives there. The tenant
+ * scaffolding was actively harmful: it serialized the literal string
+ * "undefined" into magic-link continue URLs (via the module-load ordering trap
+ * documented in lib/env.ts), which surfaced to users as
+ * "That sign-in link has expired".
+ *
+ * Kept as an alias so the ~8 existing call sites keep working; new code should
+ * import `auth`.
+ */
+export const studentAuth = async () => auth;
 
 export const decodedToken = () => {
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -48,8 +52,30 @@ export const decodedToken = () => {
         } catch (error) {
           console.error("Error verifying token:", error);
           res.status(401).json({ error: "Invalid token" });
+          return;
         }
       }
+    }
+
+    next();
+  };
+};
+
+/**
+ * Middleware: requires a valid, authenticated request whose custom claims
+ * include `platformAdmin: true`. Must run after `decodedToken()`.
+ * 401 if unauthenticated, 403 if authenticated but not a platform admin.
+ */
+export const requirePlatformAdmin = () => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    if (req.user.platformAdmin !== true) {
+      res.status(403).json({ error: "Platform admin access required" });
+      return;
     }
 
     next();

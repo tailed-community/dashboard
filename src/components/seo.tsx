@@ -2,7 +2,7 @@ import { useEffect } from "react";
 
 export const SITE_URL = "https://community.tailed.ca";
 export const SITE_NAME = "Tail'ed";
-export const DEFAULT_OG_IMAGE = `${SITE_URL}/Tailed_Community_logo.png`;
+export const DEFAULT_OG_IMAGE = `${SITE_URL}/tailed-community-logo.png`;
 
 type SeoProps = {
     /** Page title WITHOUT brand suffix. */

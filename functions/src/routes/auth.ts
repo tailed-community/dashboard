@@ -4,9 +4,9 @@ const router = express.Router();
 import { db, studentAuth } from "../lib/firebase";
 import { upsertStudentUser } from "../lib/user-management";
 import { localeFromAcceptLanguage } from "../lib/locale";
+import { buildSignInLink } from "../lib/auth-links";
+import { sendSignInLinkEmail } from "../lib/email-service";
 import { z } from "zod";
-
-export const TENANT_IDS = { STUDENTS: process.env.FB_TENANT_ID! } as const;
 
 const createAccountSchema = z.object({
     firstName: z.string().min(1, "First name is required"),
@@ -25,6 +25,56 @@ const createAccountSchema = z.object({
 
 const checkUserExistsSchema = z.object({
     email: z.string().email(),
+});
+
+// Accepts an in-app redirect PATH (e.g. "/jobs"), never an absolute URL — it is
+// embedded on the /auth/callback continue URL by buildSignInLink and consumed by
+// the callback page's client-side navigate().
+const sendLoginLinkSchema = z.object({
+    email: z.string().email("Invalid email address"),
+    redirectUrl: z.string().optional(),
+});
+
+/**
+ * POST /auth/send-login-link  (public — no auth required)
+ *
+ * Passwordless sign-in for the interactive sign-in / sign-up form. Generates a
+ * one-time email sign-in link server-side (firebase-admin, tenant-aware) and
+ * delivers it through our own "Warm Community" email template — replacing
+ * Firebase's client-SDK sendSignInLinkToEmail and its default email.
+ *
+ * No existence pre-check: for a new email the link creates the account on
+ * completion, matching the form's "sign in or sign up" behavior. The response is
+ * intentionally uniform (never reveals whether the email already has an account).
+ */
+router.post("/send-login-link", async (req, res) => {
+    const result = sendLoginLinkSchema.safeParse(req.body);
+
+    if (!result.success) {
+        return res.status(400).json({
+            error: "Invalid request data",
+            details: result.error.format(),
+        });
+    }
+
+    const { email, redirectUrl } = result.data;
+    const locale = localeFromAcceptLanguage(req.headers["accept-language"]);
+
+    try {
+        const signInUrl = await buildSignInLink(
+            email,
+            redirectUrl && redirectUrl.length > 0 ? redirectUrl : "/me"
+        );
+        await sendSignInLinkEmail(email, signInUrl, locale);
+
+        return res.status(200).json({ success: true });
+    } catch (error: any) {
+        console.error("Error sending sign-in link:", error);
+        return res.status(500).json({
+            error: "Server error",
+            message: "Failed to send the sign-in link. Please try again later.",
+        });
+    }
 });
 
 router.post("/check-user-exists", async (req, res) => {

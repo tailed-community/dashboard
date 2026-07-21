@@ -93,7 +93,7 @@ export function LoginForm({ className, mode = "sign-in", ...props }: LoginProps)
                     <div className="flex flex-col gap-4 margin-bottom-4">
                         <div className="flex flex-col items-center text-center">
                             <img
-                                src="/Tailed_Community_logo.png"
+                                src="/tailed-community-logo.png"
                                 alt="Logo"
                                 width={155}
                                 height={65}

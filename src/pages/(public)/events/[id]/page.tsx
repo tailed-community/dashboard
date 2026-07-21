@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { DateTime } from "luxon";
-import { ArrowLeft, CalendarDays, ExternalLink, Sparkles, Users } from "lucide-react";
+import { ArrowLeft, CalendarDays, ExternalLink, Pencil, Sparkles, Users } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
+import { usePlatformAdmin } from "@/hooks/use-platform-admin";
 import { apiFetch } from "@/lib/fetch";
 import { toEventItem, type ApiEvent, type EventItem } from "@/pages/design-lab/playground-events";
 import { getMockEventById, type MockEventItem } from "@/pages/design-lab/playground-events-mock";
@@ -11,6 +13,8 @@ import { LIVE_ROUTES } from "@/components/playground/playground-routes";
 import { ModeIcon, modeChipClass, type EventMode } from "@/components/playground/joy-primitives";
 import { Seo } from "@/components/seo";
 import { trackEvent } from "@/lib/analytics";
+import { RichText } from "@/components/ui/rich-text";
+import { htmlToExcerpt, htmlToText } from "@/lib/html";
 
 const SITE_URL = "https://community.tailed.ca";
 
@@ -20,29 +24,28 @@ type DetailEvent = EventItem | MockEventItem;
 /**
  * `GET /public/events/:identifier` spreads the raw Firestore doc, so fields
  * `ApiEvent` doesn't bother declaring (it's typed loosely on purpose — see
- * playground-events.tsx) are still present on the wire. We only need these
- * two, both used to decide the real register/RSVP CTA below.
+ * playground-events.tsx) are still present on the wire. The first two decide
+ * the real register/RSVP CTA below; `canEdit` (with `createdBy` as a fallback)
+ * decides whether to offer the organizer their "Edit event" shortcut.
  */
 type PublicApiEvent = ApiEvent & {
     requiresApproval?: boolean;
     registrationLink?: string;
+    createdBy?: string;
+    canEdit?: boolean;
 };
 
 function isMockEvent(event: DetailEvent): event is MockEventItem {
     return Array.isArray((event as MockEventItem).description);
 }
 
-/** Body paragraphs to render — mock events author these directly; real events split their free-text description. */
-function toParagraphs(event: DetailEvent): string[] {
-    if (isMockEvent(event)) return event.description;
-    const desc = (event as EventItem).description;
-    if (!desc || !desc.trim()) {
-        return ["The host hasn't posted full details yet — check back soon, or reach out to the organizers directly."];
-    }
-    return desc
-        .split(/\n\s*\n/)
-        .map((p) => p.trim())
-        .filter(Boolean);
+const NO_DESCRIPTION =
+    "The host hasn't posted full details yet — check back soon, or reach out to the organizers directly.";
+
+/** Plain-text body, for the meta description and JSON-LD only — the visible body renders as rich text. */
+function descriptionText(event: DetailEvent): string {
+    if (isMockEvent(event)) return event.description.join(" ");
+    return htmlToText((event as EventItem).description) || NO_DESCRIPTION;
 }
 
 function priceLabel(event: DetailEvent): string {
@@ -50,16 +53,12 @@ function priceLabel(event: DetailEvent): string {
     return event.isPaid ? "Paid" : "Free";
 }
 
-/** Cheap plain-text fallback for the Seo description meta — descriptions can carry stray markup from the rich-text editor. */
-function stripAndTruncate(text: string, max = 160): string {
-    const clean = text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-    if (!clean) return "Student community event on Tail'ed.";
-    return clean.length > max ? `${clean.slice(0, max - 1).trimEnd()}…` : clean;
-}
 
 export default function EventDetailPage() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
+    const { user } = useAuth();
+    const { isPlatformAdmin } = usePlatformAdmin();
     const [event, setEvent] = useState<DetailEvent | null>(null);
     // Raw fetch response for real events only — carries fields (requiresApproval,
     // registrationLink, startDate/startTime) that `toEventItem` doesn't preserve
@@ -167,6 +166,18 @@ export default function EventDetailPage() {
         ? DateTime.fromISO(`${rawEvent.startDate}T${rawEvent.startTime}`) < DateTime.now()
         : false;
 
+    // `/public/events/:id` returns `canEdit`, which — unlike a client-side
+    // `createdBy` comparison — also covers community admins editing their own
+    // community's events. The `user`/`isPlatformAdmin` fallback keeps the
+    // shortcut working against a backend that predates that flag. The edit
+    // page enforces permission for real; this only surfaces the shortcut.
+    // Mock/sample events have no record to edit, hence the `rawEvent` gate.
+    const canEditEvent =
+        !!rawEvent &&
+        (rawEvent.canEdit === true ||
+            isPlatformAdmin ||
+            (!!user && !!rawEvent.createdBy && rawEvent.createdBy === user.uid));
+
     function handleRegisterClick() {
         if (!rawEvent) return;
         if (!rawEvent.requiresApproval && rawEvent.registrationLink) {
@@ -178,7 +189,8 @@ export default function EventDetailPage() {
     }
 
     const canonicalPath = `/events/${id}`;
-    const seoDescription = stripAndTruncate(toParagraphs(event).join(" "));
+    const seoDescription =
+        htmlToExcerpt(descriptionText(event)) || "Student community event on Tail'ed.";
     const startIso = rawEvent ? `${rawEvent.startDate}T${rawEvent.startTime}` : undefined;
     const eventJsonLd =
         source === "real" && rawEvent
@@ -244,9 +256,21 @@ export default function EventDetailPage() {
                         )}
                     </div>
 
-                    <h1 className="joy-display mt-3 text-3xl font-extrabold leading-tight text-joy-ink sm:text-4xl">
-                        {event.title}
-                    </h1>
+                    <div className="mt-3 flex flex-wrap items-start justify-between gap-3">
+                        <h1 className="joy-display text-3xl font-extrabold leading-tight text-joy-ink sm:text-4xl">
+                            {event.title}
+                        </h1>
+                        {canEditEvent && (
+                            <PlaygroundButton
+                                to={`/events/${id}/edit`}
+                                variant="outline"
+                                className="shrink-0 px-3.5 py-2 text-xs"
+                            >
+                                <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                                Edit event
+                            </PlaygroundButton>
+                        )}
+                    </div>
 
                     <div className="mt-5 flex flex-col gap-2.5 rounded-2xl border border-joy-ink/8 bg-white p-5 shadow-sm sm:p-6">
                         <span className="flex items-center gap-2 text-sm font-bold text-joy-ink">
@@ -314,10 +338,23 @@ export default function EventDetailPage() {
                         )}
                     </div>
 
-                    <div className="mt-8 space-y-4 text-[15px] leading-relaxed text-joy-ink/80">
-                        {toParagraphs(event).map((paragraph, i) => (
-                            <p key={i}>{paragraph}</p>
-                        ))}
+                    <div className="mt-8">
+                        {isMockEvent(event) ? (
+                            <div className="space-y-4 text-[15px] leading-relaxed text-joy-ink/80">
+                                {event.description.map((paragraph, i) => (
+                                    <p key={i}>{paragraph}</p>
+                                ))}
+                            </div>
+                        ) : (
+                            <RichText
+                                content={event.description}
+                                fallback={
+                                    <p className="text-[15px] leading-relaxed text-joy-ink/80">
+                                        {NO_DESCRIPTION}
+                                    </p>
+                                }
+                            />
+                        )}
                     </div>
                 </div>
             </section>

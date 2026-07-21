@@ -33,6 +33,10 @@ export interface PlaygroundRoutes {
     surveyValues: string;
     /** Anonymous self-ID demographic survey. */
     surveySelfId: string;
+    /** "Start a community" creation form (signed-in, moderated). */
+    communityCreate: string;
+    /** "Host an event" creation form (signed-in, moderated). */
+    eventCreate: string;
 }
 
 /** Route map for the design-lab prototype pages under /design-lab/playground/... */
@@ -55,6 +59,8 @@ export const LAB_ROUTES: PlaygroundRoutes = {
     applications: "/jobs/applied",
     surveyValues: "/account/survey/values",
     surveySelfId: "/account/survey/self-id",
+    communityCreate: "/communities/create",
+    eventCreate: "/events/create",
 };
 
 /**
@@ -87,6 +93,8 @@ export const LIVE_ROUTES: PlaygroundRoutes = {
     applications: "/jobs/applied",
     surveyValues: "/account/survey/values",
     surveySelfId: "/account/survey/self-id",
+    communityCreate: "/communities/create",
+    eventCreate: "/events/create",
 };
 
 const PlaygroundRoutesContext = createContext<PlaygroundRoutes>(LAB_ROUTES);

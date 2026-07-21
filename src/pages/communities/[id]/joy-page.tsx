@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Check, Loader2, Users } from "lucide-react";
+import { ArrowLeft, Check, Loader2, Settings, Users } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
+import { usePlatformAdmin } from "@/hooks/use-platform-admin";
 import { apiFetch } from "@/lib/fetch";
 import { getFileUrl } from "@/lib/firebase-client";
 import { trackEvent } from "@/lib/analytics";
@@ -13,6 +14,8 @@ import { PlaygroundShell } from "@/components/playground/playground-chrome";
 import { PlaygroundButton } from "@/components/playground/playground-button";
 import { LIVE_ROUTES } from "@/components/playground/playground-routes";
 import { formatMemberCount } from "@/components/playground/joy-primitives";
+import { RichText } from "@/components/ui/rich-text";
+import { htmlToExcerpt } from "@/lib/html";
 
 /**
  * Live `/communities/:id` detail page — joy design system.
@@ -31,20 +34,26 @@ import { formatMemberCount } from "@/components/playground/joy-primitives";
 
 const SITE_URL = "https://community.tailed.ca";
 
-function truncate(text: string, max = 160): string {
-    const clean = text.trim();
-    return clean.length > max ? `${clean.slice(0, max - 1).trimEnd()}…` : clean;
-}
-
 function isAbsoluteHttpUrl(url?: string | null): url is string {
     return !!url && /^https?:\/\//i.test(url);
 }
+
+/**
+ * `GET /public/communities/:identifier` spreads the raw Firestore doc, so
+ * `admins` is on the wire even though the shared `Community` card type (which
+ * only models what a listing card renders) doesn't declare it. We need it to
+ * decide whether to surface the "Manage community" shortcut.
+ */
+type CommunityDetail = Community & {
+    admins?: string[];
+};
 
 export default function CommunityDetailJoyPage() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const { user } = useAuth();
-    const [community, setCommunity] = useState<Community | null>(null);
+    const { isPlatformAdmin } = usePlatformAdmin();
+    const [community, setCommunity] = useState<CommunityDetail | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isMock, setIsMock] = useState(false);
     const [notFound, setNotFound] = useState(false);
@@ -73,7 +82,7 @@ export default function CommunityDetailJoyPage() {
                 }
 
                 const comm = data.community;
-                const mapped: Community = {
+                const mapped: CommunityDetail = {
                     id: comm.id ?? id,
                     name: comm.name,
                     description: comm.description,
@@ -84,6 +93,7 @@ export default function CommunityDetailJoyPage() {
                     logoUrl: comm.logo,
                     bannerUrl: comm.banner,
                     members: comm.members || [],
+                    admins: comm.admins || [],
                 };
 
                 if (mapped.logoUrl) {
@@ -258,8 +268,14 @@ export default function CommunityDetailJoyPage() {
         );
     }
 
+    // Community admins — and platform admins, who can manage any community —
+    // get a quiet shortcut into the management console alongside the join CTA.
+    // Mock/sample communities have no real record behind them to manage.
+    const canManageCommunity =
+        !isMock && (isPlatformAdmin || !!(user && community.admins?.includes(user.uid)));
+
     const canonicalPath = `/communities/${id}`;
-    const seoDescription = truncate(
+    const seoDescription = htmlToExcerpt(
         community.shortDescription || community.description || "Join this student community on Tail'ed."
     );
     const seoImage = isAbsoluteHttpUrl(community.bannerUrl)
@@ -350,33 +366,46 @@ export default function CommunityDetailJoyPage() {
                                         </div>
                                     </div>
 
-                                    {isMember ? (
-                                        <div className="flex items-center gap-3 rounded-xl border-2 border-joy-grass/30 bg-joy-grass-bright/8 px-4 py-2.5">
-                                            <span className="flex items-center gap-1.5 text-sm font-bold text-joy-grass">
-                                                <Check className="h-4 w-4" aria-hidden="true" />
-                                                You&apos;re in!
-                                            </span>
-                                            <button
-                                                type="button"
-                                                onClick={handleJoin}
-                                                disabled={joinLoading}
-                                                className="rounded text-xs font-bold text-joy-ink-muted underline hover:text-joy-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60 disabled:opacity-60"
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        {canManageCommunity && (
+                                            <PlaygroundButton
+                                                to={`/communities/${id}/admin`}
+                                                variant="outline"
+                                                className="shrink-0 px-3.5 py-2 text-xs"
                                             >
-                                                {joinLoading ? "Leaving…" : "Leave"}
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <PlaygroundButton onClick={handleJoin} className="shrink-0">
-                                            {joinLoading ? (
-                                                <>
-                                                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                                                    Joining…
-                                                </>
-                                            ) : (
-                                                "Join community"
-                                            )}
-                                        </PlaygroundButton>
-                                    )}
+                                                <Settings className="h-3.5 w-3.5" aria-hidden="true" />
+                                                Manage community
+                                            </PlaygroundButton>
+                                        )}
+
+                                        {isMember ? (
+                                            <div className="flex items-center gap-3 rounded-xl border-2 border-joy-grass/30 bg-joy-grass-bright/8 px-4 py-2.5">
+                                                <span className="flex items-center gap-1.5 text-sm font-bold text-joy-grass">
+                                                    <Check className="h-4 w-4" aria-hidden="true" />
+                                                    You&apos;re in!
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleJoin}
+                                                    disabled={joinLoading}
+                                                    className="rounded text-xs font-bold text-joy-ink-muted underline hover:text-joy-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60 disabled:opacity-60"
+                                                >
+                                                    {joinLoading ? "Leaving…" : "Leave"}
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <PlaygroundButton onClick={handleJoin} className="shrink-0">
+                                                {joinLoading ? (
+                                                    <>
+                                                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                                                        Joining…
+                                                    </>
+                                                ) : (
+                                                    "Join community"
+                                                )}
+                                            </PlaygroundButton>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -384,9 +413,10 @@ export default function CommunityDetailJoyPage() {
                         {/* ---------------- Description ---------------- */}
                         <div className="mt-8 rounded-2xl border border-joy-ink/8 bg-white p-6 shadow-sm sm:p-8">
                             <p className="joy-mono text-xs font-bold uppercase tracking-wide text-joy-grass">About</p>
-                            <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-joy-ink-muted sm:text-base">
-                                {community.description || community.shortDescription}
-                            </p>
+                            <RichText
+                                content={community.description || community.shortDescription}
+                                className="mt-3"
+                            />
                         </div>
                     </div>
                 </section>

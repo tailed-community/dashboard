@@ -1,19 +1,41 @@
 import { Router, Request, Response } from "express";
-import { db, storage } from "../lib/firebase";
+import { db, storage, requirePlatformAdmin } from "../lib/firebase";
 import { sendCommunityWelcomeEmail } from "../lib/email-service";
 import { getPreferredLocaleForUid } from "../lib/locale";
 import { upsertStudentUser } from "../lib/user-management";
 import { z } from "zod";
+import { frontendUrl } from "../lib/env";
+import { richTextField } from "../lib/rich-text";
+import { logAdminAction, diffFields } from "../lib/admin-audit";
+import { transferOwnershipSchema, resolveTargetUser } from "../lib/admin-ownership";
 import Busboy from "busboy";
 
 const router = Router();
+
+// Communities created before moderation shipped have no `status` field.
+// Legacy rule: a missing status is treated as "approved" everywhere.
+type CommunityStatus = "pending" | "approved" | "rejected";
+
+const getEffectiveCommunityStatus = (
+  data: FirebaseFirestore.DocumentData | undefined
+): CommunityStatus => {
+  const status = data?.status;
+  return status === "pending" || status === "rejected" ? status : "approved";
+};
+
+const isPlatformAdmin = (req: Request): boolean => req.user?.platformAdmin === true;
+
+const reviewCommunitySchema = z.object({
+  action: z.enum(["approve", "reject"]),
+  reason: z.string().max(2000).optional(),
+});
 
 // Validation schema for community creation
 const createCommunitySchema = z.object({
   name: z.string().min(3).max(100),
   slug: z.string().min(3).max(100).regex(/^[a-z0-9-]+$/),
   shortDescription: z.string().min(10).max(200),
-  description: z.string().min(10).max(5000),
+  description: richTextField,
   category: z.string().min(1),
   websiteUrl: z.string().url().optional(),
   discordUrl: z.string().url().optional(),
@@ -25,7 +47,7 @@ const createCommunitySchema = z.object({
 const updateCommunitySchema = z.object({
   name: z.string().min(3).max(100).optional(),
   shortDescription: z.string().min(10).max(200).optional(),
-  description: z.string().min(10).max(5000).optional(),
+  description: richTextField.optional(),
   category: z.string().min(1).optional(),
   websiteUrl: z.string().url().optional(),
   discordUrl: z.string().url().optional(),
@@ -63,6 +85,13 @@ router.get("/", async (req: Request, res: Response) => {
       ...doc.data(),
     }));
 
+    // Public listing only ever surfaces approved communities. Filtered
+    // in-memory (not via a Firestore where-clause) so legacy docs with no
+    // `status` field — treated as approved — aren't excluded.
+    communities = communities.filter(
+      (community: any) => getEffectiveCommunityStatus(community) === "approved"
+    );
+
     // Apply client-side search filter if provided
     if (search && typeof search === "string") {
       const searchLower = search.toLowerCase();
@@ -87,6 +116,145 @@ router.get("/", async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /communities/mine
+ * Get communities where the current user is an admin, regardless of
+ * moderation status. Declared before /:identifier so "mine" isn't
+ * swallowed by the param route.
+ */
+router.get("/mine", async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.uid;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const snapshot = await db
+      .collection("communities")
+      .where("admins", "array-contains", userId)
+      .get();
+
+    const communities = snapshot.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        name: data.name,
+        slug: data.slug,
+        status: getEffectiveCommunityStatus(data),
+        logo: data.logo ?? null,
+        category: data.category ?? null,
+        memberCount: data.memberCount ?? 0,
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      communities,
+    });
+  } catch (error: any) {
+    console.error("Error fetching my communities:", error);
+    return res.status(500).json({
+      error: "Failed to fetch communities",
+      details: error.message,
+    });
+  }
+});
+
+/**
+ * GET /communities/moderation/pending
+ * Platform-admin only: all communities awaiting review, oldest first.
+ * Declared before /:identifier so "moderation" isn't swallowed by the
+ * param route.
+ */
+router.get("/moderation/pending", requirePlatformAdmin(), async (req: Request, res: Response) => {
+  try {
+    const snapshot = await db
+      .collection("communities")
+      .where("status", "==", "pending")
+      .orderBy("createdAt", "asc")
+      .get();
+
+    const communities = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    return res.status(200).json({
+      success: true,
+      communities,
+    });
+  } catch (error: any) {
+    console.error("Error fetching pending communities:", error);
+    return res.status(500).json({
+      error: "Failed to fetch pending communities",
+      details: error.message,
+    });
+  }
+});
+
+/**
+ * GET /communities/admin/all
+ * Platform-admin only: browse every community regardless of status, so an
+ * admin can find an already-approved community that needs a data fix. The
+ * moderation queue only surfaces pending items.
+ *
+ * Supports ?q= (name/slug substring), ?status= and ?limit=. Searched in
+ * memory because Firestore has no substring operator and this is an
+ * admin-only screen over a small collection.
+ *
+ * Declared before /:identifier so "admin" isn't swallowed by the param route.
+ */
+router.get("/admin/all", requirePlatformAdmin(), async (req: Request, res: Response) => {
+  try {
+    const limit = Math.min(parseInt((req.query.limit as string) || "100", 10) || 100, 500);
+    const q = ((req.query.q as string) || "").trim().toLowerCase();
+    const statusFilter = (req.query.status as string) || "";
+
+    const snapshot = await db.collection("communities").limit(1000).get();
+
+    let communities = snapshot.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        status: getEffectiveCommunityStatus(data),
+      };
+    });
+
+    if (statusFilter) {
+      communities = communities.filter((c) => c.status === statusFilter);
+    }
+    if (q) {
+      communities = communities.filter((c: any) => {
+        const haystack = [c.name, c.slug, c.category]
+          .filter((v) => typeof v === "string")
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(q);
+      });
+    }
+
+    communities.sort((a: any, b: any) => (b.memberCount ?? 0) - (a.memberCount ?? 0));
+
+    const total = communities.length;
+    communities = communities.slice(0, limit);
+
+    return res.status(200).json({
+      success: true,
+      communities,
+      count: communities.length,
+      total,
+      truncated: total > communities.length,
+    });
+  } catch (error: any) {
+    console.error("Error fetching communities for admin:", error);
+    return res.status(500).json({
+      error: "Failed to fetch communities",
+      details: error.message,
+    });
+  }
+});
+
+/**
  * GET /communities/:identifier
  * Get a single community by ID or slug
  */
@@ -95,10 +263,10 @@ router.get("/:identifier", async (req: Request, res: Response) => {
     const { identifier } = req.params;
 
     let communityDoc;
-    
+
     // Try fetching by ID first
     communityDoc = await db.collection("communities").doc(identifier).get();
-    
+
     // If not found by ID, try by slug
     if (!communityDoc.exists) {
       const slugQuery = await db
@@ -116,9 +284,34 @@ router.get("/:identifier", async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Community not found" });
     }
 
+    const rawData = communityDoc.data() || {};
+    const effectiveStatus = getEffectiveCommunityStatus(rawData);
+
+    if (effectiveStatus !== "approved") {
+      const userId = req.user?.uid;
+      const admins = Array.isArray(rawData.admins) ? rawData.admins : [];
+      const isAuthorized =
+        !!userId &&
+        (admins.includes(userId) || rawData.createdBy === userId || isPlatformAdmin(req));
+
+      if (!isAuthorized) {
+        return res.status(404).json({ error: "Community not found" });
+      }
+    }
+
+    const requesterId = req.user?.uid;
+    const communityAdmins = Array.isArray(rawData.admins) ? rawData.admins : [];
+    const isCommunityAdmin = !!requesterId && communityAdmins.includes(requesterId);
+
     const communityData = {
       id: communityDoc.id,
-      ...communityDoc.data(),
+      ...rawData,
+      status: effectiveStatus,
+      // Mirrors `canEdit` on GET /events/:identifier so the client can render
+      // the manage/edit affordance from one flag instead of re-deriving
+      // permissions from the admins array.
+      canEdit: isCommunityAdmin || isPlatformAdmin(req),
+      editingAsPlatformAdmin: isPlatformAdmin(req) && !isCommunityAdmin,
     };
 
     return res.status(200).json({
@@ -228,7 +421,7 @@ const createCommunityInDB = async (
   userId: string,
   logoUrl: string | null = null,
   bannerUrl: string | null = null
-): Promise<string> => {
+): Promise<{ id: string; data: FirebaseFirestore.DocumentData }> => {
   // Validate required fields
   const validationResult = createCommunitySchema.safeParse(communityData);
   if (!validationResult.success) {
@@ -255,11 +448,13 @@ const createCommunityInDB = async (
     };
   }
 
-  // Create community document
-  const communityRef = await db.collection("communities").add({
+  // New communities require platform-admin review before they're publicly
+  // listed or can host events.
+  const newCommunityData = {
     ...validatedData,
     logo: logoUrl,
     banner: bannerUrl,
+    status: "pending" as const,
     createdBy: userId,
     admins: [userId],
     members: [userId],
@@ -267,12 +462,15 @@ const createCommunityInDB = async (
     eventCount: 0,
     createdAt: new Date(),
     updatedAt: new Date(),
-  });
+  };
+
+  // Create community document
+  const communityRef = await db.collection("communities").add(newCommunityData);
 
   // Update creator's profile
   const profileRef = db.collection("profiles").doc(userId);
   const profileDoc = await profileRef.get();
-  
+
   if (profileDoc.exists) {
     const profileData = profileDoc.data();
     const communities = profileData?.communities || [];
@@ -282,7 +480,7 @@ const createCommunityInDB = async (
     });
   }
 
-  return communityRef.id;
+  return { id: communityRef.id, data: newCommunityData };
 };
 
 /**
@@ -302,7 +500,7 @@ router.post("/", async (req: Request, res: Response) => {
     const { fields, files } = await uploadImages(req, userId);
 
     // Create community with optional file URLs
-    const communityId = await createCommunityInDB(
+    const { id: communityId, data: communityData } = await createCommunityInDB(
       fields,
       userId,
       files.logo || null,
@@ -313,6 +511,7 @@ router.post("/", async (req: Request, res: Response) => {
       success: true,
       message: "Community created successfully",
       communityId,
+      community: { id: communityId, ...communityData },
     });
   } catch (error: any) {
     console.error("Error creating community:", error);
@@ -482,8 +681,11 @@ router.patch("/:communityId", async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Community not found" });
     }
 
+    // Platform admins can edit any community so they can correct bad data
+    // without being a member of it. The bypass is audit-logged below.
     const admins = communityData.admins || [];
-    if (!admins.includes(userId)) {
+    const actingAsPlatformAdmin = isPlatformAdmin(req) && !admins.includes(userId);
+    if (!admins.includes(userId) && !actingAsPlatformAdmin) {
       return res.status(403).json({ error: "Only community admins can update community details" });
     }
 
@@ -513,12 +715,24 @@ router.patch("/:communityId", async (req: Request, res: Response) => {
 
     const updates = validationResult.data;
 
-    await db.collection("communities").doc(communityId).update({
+    const updateObj = {
       ...updates,
       ...(newLogoPatch && { logo: newLogoPatch }),
       ...(newBannerPath && { banner: newBannerPath }),
       updatedAt: new Date(),
-    });
+    };
+
+    await db.collection("communities").doc(communityId).update(updateObj);
+
+    if (actingAsPlatformAdmin) {
+      await logAdminAction(req, {
+        action: "update",
+        resourceType: "community",
+        resourceId: communityId,
+        resourceName: communityData.name,
+        changes: diffFields(communityData, updateObj),
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -562,7 +776,7 @@ router.get("/:communityId/events", async (req: Request, res: Response) => {
 
     // Verify user is a community admin
     const admins = communityData.admins || [];
-    if (!admins.includes(userId)) {
+    if (!admins.includes(userId) && !isPlatformAdmin(req)) {
       return res.status(403).json({ error: "Only community admins can view all community events" });
     }
 
@@ -619,7 +833,7 @@ router.get("/:communityId/members", async (req: Request, res: Response) => {
 
     // Verify user is a community admin
     const admins = communityData.admins || [];
-    if (!admins.includes(userId)) {
+    if (!admins.includes(userId) && !isPlatformAdmin(req)) {
       return res.status(403).json({ error: "Only community admins can view members" });
     }
 
@@ -723,7 +937,7 @@ router.post("/:communityId/import-members", async (req: Request, res: Response) 
 
     // Verify user is a community admin
     const admins = communityData.admins || [];
-    if (!admins.includes(userId)) {
+    if (!admins.includes(userId) && !isPlatformAdmin(req)) {
       return res.status(403).json({ error: "Only community admins can import members" });
     }
 
@@ -762,7 +976,7 @@ router.post("/:communityId/import-members", async (req: Request, res: Response) 
           
           // Send welcome email to new users
           try {
-            const loginLink = `${process.env.FRONTEND_URL || 'https://community.tailed.ca'}/login`;
+            const loginLink = `${frontendUrl()}/login`;
             const locale = await getPreferredLocaleForUid(
               upsertResult.userRecord.uid
             );
@@ -885,7 +1099,7 @@ router.post("/:communityId/admins", async (req: Request, res: Response) => {
     const members = communityData.members || [];
 
     // Verify requester is a community admin
-    if (!admins.includes(userId)) {
+    if (!admins.includes(userId) && !isPlatformAdmin(req)) {
       return res.status(403).json({ error: "Only community admins can add new admins" });
     }
 
@@ -900,10 +1114,21 @@ router.post("/:communityId/admins", async (req: Request, res: Response) => {
     }
 
     // Add to admins array
+    const adminsAfterAdd = [...admins, newAdminId];
     await db.collection("communities").doc(communityId).update({
-      admins: [...admins, newAdminId],
+      admins: adminsAfterAdd,
       updatedAt: new Date(),
     });
+
+    if (!admins.includes(userId)) {
+      await logAdminAction(req, {
+        action: "update",
+        resourceType: "community",
+        resourceId: communityId,
+        resourceName: communityData.name,
+        changes: [{ field: "admins", before: admins, after: adminsAfterAdd }],
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -947,7 +1172,7 @@ router.delete("/:communityId/admins/:adminId", async (req: Request, res: Respons
     const admins = communityData.admins || [];
 
     // Verify requester is a community admin
-    if (!admins.includes(userId)) {
+    if (!admins.includes(userId) && !isPlatformAdmin(req)) {
       return res.status(403).json({ error: "Only community admins can remove admins" });
     }
 
@@ -967,6 +1192,19 @@ router.delete("/:communityId/admins/:adminId", async (req: Request, res: Respons
       admins: updatedAdmins,
       updatedAt: new Date(),
     });
+
+    // Revoking someone's admin seat from outside the community is exactly the
+    // kind of privileged action the audit trail exists for.
+    if (!admins.includes(userId)) {
+      await logAdminAction(req, {
+        action: "update",
+        resourceType: "community",
+        resourceId: communityId,
+        resourceName: communityData.name,
+        changes: [{ field: "admins", before: admins, after: updatedAdmins }],
+        reason: typeof req.body?.reason === "string" ? req.body.reason : undefined,
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -1009,7 +1247,7 @@ router.get("/:communityId/admins", async (req: Request, res: Response) => {
     const admins = communityData.admins || [];
 
     // Verify user is a community admin
-    if (!admins.includes(userId)) {
+    if (!admins.includes(userId) && !isPlatformAdmin(req)) {
       return res.status(403).json({ error: "Only community admins can view admin list" });
     }
 
@@ -1054,5 +1292,210 @@ router.get("/:communityId/admins", async (req: Request, res: Response) => {
     });
   }
 });
+
+/**
+ * POST /communities/:communityId/review
+ * Platform-admin only: approve or reject a pending (or previously reviewed)
+ * community.
+ */
+router.post(
+  "/:communityId/review",
+  requirePlatformAdmin(),
+  async (req: Request, res: Response) => {
+    try {
+      const { communityId } = req.params;
+      const userId = req.user?.uid;
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const validationResult = reviewCommunitySchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({
+          error: "Invalid request data",
+          details: validationResult.error.errors,
+        });
+      }
+
+      const { action, reason } = validationResult.data;
+
+      const communityRef = db.collection("communities").doc(communityId);
+      const communityDoc = await communityRef.get();
+      if (!communityDoc.exists) {
+        return res.status(404).json({ error: "Community not found" });
+      }
+
+      const status: CommunityStatus = action === "approve" ? "approved" : "rejected";
+      const updates = {
+        status,
+        reviewedBy: userId,
+        reviewedAt: new Date(),
+        reviewNote: reason ?? null,
+        updatedAt: new Date(),
+      };
+
+      await communityRef.update(updates);
+
+      return res.status(200).json({
+        success: true,
+        community: {
+          id: communityDoc.id,
+          ...communityDoc.data(),
+          ...updates,
+        },
+      });
+    } catch (error: any) {
+      console.error("Error reviewing community:", error);
+      return res.status(500).json({
+        error: "Failed to review community",
+        details: error.message,
+      });
+    }
+  }
+);
+
+/**
+ * POST /communities/:communityId/transfer-ownership
+ * Platform-admin only: reassign `createdBy` to another user and ensure that
+ * user is both an admin and a member.
+ *
+ * Used when a community's founder graduates or abandons the account. The
+ * previous owner keeps their admin seat — removing it is a separate,
+ * deliberate action via DELETE /:communityId/admins/:adminId.
+ */
+router.post(
+  "/:communityId/transfer-ownership",
+  requirePlatformAdmin(),
+  async (req: Request, res: Response) => {
+    try {
+      const { communityId } = req.params;
+
+      const validationResult = transferOwnershipSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({
+          error: "Invalid request data",
+          details: validationResult.error.errors,
+        });
+      }
+
+      const communityRef = db.collection("communities").doc(communityId);
+      const communityDoc = await communityRef.get();
+      const communityData = communityDoc.data();
+      if (!communityDoc.exists || !communityData) {
+        return res.status(404).json({ error: "Community not found" });
+      }
+
+      const newOwner = await resolveTargetUser(res, validationResult.data);
+      if (!newOwner) return null;
+
+      if (newOwner.uid === communityData.createdBy) {
+        return res.status(400).json({ error: "That user already owns this community" });
+      }
+
+      const admins: string[] = Array.isArray(communityData.admins) ? communityData.admins : [];
+      const members: string[] = Array.isArray(communityData.members) ? communityData.members : [];
+
+      const nextAdmins = admins.includes(newOwner.uid) ? admins : [...admins, newOwner.uid];
+      const nextMembers = members.includes(newOwner.uid) ? members : [...members, newOwner.uid];
+
+      await communityRef.update({
+        createdBy: newOwner.uid,
+        admins: nextAdmins,
+        members: nextMembers,
+        memberCount: nextMembers.length,
+        updatedAt: new Date(),
+      });
+
+      await logAdminAction(req, {
+        action: "transfer_ownership",
+        resourceType: "community",
+        resourceId: communityId,
+        resourceName: communityData.name,
+        changes: diffFields(communityData, {
+          createdBy: newOwner.uid,
+          admins: nextAdmins,
+          members: nextMembers,
+        }),
+        reason: validationResult.data.reason,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Community ownership transferred",
+        newOwner: { uid: newOwner.uid, email: newOwner.email ?? null },
+      });
+    } catch (error: any) {
+      console.error("Error transferring community ownership:", error);
+      return res.status(500).json({
+        error: "Failed to transfer community ownership",
+        details: error.message,
+      });
+    }
+  }
+);
+
+/**
+ * DELETE /communities/:communityId
+ * Platform-admin only: soft take-down of a community.
+ *
+ * Mirrors DELETE /events/:eventId — the document is never destroyed, only
+ * de-listed by flipping `status` to "rejected", which every public read path
+ * already filters on. Restore by approving it again from the moderation
+ * queue. Nothing is hard-deleted because a community owns member lists and
+ * event references that would be orphaned by a real delete.
+ */
+router.delete(
+  "/:communityId",
+  requirePlatformAdmin(),
+  async (req: Request, res: Response) => {
+    try {
+      const { communityId } = req.params;
+      const userId = req.user?.uid;
+
+      const communityRef = db.collection("communities").doc(communityId);
+      const communityDoc = await communityRef.get();
+      const communityData = communityDoc.data();
+      if (!communityDoc.exists || !communityData) {
+        return res.status(404).json({ error: "Community not found" });
+      }
+
+      const reason = typeof req.body?.reason === "string" ? req.body.reason : undefined;
+
+      await communityRef.update({
+        status: "rejected",
+        reviewedBy: userId,
+        reviewedAt: new Date(),
+        reviewNote: reason ?? "Archived by platform admin",
+        updatedAt: new Date(),
+      });
+
+      await logAdminAction(req, {
+        action: "archive",
+        resourceType: "community",
+        resourceId: communityId,
+        resourceName: communityData.name,
+        changes: [
+          {
+            field: "status",
+            before: getEffectiveCommunityStatus(communityData),
+            after: "rejected",
+          },
+        ],
+        reason,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Community archived successfully",
+      });
+    } catch (error: any) {
+      console.error("Error archiving community:", error);
+      return res.status(500).json({
+        error: "Failed to archive community",
+        details: error.message,
+      });
+    }
+  }
+);
 
 export default router;

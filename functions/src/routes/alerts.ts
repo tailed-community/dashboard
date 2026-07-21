@@ -7,6 +7,7 @@ import { buildUnsubscribeUrl } from "../lib/links";
 import { upsertStudentUser } from "../lib/user-management";
 import { buildSignInLink } from "../lib/auth-links";
 import { localeFromAcceptLanguage, type Locale } from "../lib/locale";
+import { frontendUrl } from "../lib/env";
 
 const router = Router();
 
@@ -349,7 +350,7 @@ router.post("/subscribe", async (req: Request, res: Response) => {
  * directly from an email, never from within the app).
  */
 router.get("/unsubscribe", async (req: Request, res: Response) => {
-  const frontendUrl = process.env.FRONTEND_URL || "https://community.tailed.ca";
+  const siteUrl = frontendUrl();
   const renderPage = (message: string) => `
     <!doctype html>
     <html lang="en">
@@ -369,7 +370,7 @@ router.get("/unsubscribe", async (req: Request, res: Response) => {
         <div class="card">
           <h1>Tail'ed Community job alerts</h1>
           <p>${message}</p>
-          <p><a href="${frontendUrl}">Back to tailed.ca</a></p>
+          <p><a href="${siteUrl}">Back to tailed.ca</a></p>
         </div>
       </body>
     </html>

@@ -1,14 +1,79 @@
-import { createTransport } from "nodemailer";
+import { createTransport, type Transporter } from "nodemailer";
 import dotenv from "dotenv";
 import { buildJobDetailUrl } from "./links";
 import type { DigestJob } from "./jobs-feed";
 import type { Locale } from "./locale";
+import { emailFrom, frontendUrl, shouldSendEmail } from "./env";
 
 dotenv.config();
 
-const server = process.env.EMAIL_SERVER;
+/**
+ * Built on first use, not at module load: `EMAIL_SERVER` may not be in
+ * `process.env` yet when this module is first imported (see the ordering note
+ * in lib/env.ts). Creating the transport eagerly used to swallow a missing
+ * `EMAIL_SERVER` and only fail at the first `sendMail`.
+ */
+let cachedTransport: Transporter | null = null;
 
-const transport = createTransport(server);
+function transport(): Transporter {
+  if (!cachedTransport) {
+    const server = process.env.EMAIL_SERVER;
+    if (!server) {
+      throw new Error(
+        "[email] EMAIL_SERVER is not set, but this environment is configured to " +
+          "send real email. Set EMAIL_SERVER, or set APP_ENV=local to log " +
+          "emails to the console instead."
+      );
+    }
+    cachedTransport = createTransport(server);
+  }
+  return cachedTransport;
+}
+
+type MailOptions = {
+  to: string;
+  subject: string;
+  html: string;
+  text?: string;
+  from?: string;
+  sender?: string;
+  [key: string]: unknown;
+};
+
+/**
+ * The single delivery path for every outbound email.
+ *
+ * In `local` there is no mail server, so the message is logged and resolved.
+ * In `dev` and `production` it is really sent — dev deliberately sends for real
+ * so templates and links can be verified against actual mail clients.
+ *
+ * Previously this gate was `NODE_ENV === "development"`, copy-pasted into all
+ * twelve senders. That both made dev email impossible and coupled email
+ * delivery to the local Express listener in index.ts.
+ */
+async function deliver(
+  mail: MailOptions,
+  logLabel?: string
+): Promise<unknown> {
+  const mailOptions = {
+    from: emailFrom(),
+    sender: "no-reply@tailed.ca",
+    ...mail,
+  };
+
+  if (!shouldSendEmail()) {
+    console.log(
+      `[email] NOT SENT (no EMAIL_SERVER configured)` +
+        `${logLabel ? ` [${logLabel}]` : ""} ` +
+        `to=${mailOptions.to} subject=${mailOptions.subject}\n${
+          mailOptions.text || mailOptions.html
+        }`
+    );
+    return Promise.resolve();
+  }
+
+  return transport().sendMail(mailOptions);
+}
 
 /* ---------------------------------------------------------------------------
  * Shared email design system — "Warm Community".
@@ -16,10 +81,10 @@ const transport = createTransport(server);
  * panel. The logo uses the hosted PNG (inline SVG is stripped by Gmail et al.).
  * Used by the student-facing emails (welcome, digest, community, event).
  * ------------------------------------------------------------------------- */
-const EMAIL_SITE_URL = (
-  process.env.FRONTEND_URL || "https://community.tailed.ca"
-).replace(/\/+$/, "");
-const EMAIL_LOGO_URL = `${EMAIL_SITE_URL}/Tailed_Community_logo.png`;
+// Safe to resolve at module scope: this module calls dotenv.config() above,
+// and lib/env.ts does the same on import, so FRONTEND_URL is populated by now.
+const EMAIL_SITE_URL = frontendUrl();
+const EMAIL_LOGO_URL = `${EMAIL_SITE_URL}/tailed-community-logo.png`;
 const EMAIL_FONT = "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
 const EMAIL_DOT = `<span style="display:inline-block;width:6px;height:6px;border-radius:2px;background:#EB7A24;vertical-align:middle;margin-right:10px;"></span>`;
 const EMAIL_SOCIAL: Array<[string, string]> = [
@@ -168,17 +233,8 @@ export const sendVerificationEmail = async (
   verificationLink: string,
   locale: Locale = "en"
 ) => {
-  if (process.env.NODE_ENV === "development") {
-    console.log(
-      `Email sent to ${email} params: ${JSON.stringify({ verificationLink })}`
-    );
-    return Promise.resolve();
-  }
-
   const c = VERIFICATION_CONTENT[locale];
   const mailOptions = {
-    from: process.env.EMAIL_FROM || "Tail'ed <no-reply@tailed.ca>",
-    sender: "no-reply@tailed.ca",
     to: email,
     subject: c.subject,
     html: `
@@ -200,7 +256,91 @@ export const sendVerificationEmail = async (
     text: c.text(verificationLink),
   };
 
-  return transport.sendMail(mailOptions);
+  return deliver(mailOptions);
+};
+
+/**
+ * Send the passwordless sign-in ("magic link") email for the interactive
+ * sign-in / sign-up form. The link is generated server-side via
+ * buildSignInLink() so this fully-branded "Warm Community" email replaces
+ * Firebase's default sendSignInLinkToEmail template. Student-facing →
+ * bilingual; `locale` defaults to "en".
+ */
+interface SignInLinkCopy {
+  subject: string;
+  preheader: string;
+  kicker: string;
+  title: string;
+  subtitle: string;
+  lead: string;
+  cta: string;
+  note: string;
+  footerLine: string;
+  text: (link: string) => string;
+}
+
+const SIGN_IN_LINK_CONTENT: Record<Locale, SignInLinkCopy> = {
+  en: {
+    subject: "Your sign-in link for Tail'ed",
+    preheader: "Tap to sign in to Tail'ed Community — no password needed.",
+    kicker: "Sign in",
+    title: "Here's your sign-in link",
+    subtitle:
+      "Tap the button below to sign in. New here? This same link creates your free account — nothing else to fill in.",
+    lead: "For your security, this link works once and expires in about an hour.",
+    cta: "Sign in to Tail'ed",
+    note: "If you didn't request this, you can safely ignore this email — no account changes are made until the link is used.",
+    footerLine:
+      "You're receiving this because a sign-in link was requested for this email on community.tailed.ca.",
+    text: (link) =>
+      `Here's your sign-in link for Tail'ed.\n\nTap to sign in (this creates your free account if you're new): ${link}\n\nThis link works once and expires in about an hour. If you didn't request it, you can ignore this email.\n\n© ${new Date().getFullYear()} Tail'ed. All rights reserved.`,
+  },
+  fr: {
+    subject: "Ton lien de connexion Tail'ed",
+    preheader: "Clique pour te connecter à Tail'ed Community — sans mot de passe.",
+    kicker: "Connexion",
+    title: "Voici ton lien de connexion",
+    subtitle:
+      "Clique sur le bouton ci-dessous pour te connecter. Nouveau ici ? Ce même lien crée ton compte gratuit — rien d'autre à remplir.",
+    lead: "Pour ta sécurité, ce lien fonctionne une seule fois et expire dans environ une heure.",
+    cta: "Se connecter à Tail'ed",
+    note: "Si tu n'as pas fait cette demande, tu peux ignorer ce courriel — aucun changement n'est apporté à ton compte tant que le lien n'est pas utilisé.",
+    footerLine:
+      "Tu reçois ce courriel parce qu'un lien de connexion a été demandé pour cette adresse sur community.tailed.ca.",
+    text: (link) =>
+      `Voici ton lien de connexion Tail'ed.\n\nClique pour te connecter (ce lien crée ton compte gratuit si tu es nouveau) : ${link}\n\nCe lien fonctionne une seule fois et expire dans environ une heure. Si tu n'as pas fait cette demande, tu peux ignorer ce courriel.\n\n© ${new Date().getFullYear()} Tail'ed. Tous droits réservés.`,
+  },
+};
+
+export const sendSignInLinkEmail = async (
+  email: string,
+  signInLink: string,
+  locale: Locale = "en"
+) => {
+  const c = SIGN_IN_LINK_CONTENT[locale];
+
+  const mailOptions = {
+    to: email,
+    subject: c.subject,
+    html: emailShell(
+      c.preheader,
+      emailHeader(c.kicker, c.title, c.subtitle) +
+        `
+        <tr><td align="center" style="padding:24px 24px 8px;">${emailButton(
+          signInLink,
+          c.cta
+        )}</td></tr>
+        <tr><td align="center" style="padding:6px 34px 4px;">
+          <div style="font:400 13px/1.6 ${EMAIL_FONT};color:#836E51;">${c.lead}</div>
+        </td></tr>` +
+        emailSoftNote(c.note) +
+        `<tr><td style="height:8px;"></td></tr>` +
+        emailFooter(c.footerLine, undefined, locale)
+    ),
+    text: c.text(signInLink),
+  };
+
+  return deliver(mailOptions);
 };
 
 /**
@@ -212,20 +352,7 @@ export const sendInvitationEmail = async (
   inviterName: string,
   inviteLink: string
 ) => {
-  if (process.env.NODE_ENV === "development") {
-    console.log(
-      `Email sent to ${email} params: ${JSON.stringify({
-        inviteLink,
-        organizationName,
-        inviterName,
-      })}`
-    );
-    return Promise.resolve();
-  }
-
   const mailOptions = {
-    from: process.env.EMAIL_FROM || "Tail'ed <no-reply@tailed.ca>",
-    sender: "no-reply@tailed.ca",
     to: email,
     subject: `You've been invited to join ${organizationName} on Tail'ed`,
     html: `
@@ -248,7 +375,7 @@ export const sendInvitationEmail = async (
     text: `You've been invited to join ${organizationName} on Tail'ed. ${inviterName} has invited you to join their organization. To accept this invitation, please click this link: ${inviteLink}`,
   };
 
-  return transport.sendMail(mailOptions);
+  return deliver(mailOptions);
 };
 
 /**
@@ -260,20 +387,7 @@ export const sendJobApplicationInviteEmail = async (
   jobTitle: string,
   applicationLink: string
 ) => {
-  if (process.env.NODE_ENV === "development") {
-    console.log(
-      `Email sent to ${email} params: ${JSON.stringify({
-        applicationLink,
-        organizationName,
-        jobTitle,
-      })}`
-    );
-    return Promise.resolve();
-  }
-
   const mailOptions = {
-    from: process.env.EMAIL_FROM || "Tail'ed <no-reply@tailed.ca>",
-    sender: "no-reply@tailed.ca",
     to: email,
     subject: `You're invited to apply for ${jobTitle} at ${organizationName}`,
     html: `
@@ -295,7 +409,7 @@ export const sendJobApplicationInviteEmail = async (
     text: `You're invited to apply for ${jobTitle} at ${organizationName}. To complete your application, please click this link: ${applicationLink}`,
   };
 
-  return transport.sendMail(mailOptions);
+  return deliver(mailOptions);
 };
 
 /**
@@ -306,19 +420,7 @@ export const sendJobApplicationConfirmationEmail = async (
   jobTitle: string,
   organizationName: string
 ) => {
-  if (process.env.NODE_ENV === "development") {
-    console.log(
-      `Email sent to ${email} params: ${JSON.stringify({
-        jobTitle,
-        organizationName,
-      })}`
-    );
-    return Promise.resolve();
-  }
-
   const mailOptions = {
-    from: process.env.EMAIL_FROM || "Tail'ed <no-reply@tailed.ca>",
-    sender: "no-reply@tailed.ca",
     to: email,
     subject: `Your application for ${jobTitle} at ${organizationName} has been received`,
     html: `
@@ -332,7 +434,7 @@ export const sendJobApplicationConfirmationEmail = async (
     text: `Thank you for applying for the ${jobTitle} position at ${organizationName}. We have received your application and it is now under review. We'll contact you if your qualifications match our requirements.`,
   };
 
-  return transport.sendMail(mailOptions);
+  return deliver(mailOptions);
 };
 
 /**
@@ -346,17 +448,8 @@ export async function sendNotificationEmail(
   subject: string,
   htmlContent: string
 ): Promise<void> {
-  if (process.env.NODE_ENV === "development") {
-    console.log(
-      `Email sent to ${to} params: ${JSON.stringify({ subject, htmlContent })}`
-    );
-    return Promise.resolve();
-  }
-
   try {
     const mailOptions = {
-      from: process.env.EMAIL_FROM || "Tail'ed <no-reply@tailed.ca>",
-      sender: "no-reply@tailed.ca",
       to,
       subject,
       html: `
@@ -409,7 +502,7 @@ export async function sendNotificationEmail(
       text: htmlContent.replace(/<[^>]*>/g, ""), // Strip HTML tags for plain text version
     };
 
-    await transport.sendMail(mailOptions);
+    await deliver(mailOptions);
   } catch (error) {
     console.error("Error sending notification email:", error);
     throw error;
@@ -429,23 +522,14 @@ export const sendEmail = async ({
   html: string;
   text?: string;
 }) => {
-  if (process.env.NODE_ENV === "development") {
-    console.log(
-      `Email sent to ${to} params: ${JSON.stringify({ subject, html, text })}`
-    );
-    return Promise.resolve();
-  }
-
   const mailOptions = {
-    from: process.env.EMAIL_FROM || "Tail'ed <no-reply@tailed.ca>",
-    sender: "no-reply@tailed.ca",
     to,
     subject,
     html,
     text: text || html.replace(/<[^>]*>/g, ""), // Strip HTML tags if text is not provided
   };
 
-  return transport.sendMail(mailOptions);
+  return deliver(mailOptions);
 };
 
 /**
@@ -554,18 +638,6 @@ export const sendCommunityWelcomeEmail = async (
   loginLink: string,
   locale: Locale = "en"
 ) => {
-  if (process.env.NODE_ENV === "development") {
-    console.log(
-      `Welcome email sent to ${email} params: ${JSON.stringify({
-        firstName,
-        communityName,
-        eventTitle,
-        loginLink,
-      })}`
-    );
-    return Promise.resolve();
-  }
-
   const c = COMMUNITY_WELCOME_CONTENT[locale];
 
   // Dynamic message based on whether event is provided
@@ -578,8 +650,6 @@ export const sendCommunityWelcomeEmail = async (
     : c.welcomeNoEventText(communityName);
 
   const mailOptions = {
-    from: process.env.EMAIL_FROM || "Tail'ed <no-reply@tailed.ca>",
-    sender: "no-reply@tailed.ca",
     to: email,
     subject: c.subject,
     html: emailShell(
@@ -630,7 +700,7 @@ ${locale === "fr" ? "Des questions ? Écris-nous à" : "Questions? Contact us at
       locale === "fr" ? "Tous droits réservés." : "All rights reserved."
     }`,
   };
-  return transport.sendMail(mailOptions);
+  return deliver(mailOptions);
 };
 
 /**
@@ -712,22 +782,9 @@ export const sendEventApprovalEmail = async (
   eventLink: string,
   locale: Locale = "en"
 ) => {
-  if (process.env.NODE_ENV === "development") {
-    console.log(
-      `Approval email sent to ${email} params: ${JSON.stringify({
-        firstName,
-        eventTitle,
-        eventLink,
-      })}`
-    );
-    return Promise.resolve();
-  }
-
   const c = EVENT_APPROVAL_CONTENT[locale];
 
   const mailOptions = {
-    from: process.env.EMAIL_FROM || "Tail'ed <no-reply@tailed.ca>",
-    sender: "no-reply@tailed.ca",
     to: email,
     subject: c.subject(eventTitle),
     html: emailShell(
@@ -764,7 +821,7 @@ export const sendEventApprovalEmail = async (
     text: c.text(firstName || c.greetingName, eventTitle, eventLink),
   };
 
-  return transport.sendMail(mailOptions);
+  return deliver(mailOptions);
 };
 
 /**
@@ -894,24 +951,11 @@ export const sendJobAlertWelcomeEmail = async (
   signInUrl?: string,
   locale: Locale = "en"
 ) => {
-  if (process.env.NODE_ENV === "development") {
-    console.log(
-      `Job alert welcome email sent to ${email} params: ${JSON.stringify({
-        query,
-        unsubscribeUrl,
-        signInUrl,
-      })}`
-    );
-    return Promise.resolve();
-  }
-
   const c = JOB_ALERT_WELCOME_CONTENT[locale];
   const whatLine = c.whatLine(query);
   const whatLineText = c.whatLineText(query);
 
   const mailOptions = {
-    from: process.env.EMAIL_FROM || "Tail'ed <no-reply@tailed.ca>",
-    sender: "no-reply@tailed.ca",
     to: email,
     subject: c.subject,
     html: emailShell(
@@ -950,7 +994,7 @@ export const sendJobAlertWelcomeEmail = async (
     text: c.text({ whatLineText, signInUrl, unsubscribeUrl }),
   };
 
-  return transport.sendMail(mailOptions);
+  return deliver(mailOptions);
 };
 
 /* ---------------------------------------------------------------------------
@@ -964,8 +1008,8 @@ export const sendJobAlertWelcomeEmail = async (
  * NOTE (FR follow-up — spec §5/§8): copy below is EN only. French translations
  * of every onboarding email are a flagged build task, deferred here.
  *
- * Every sender honors the NODE_ENV=development console.log short-circuit, so
- * nothing is actually sent in dev.
+ * Every sender goes through deliver(), which logs to the console instead of
+ * sending when APP_ENV=local. Dev and production send for real.
  * ------------------------------------------------------------------------- */
 
 /** Shared body-card used to state reassurance copy before a sensitive CTA. */
@@ -1033,33 +1077,20 @@ function renderOnboardingEmail(
   );
 }
 
-/** Common dev short-circuit + sendMail for every onboarding step. */
+/** Shared delivery path for every onboarding step. */
 async function sendOnboardingEmail(
   email: string,
   step: string,
   content: OnboardingEmailContent,
   locale: Locale
 ): Promise<unknown> {
-  if (process.env.NODE_ENV === "development") {
-    console.log(
-      `Onboarding email (${step}) sent to ${email} params: ${JSON.stringify({
-        subject: content.subject,
-        ctaUrl: content.ctaUrl,
-        locale,
-      })}`
-    );
-    return Promise.resolve();
-  }
-
   const mailOptions = {
-    from: process.env.EMAIL_FROM || "Tail'ed <no-reply@tailed.ca>",
-    sender: "no-reply@tailed.ca",
     to: email,
     subject: content.subject,
     html: renderOnboardingEmail(content, locale),
     text: content.text,
   };
-  return transport.sendMail(mailOptions);
+  return deliver(mailOptions, `onboarding:${step}`);
 }
 
 /**
@@ -1693,19 +1724,6 @@ export const sendJobsDigestEmail = async (
   const typeLabel = (type: DigestJob["type"]) =>
     type === "new-grad" ? c.typeNewGrad : c.typeInternship;
 
-  if (process.env.NODE_ENV === "development") {
-    console.log(
-      `Jobs digest email sent to ${email} params: ${JSON.stringify({
-        subject,
-        jobCount: jobs.length,
-        totalMatchCount,
-        unsubscribeUrl,
-        locale,
-      })}`
-    );
-    return Promise.resolve();
-  }
-
   const rowsHtml = jobs
     .map((job) => {
       const jobUrl = buildJobDetailUrl(job.id, DIGEST_UTM);
@@ -1746,8 +1764,6 @@ export const sendJobsDigestEmail = async (
   const moreLineText = c.moreLineText(jobs.length, totalMatchCount);
 
   const mailOptions = {
-    from: process.env.EMAIL_FROM || "Tail'ed <no-reply@tailed.ca>",
-    sender: "no-reply@tailed.ca",
     to: email,
     subject,
     html: emailShell(
@@ -1785,6 +1801,6 @@ export const sendJobsDigestEmail = async (
     }: ${unsubscribeUrl}\n\n© ${new Date().getFullYear()} Tail'ed. ${c.rightsText}`,
   };
 
-  return transport.sendMail(mailOptions);
+  return deliver(mailOptions);
 };
 

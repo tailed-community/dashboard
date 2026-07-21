@@ -1,7 +1,6 @@
 import { getApp, getApps, initializeApp } from "@firebase/app";
 import {
   getAuth,
-  sendSignInLinkToEmail,
   signInWithEmailLink,
   isSignInWithEmailLink,
   GithubAuthProvider,
@@ -26,57 +25,74 @@ if (!getApps().length) {
 
 const app = getApp();
 
-export const TENANT_IDS = {
-  STUDENTS: import.meta.env.VITE_TENANT_ID,
-} as const;
+/**
+ * The single auth instance for the app.
+ *
+ * This project does NOT use Firebase Auth multi-tenancy — every user lives in
+ * the project's default pool. `tenantId` is pinned to null rather than left
+ * untouched, because `getAuth(app)` is a per-app singleton: a stale tenant set
+ * by older code would persist and cause `auth/tenant-id-mismatch` when
+ * completing a magic link.
+ *
+ * `connectAuthEmulator` MUST run here, once, immediately after initializeApp —
+ * it throws if the auth instance has already issued a request. It used to be
+ * called inside a per-call helper, which was a latent ordering bug.
+ */
+export const studentAuth = getAuth(app);
 
-export const getAuthForTenant = (tenantId: string) => {
-  const auth = getAuth(app);
+if (import.meta.env.VITE_USE_EMULATORS === "true") {
+  connectAuthEmulator(studentAuth, "http://localhost:9100", {
+    disableWarnings: true,
+  });
+}
 
-  if (import.meta.env.VITE_FIREBASE_PROJECT_ID?.startsWith("demo-")) {
-    // Connect to the emulator
-    connectAuthEmulator(auth, "http://localhost:9100");
-  }
-  if (tenantId) {
-    auth.tenantId = tenantId;
-  }
-  return auth;
-};
+studentAuth.tenantId = null;
 
+/**
+ * Requests a passwordless sign-in link. The link is generated and emailed by our
+ * backend (`POST /auth/send-login-link`) using firebase-admin +
+ * our own "Warm Community" email template — NOT the Firebase client SDK's
+ * `sendSignInLinkToEmail`, which would send Firebase's default template.
+ *
+ * `redirectUrl` is an in-app path to land on after sign-in (e.g. "/jobs").
+ * On failure this throws an object with a `code` field shaped like a Firebase
+ * Auth error so the form's existing error handling keeps working.
+ */
 export const sendLoginLink = async (
   email: string,
-  tenantId = TENANT_IDS.STUDENTS,
-  redirectUrl?: string // Add optional redirectUrl
+  redirectUrl?: string // in-app path to land on after sign-in
 ) => {
-  const authDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN;
-  const isCustomDomain =
-    authDomain &&
-    !authDomain.endsWith(".web.app") &&
-    !authDomain.endsWith(".firebaseapp.com");
+  const apiUrl = import.meta.env.VITE_API_URL;
+  const response = await fetch(`${apiUrl}/auth/send-login-link`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, redirectUrl: redirectUrl || "" }),
+  });
 
-  const actionCodeSettings = {
-    url: `${
-      window.location.origin
-    }/auth/callback?${tenantId ? `tenantId=${tenantId}` : ""}&redirectUrl=${encodeURIComponent(
-      redirectUrl || ""
-    )}`, // Include tenantId in redirect URL
-    handleCodeInApp: true,
-    ...(isCustomDomain ? { linkDomain: authDomain } : {}),
-  };
+  if (!response.ok) {
+    // Map to a Firebase-like error code so the form's switch on error.code still
+    // surfaces the right toast.
+    const code =
+      response.status === 429
+        ? "auth/too-many-requests"
+        : response.status === 400
+          ? "auth/invalid-email"
+          : "auth/internal-error";
+    throw { code, status: response.status };
+  }
 
-  const auth = tenantId ? getAuthForTenant(tenantId) : studentAuth;
-  await sendSignInLinkToEmail(auth, email, actionCodeSettings);
-  localStorage.setItem("emailForSignIn", email); // Store email temporarily
-  localStorage.setItem("tenantIdForSignIn", tenantId); // Store tenantId for later
+  // Persist for same-device completion. Cross-device still works: the
+  // server-generated link carries the email on its continue URL, which
+  // completeSignIn() falls back to when localStorage has no emailForSignIn.
+  localStorage.setItem("emailForSignIn", email);
 };
 
 export const completeSignIn = async () => {
-  if (isSignInWithEmailLink(getAuth(), window.location.href)) {
+  if (isSignInWithEmailLink(studentAuth, window.location.href)) {
     // Extract params from the URL. Backend-generated sign-in links (e.g. the
     // job-alert welcome email) embed the email so the flow works cross-device,
     // where localStorage has no `emailForSignIn` from a prior sendLoginLink().
     const url = new URL(window.location.href);
-    const tenantId = url.searchParams.get("tenantId");
     const emailFromUrl = url.searchParams.get("email");
 
     const email =
@@ -85,11 +101,16 @@ export const completeSignIn = async () => {
       window.prompt("Enter your email:");
     if (!email) throw new Error("Email is required");
 
-    // Create a new auth instance with the exact tenantId from the URL
-    const auth = tenantId ? getAuthForTenant(tenantId) : studentAuth;
+    // Legacy links (already sitting in inboxes when tenancy was removed) carry
+    // a `tenantId` query param. Older builds stringified an undefined tenant,
+    // so that param is typically the literal "undefined" — assigning it would
+    // fail with auth/tenant-id-mismatch. Every link, old or new, completes
+    // against the default pool, so the param is deliberately ignored and the
+    // tenant re-cleared in case anything mutated the singleton.
+    studentAuth.tenantId = null;
 
     const userCredential = await signInWithEmailLink(
-      auth,
+      studentAuth,
       email,
       window.location.href
     );
@@ -237,5 +258,3 @@ export const signInWithGoogleCredential = async (props: any) => {
     throw error;
   }
 };
-
-export const studentAuth = getAuthForTenant(TENANT_IDS.STUDENTS);
