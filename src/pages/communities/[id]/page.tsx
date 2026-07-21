@@ -21,13 +21,9 @@ import { HTMLContent } from "@/components/ui/html-content";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Seo } from "@/components/seo";
+import { htmlToExcerpt, htmlToText } from "@/lib/html";
 
 const SITE_URL = "https://community.tailed.ca";
-
-function truncate(text: string, max = 160): string {
-    const clean = text.trim();
-    return clean.length > max ? `${clean.slice(0, max - 1).trimEnd()}…` : clean;
-}
 
 function isAbsoluteHttpUrl(url?: string | null): url is string {
     return !!url && /^https?:\/\//i.test(url);
@@ -199,7 +195,7 @@ export default function CommunityDetailPage() {
             if (navigator.share) {
                 await navigator.share({
                     title: community.name,
-                    text: community.shortDescription || community.description,
+                    text: htmlToText(community.shortDescription || community.description),
                     url: window.location.href,
                 });
                 toast.success("Shared successfully!");
@@ -265,7 +261,7 @@ export default function CommunityDetailPage() {
     };
 
     const canonicalPath = `/communities/${slug}`;
-    const seoDescription = truncate(
+    const seoDescription = htmlToExcerpt(
         community.shortDescription || community.description || "Join this student community on Tail'ed."
     );
     const seoImage = isAbsoluteHttpUrl(community.bannerUrl)

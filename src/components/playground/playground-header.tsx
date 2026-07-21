@@ -63,7 +63,7 @@ export function PlaygroundHeader({
                     className="flex items-center gap-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60"
                 >
                     <img
-                        src="/Tailed_Community_logo.png"
+                        src="/tailed-community-logo.png"
                         alt="Tail'ed Community logo"
                         className="h-auto w-[101px] object-contain sm:w-[113px]"
                     />

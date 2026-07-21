@@ -70,7 +70,7 @@ export function PlaygroundMobileNav({
                     <SheetTitle className="sr-only">Navigation</SheetTitle>
                     <Link to={routes.home} className="flex items-center">
                         <img
-                            src="/Tailed_Community_logo.png"
+                            src="/tailed-community-logo.png"
                             alt="Tail'ed Community logo"
                             className="h-8 w-auto object-contain"
                         />

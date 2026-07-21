@@ -1,18 +1,41 @@
 import { Router, Request, Response } from "express";
 import { DateTime } from "luxon";
-import { db, storage } from "../lib/firebase";
+import { db, storage, requirePlatformAdmin } from "../lib/firebase";
 import { sendCommunityWelcomeEmail, sendEventApprovalEmail } from "../lib/email-service";
 import { getPreferredLocaleForUid } from "../lib/locale";
 import { upsertStudentUser } from "../lib/user-management";
 import { z } from "zod";
+import { frontendUrl } from "../lib/env";
+import { richTextField, richTextToPlain } from "../lib/rich-text";
+import { logAdminAction, diffFields } from "../lib/admin-audit";
+import { transferOwnershipSchema, resolveTargetUser } from "../lib/admin-ownership";
 import Busboy from "busboy";
 import { FieldValue } from "firebase-admin/firestore";
 
 const router = Router();
 
+// Events created before moderation shipped have no `moderationStatus`
+// field. Legacy rule: a missing moderationStatus is treated as "approved"
+// everywhere. This is distinct from the pre-existing `status` field
+// (draft/published/cancelled) and `requiresApproval` (attendee-registration
+// gating) — neither of those is touched here.
+type EventModerationStatus = "approved" | "pending" | "rejected";
+
+const getEffectiveModerationStatus = (
+  data: FirebaseFirestore.DocumentData | undefined
+): EventModerationStatus => {
+  const status = data?.moderationStatus;
+  return status === "pending" || status === "rejected" ? status : "approved";
+};
+
+const reviewEventSchema = z.object({
+  action: z.enum(["approve", "reject"]),
+  reason: z.string().max(2000).optional(),
+});
+
 const eventBaseSchema = z.object({
   title: z.string().min(3).max(200),
-  description: z.string().min(10).max(5000),
+  description: richTextField,
   startDate: z.string().min(1),
   startTime: z.string().min(1),
   endDate: z.string().optional(),
@@ -102,11 +125,13 @@ const uploadEventImages = (
     const fileUploads: Promise<void>[] = [];
 
     busboy.on("field", (fieldname, val) => {
-      // Parse numbers
-      if (fieldname === "capacity") {
-        fields[fieldname] = parseInt(val, 10);
-      } else if (fieldname === "maxTeamSize") {
-        fields[fieldname] = parseInt(val, 10);
+      // Parse numbers. Both are optional, so an empty value must stay absent
+      // rather than becoming NaN and failing the schema.
+      if (fieldname === "capacity" || fieldname === "maxTeamSize") {
+        const parsed = parseInt(val, 10);
+        if (!Number.isNaN(parsed)) {
+          fields[fieldname] = parsed;
+        }
       } else if (fieldname === "isPaid") {
         // Parse boolean from FormData string
         fields[fieldname] = val === "true";
@@ -195,7 +220,7 @@ const createEventInDB = async (
   userId: string,
   heroImageUrl: string | null = null,
   scheduleImageUrl: string | null = null
-): Promise<string> => {
+): Promise<{ id: string; moderationStatus: EventModerationStatus }> => {
   // Validate required fields
   const validationResult = createEventSchema.safeParse(eventData);
   if (!validationResult.success) {
@@ -223,6 +248,11 @@ const createEventInDB = async (
     };
   }
 
+  // Events hosted by a community are auto-approved (community admins are
+  // already gated below); independent/custom-host events need platform-admin
+  // review before they're publicly visible.
+  let moderationStatus: EventModerationStatus = "pending";
+
   // If communityId is provided, verify it exists and increment event count
   if (validatedData.communityId) {
     const communityDoc = await db.collection("communities").doc(validatedData.communityId).get();
@@ -243,6 +273,17 @@ const createEventInDB = async (
       };
     }
 
+    const communityStatus = communityData.status;
+    const communityApproved = communityStatus !== "pending" && communityStatus !== "rejected";
+    if (!communityApproved) {
+      throw {
+        status: 403,
+        error: "This community is still pending review and cannot host events yet",
+      };
+    }
+
+    moderationStatus = "approved";
+
     // Increment community event count
     await db.collection("communities").doc(validatedData.communityId).update({
       eventCount: (communityData.eventCount || 0) + 1,
@@ -258,6 +299,7 @@ const createEventInDB = async (
     heroImage: heroImageUrl,
     scheduleImage: scheduleImageUrl,
     createdBy: userId,
+    moderationStatus,
     attendees: 0,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -295,7 +337,7 @@ const createEventInDB = async (
     await batch.commit();
   }
 
-  return eventRef.id;
+  return { id: eventRef.id, moderationStatus };
 };
 
 /**
@@ -397,12 +439,41 @@ const requireCommunityContext = async (
   };
 };
 
+/**
+ * Platform admins hold write access to every event so they can correct bad
+ * data and take down abusive content without an ownership relationship.
+ * Because this bypasses the ownership model entirely, every mutation reached
+ * this way must be recorded via `logAdminAction` (see lib/admin-audit.ts).
+ */
+const isPlatformAdmin = (req: Request): boolean => req.user?.platformAdmin === true;
+
+/**
+ * True when this write is only permitted because the caller is a platform
+ * admin — i.e. it would have been a 403 for them otherwise. Used to decide
+ * whether an action needs an audit entry.
+ *
+ * Deliberately conservative: a platform admin who is also a community admin
+ * of the hosting community is still logged, because confirming that would
+ * cost an extra community read on every write. Over-logging a legitimate
+ * owner edit is a far cheaper mistake than missing a genuine bypass.
+ */
+const usedAdminBypass = (
+  req: Request,
+  userId: string,
+  resourceData: FirebaseFirestore.DocumentData
+): boolean => isPlatformAdmin(req) && resourceData.createdBy !== userId;
+
 const ensureCommunityAdmin = (
+  req: Request,
   res: Response,
   userId: string,
   admins: string[],
   forbiddenMessage: string
 ): boolean => {
+  if (isPlatformAdmin(req)) {
+    return true;
+  }
+
   if (!admins.includes(userId)) {
     res.status(403).json({ error: forbiddenMessage });
     return false;
@@ -412,11 +483,16 @@ const ensureCommunityAdmin = (
 };
 
 const ensureEventCreatorOrCommunityAdmin = async (
+  req: Request,
   res: Response,
   userId: string,
   eventData: FirebaseFirestore.DocumentData,
   forbiddenMessage: string
 ): Promise<boolean> => {
+  if (isPlatformAdmin(req)) {
+    return true;
+  }
+
   if (eventData.createdBy === userId) {
     return true;
   }
@@ -693,12 +769,17 @@ const updateRegistrationDocs = async (
 };
 
 const ensureTeamManagementAccess = async (
+  req: Request,
   res: Response,
   userId: string,
   eventData: FirebaseFirestore.DocumentData,
   teamData: FirebaseFirestore.DocumentData,
   forbiddenMessage: string
 ): Promise<boolean> => {
+  if (isPlatformAdmin(req)) {
+    return true;
+  }
+
   const captainId = typeof teamData.captainId === "string" ? teamData.captainId : null;
   const createdBy = typeof teamData.createdBy === "string" ? teamData.createdBy : null;
 
@@ -803,10 +884,15 @@ router.get("/", async (req: Request, res: Response) => {
     }
 
     const snapshot = await query.get();
-    const events = snapshot.docs.map((doc) => ({
+    let events = snapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
     }));
+
+    // Public listing only ever surfaces approved events. Filtered in-memory
+    // (not via a Firestore where-clause) so legacy docs with no
+    // `moderationStatus` field — treated as approved — aren't excluded.
+    events = events.filter((event: any) => getEffectiveModerationStatus(event) === "approved");
 
     return res.status(200).json({
       success: true,
@@ -817,6 +903,116 @@ router.get("/", async (req: Request, res: Response) => {
     console.error("Error fetching events:", error);
     return res.status(500).json({
       error: "Failed to fetch events",
+      details: error.message,
+    });
+  }
+});
+
+/**
+ * GET /events/admin/all
+ * Platform-admin only: browse every event regardless of moderation status or
+ * lifecycle status, so an admin can find an already-approved event that needs
+ * a data fix. The moderation queue only surfaces pending items, which is not
+ * enough to act as a moderator after the fact.
+ *
+ * Supports ?q= (title substring), ?moderationStatus=, ?status= and ?limit=.
+ * Search is done in memory: Firestore has no substring operator, and the
+ * event collection is small enough that scanning beats maintaining a search
+ * index for an admin-only screen.
+ *
+ * Declared before /:identifier so "admin" isn't swallowed by the param route.
+ */
+router.get("/admin/all", requirePlatformAdmin(), async (req: Request, res: Response) => {
+  try {
+    const limit = Math.min(parseInt((req.query.limit as string) || "100", 10) || 100, 500);
+    const q = ((req.query.q as string) || "").trim().toLowerCase();
+    const moderationStatusFilter = (req.query.moderationStatus as string) || "";
+    const statusFilter = (req.query.status as string) || "";
+
+    const snapshot = await db
+      .collection("events")
+      .orderBy("createdAt", "desc")
+      .limit(1000)
+      .get();
+
+    let events = snapshot.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        moderationStatus: getEffectiveModerationStatus(data),
+      };
+    });
+
+    if (moderationStatusFilter) {
+      events = events.filter((e) => e.moderationStatus === moderationStatusFilter);
+    }
+    if (statusFilter) {
+      events = events.filter((e: any) => e.status === statusFilter);
+    }
+    if (q) {
+      events = events.filter((e: any) => {
+        const haystack = [e.title, e.slug, e.customHostName, e.city]
+          .filter((v) => typeof v === "string")
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(q);
+      });
+    }
+
+    const total = events.length;
+    events = events.slice(0, limit);
+
+    return res.status(200).json({
+      success: true,
+      events,
+      count: events.length,
+      total,
+      truncated: total > events.length,
+    });
+  } catch (error: any) {
+    console.error("Error fetching events for admin:", error);
+    return res.status(500).json({
+      error: "Failed to fetch events",
+      details: error.message,
+    });
+  }
+});
+
+/**
+ * GET /events/moderation/pending
+ * Platform-admin only: all events awaiting review, oldest first.
+ * Declared before /:identifier so "moderation" isn't swallowed by the
+ * param route.
+ */
+router.get("/moderation/pending", requirePlatformAdmin(), async (req: Request, res: Response) => {
+  try {
+    const snapshot = await db
+      .collection("events")
+      .where("moderationStatus", "==", "pending")
+      .orderBy("createdAt", "asc")
+      .get();
+
+    const events = snapshot.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        createdBy: data.createdBy,
+        customHostName: data.customHostName ?? null,
+        hostType: data.hostType ?? null,
+        startDate: data.startDate,
+        ...data,
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      events,
+    });
+  } catch (error: any) {
+    console.error("Error fetching pending events:", error);
+    return res.status(500).json({
+      error: "Failed to fetch pending events",
       details: error.message,
     });
   }
@@ -844,6 +1040,14 @@ router.get("/:identifier", async (req: Request, res: Response) => {
     // Populate community data and check canEdit
     let canEdit = false;
 
+    // Platform admins can edit any event, so the client renders the same
+    // owner edit form for them (see src/pages/events/[id]/edit.tsx, which
+    // gates purely on this flag).
+    const actingAsPlatformAdmin = isPlatformAdmin(req);
+    if (actingAsPlatformAdmin) {
+      canEdit = true;
+    }
+
     // Check if user is the event creator
     if (req.user?.uid && eventResponse.createdBy === req.user.uid) {
       canEdit = true;
@@ -870,7 +1074,22 @@ router.get("/:identifier", async (req: Request, res: Response) => {
       }
     }
 
+    // Pending/rejected events are only visible to the creator, community
+    // admins of the hosting community, or a platform admin. Missing
+    // moderationStatus is treated as approved (legacy events).
+    const effectiveModerationStatus = getEffectiveModerationStatus(eventData);
+    if (effectiveModerationStatus !== "approved") {
+      const isAuthorized = canEdit || req.user?.platformAdmin === true;
+      if (!isAuthorized) {
+        return res.status(404).json({ error: "Event not found" });
+      }
+    }
+
     eventResponse.canEdit = canEdit;
+    // Lets the client warn that this access comes from the admin bypass
+    // rather than ownership, and that the edit will be audit-logged.
+    eventResponse.editingAsPlatformAdmin =
+      actingAsPlatformAdmin && eventResponse.createdBy !== req.user?.uid;
 
     return res.status(200).json({
       success: true,
@@ -907,7 +1126,7 @@ router.post("/:eventId/awards", async (req: Request, res: Response) => {
     );
     if (!communityContext) return null;
 
-    if (!ensureCommunityAdmin(res, userId, communityContext.admins, "Only community admins can add awards")) {
+    if (!ensureCommunityAdmin(req, res, userId, communityContext.admins, "Only community admins can add awards")) {
       return null;
     }
 
@@ -983,7 +1202,7 @@ router.patch("/:eventId/awards/:awardId", async (req: Request, res: Response) =>
     );
     if (!communityContext) return null;
 
-    if (!ensureCommunityAdmin(res, userId, communityContext.admins, "Only community admins can update awards")) {
+    if (!ensureCommunityAdmin(req, res, userId, communityContext.admins, "Only community admins can update awards")) {
       return null;
     }
 
@@ -1127,7 +1346,7 @@ router.delete("/:eventId/awards/:awardId", async (req: Request, res: Response) =
     );
     if (!communityContext) return null;
 
-    if (!ensureCommunityAdmin(res, userId, communityContext.admins, "Only community admins can delete awards")) {
+    if (!ensureCommunityAdmin(req, res, userId, communityContext.admins, "Only community admins can delete awards")) {
       return null;
     }
 
@@ -1178,7 +1397,7 @@ router.post("/", async (req: Request, res: Response) => {
     parseAwardsFieldIfPresent(fields);
 
     // Create event with optional file URL
-    const eventId = await createEventInDB(
+    const { id: eventId, moderationStatus } = await createEventInDB(
       fields,
       userId,
       files.heroImage || null,
@@ -1189,6 +1408,7 @@ router.post("/", async (req: Request, res: Response) => {
       success: true,
       message: "Event created successfully",
       eventId,
+      moderationStatus,
     });
   } catch (error: any) {
     console.error("Error creating event:", error);
@@ -1636,6 +1856,7 @@ router.patch("/:eventId", async (req: Request, res: Response) => {
     const { resolvedEventId, eventData } = eventContext;
 
     const isAuthorized = await ensureEventCreatorOrCommunityAdmin(
+      req,
       res,
       userId,
       eventData,
@@ -1710,6 +1931,16 @@ router.patch("/:eventId", async (req: Request, res: Response) => {
 
     await db.collection("events").doc(resolvedEventId).update(updateObj);
 
+    if (usedAdminBypass(req, userId, eventData)) {
+      await logAdminAction(req, {
+        action: "update",
+        resourceType: "event",
+        resourceId: resolvedEventId,
+        resourceName: eventData.title,
+        changes: diffFields(eventData, updateObj),
+      });
+    }
+
     return res.status(200).json({
       success: true,
       message: "Event updated successfully",
@@ -1723,6 +1954,133 @@ router.patch("/:eventId", async (req: Request, res: Response) => {
     });
   }
 });
+
+/**
+ * POST /events/:eventId/review
+ * Platform-admin only: approve or reject a pending (or previously reviewed)
+ * event.
+ */
+router.post(
+  "/:eventId/review",
+  requirePlatformAdmin(),
+  async (req: Request, res: Response) => {
+    try {
+      const { eventId } = req.params;
+      const userId = req.user?.uid;
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const validationResult = reviewEventSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({
+          error: "Invalid request data",
+          details: validationResult.error.errors,
+        });
+      }
+
+      const { action, reason } = validationResult.data;
+
+      const eventContext = await loadEventContext(res, eventId);
+      if (!eventContext) return null;
+
+      const { resolvedEventId, eventDoc, eventData } = eventContext;
+
+      const moderationStatus: EventModerationStatus =
+        action === "approve" ? "approved" : "rejected";
+      const updates = {
+        moderationStatus,
+        reviewedBy: userId,
+        reviewedAt: new Date(),
+        reviewNote: reason ?? null,
+        updatedAt: new Date(),
+      };
+
+      await db.collection("events").doc(resolvedEventId).update(updates);
+
+      return res.status(200).json({
+        success: true,
+        event: {
+          id: eventDoc.id,
+          ...eventData,
+          ...updates,
+        },
+      });
+    } catch (error: any) {
+      console.error("Error reviewing event:", error);
+      return res.status(500).json({
+        error: "Failed to review event",
+        details: error.message,
+      });
+    }
+  }
+);
+
+/**
+ * POST /events/:eventId/transfer-ownership
+ * Platform-admin only: reassign `createdBy` to another user.
+ *
+ * Used when the original organizer leaves or an event was filed under the
+ * wrong account. Accepts either a uid or an email so an admin doesn't have to
+ * look up an internal id by hand.
+ */
+router.post(
+  "/:eventId/transfer-ownership",
+  requirePlatformAdmin(),
+  async (req: Request, res: Response) => {
+    try {
+      const { eventId } = req.params;
+
+      const validationResult = transferOwnershipSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({
+          error: "Invalid request data",
+          details: validationResult.error.errors,
+        });
+      }
+
+      const eventContext = await loadEventContext(res, eventId);
+      if (!eventContext) return null;
+
+      const { resolvedEventId, eventData } = eventContext;
+
+      const newOwner = await resolveTargetUser(res, validationResult.data);
+      if (!newOwner) return null;
+
+      if (newOwner.uid === eventData.createdBy) {
+        return res.status(400).json({ error: "That user already owns this event" });
+      }
+
+      await db.collection("events").doc(resolvedEventId).update({
+        createdBy: newOwner.uid,
+        updatedAt: new Date(),
+      });
+
+      await logAdminAction(req, {
+        action: "transfer_ownership",
+        resourceType: "event",
+        resourceId: resolvedEventId,
+        resourceName: eventData.title,
+        changes: [
+          { field: "createdBy", before: eventData.createdBy ?? null, after: newOwner.uid },
+        ],
+        reason: validationResult.data.reason,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Event ownership transferred",
+        newOwner: { uid: newOwner.uid, email: newOwner.email ?? null },
+      });
+    } catch (error: any) {
+      console.error("Error transferring event ownership:", error);
+      return res.status(500).json({
+        error: "Failed to transfer event ownership",
+        details: error.message,
+      });
+    }
+  }
+);
 
 /**
  * DELETE /events/:eventId
@@ -1740,6 +2098,7 @@ router.delete("/:eventId", async (req: Request, res: Response) => {
     const { resolvedEventId, eventData } = eventContext;
 
     const isAuthorized = await ensureEventCreatorOrCommunityAdmin(
+      req,
       res,
       userId,
       eventData,
@@ -1752,6 +2111,17 @@ router.delete("/:eventId", async (req: Request, res: Response) => {
       status: "cancelled",
       updatedAt: new Date(),
     });
+
+    if (usedAdminBypass(req, userId, eventData)) {
+      await logAdminAction(req, {
+        action: "delete",
+        resourceType: "event",
+        resourceId: resolvedEventId,
+        resourceName: eventData.title,
+        changes: [{ field: "status", before: eventData.status ?? null, after: "cancelled" }],
+        reason: typeof req.body?.reason === "string" ? req.body.reason : undefined,
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -1825,7 +2195,7 @@ router.post("/:eventId/import-attendees", async (req: Request, res: Response) =>
     if (!communityContext) return null;
 
     const { communityData, admins } = communityContext;
-    if (!ensureCommunityAdmin(res, userId, admins, "Only community admins can import registrations")) {
+    if (!ensureCommunityAdmin(req, res, userId, admins, "Only community admins can import registrations")) {
       return null;
     }
 
@@ -1861,7 +2231,7 @@ router.post("/:eventId/import-attendees", async (req: Request, res: Response) =>
           
           // Send welcome email to new users
           try {
-            const loginLink = `${process.env.FRONTEND_URL || 'https://community.tailed.ca'}/login`;
+            const loginLink = `${frontendUrl()}/login`;
             const locale = await getPreferredLocaleForUid(
               upsertResult.userRecord.uid
             );
@@ -2323,6 +2693,7 @@ router.get("/:eventId/attendees", async (req: Request, res: Response) => {
     const { resolvedEventId, eventData } = eventContext;
 
     const canAccess = await ensureEventCreatorOrCommunityAdmin(
+      req,
       res,
       userId,
       eventData,
@@ -2455,6 +2826,7 @@ router.post("/:eventId/registrations/:registrationId/review", async (req: Reques
     const { resolvedEventId, eventData } = eventContext;
 
     const canAccess = await ensureEventCreatorOrCommunityAdmin(
+      req,
       res,
       userId,
       eventData,
@@ -2517,7 +2889,7 @@ router.post("/:eventId/registrations/:registrationId/review", async (req: Reques
 
     if (status === "confirmed" && previousStatus !== "confirmed" && regData.email) {
       try {
-        const eventLink = `${process.env.WEB_APP_URL || "https://community.tailed.ca"}/events/${resolvedEventId}`;
+        const eventLink = `${frontendUrl()}/events/${resolvedEventId}`;
         const locale = await getPreferredLocaleForUid(
           regData.userId ? String(regData.userId) : null
         );
@@ -2804,6 +3176,7 @@ router.get("/:eventId/teams/:teamId/requests", async (req: Request, res: Respons
 
     const teamData = teamDoc.data() || {};
     const canManage = await ensureTeamManagementAccess(
+      req,
       res,
       userId,
       eventData,
@@ -2875,6 +3248,7 @@ router.post("/:eventId/teams/:teamId/requests/:requestId/review", async (req: Re
 
     const teamData = teamDoc.data() || {};
     const canManage = await ensureTeamManagementAccess(
+      req,
       res,
       userId,
       eventData,
@@ -3028,6 +3402,7 @@ router.patch("/:eventId/teams/:teamId", async (req: Request, res: Response) => {
 
     const teamData = teamDoc.data() || {};
     const canManage = await ensureTeamManagementAccess(
+      req,
       res,
       userId,
       eventData,
@@ -3103,6 +3478,7 @@ router.delete("/:eventId/teams/:teamId/members/:memberId", async (req: Request, 
 
     const teamData = teamDoc.data() || {};
     const canManage = await ensureTeamManagementAccess(
+      req,
       res,
       userId,
       eventData,
@@ -3438,7 +3814,11 @@ router.get('/:eventId/ics', async (req: Request, res: Response) => {
     const dtStart = startDT.toUTC().toFormat("yyyyLLdd'T'HHmmss'Z'");
     const dtEnd = endDT.toUTC().toFormat("yyyyLLdd'T'HHmmss'Z'");
     const summary = (eventData.title || 'Event').toString().replace(/\r?\n/g, ' ');
-    const description = (eventData.description || '').toString().replace(/\r?\n/g, '\\n').replace(/[,;]/g, '');
+    // Calendar apps show DESCRIPTION as plain text, so tiptap markup has to come
+    // off first or the invite reads as literal `<p>` tags.
+    const description = richTextToPlain((eventData.description || '').toString())
+      .replace(/\r?\n/g, '\\n')
+      .replace(/[,;]/g, '');
     const location = (eventData.location || eventData.digitalLink || '').toString().replace(/\r?\n/g, ' ');
 
     const ics = [
@@ -3452,7 +3832,7 @@ router.get('/:eventId/ics', async (req: Request, res: Response) => {
       `DTEND:${dtEnd}`,
       `DESCRIPTION:${description}`,
       `LOCATION:${location}`,
-      `URL:${process.env.FRONTEND_URL || 'https://app.tailed.ca'}/events/${eventData.id}`,
+      `URL:${frontendUrl()}/events/${eventData.id}`,
       'END:VEVENT',
       'END:VCALENDAR',
     ].join('\r\n');

@@ -37,6 +37,7 @@ import { PlaygroundButton } from "@/components/playground/playground-button";
 import { LIVE_ROUTES } from "@/components/playground/playground-routes";
 import { AccountOnboardingCard } from "@/components/account/account-onboarding-card";
 import { ResumeQuickStart } from "@/components/account/resume-quick-start";
+import { prepareResumeFile, uploadResume } from "@/lib/resume-parse";
 import { EducationEditor } from "@/components/account/education-editor";
 import { ExperienceEditor } from "@/components/account/experience-editor";
 import { ProjectsEditor } from "@/components/account/projects-editor";
@@ -855,48 +856,24 @@ export default function AccountPage() {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        if (file.type !== "application/pdf") {
-            toast.error("Invalid file type", {
-                description: "Please upload a PDF document.",
-            });
+        const prepared = prepareResumeFile(file);
+        if ("error" in prepared) {
+            toast.error(prepared.error);
             e.target.value = "";
             return;
         }
 
-        const sanitizedFileName = file.name
-            .replace(/\.[^/.]+$/, "")
-            .replace(/[^A-Za-z\s]/g, "")
-            .trim();
-
-        if (sanitizedFileName.length === 0) {
-            toast.error("Invalid file name", {
-                description: "Name must only contain letters or spaces.",
-            });
-            e.target.value = "";
-            return;
-        }
-
-        const cleanFile = new File([file], `${sanitizedFileName}.pdf`, {
-            type: file.type,
-        });
-
-        setResumeFile(cleanFile);
+        setResumeFile(prepared.file);
     };
 
+    // Shared with the one-click quick-start pipeline (ResumeQuickStart) via
+    // `uploadResume()` in `@/lib/resume-parse`.
     const handleResumeUpload = async () => {
         if (!resumeFile) return;
 
         setIsUploadingResume(true);
         try {
-            const formData = new FormData();
-            formData.append("resume", resumeFile);
-
-            const response = await apiFetch("/profile/main-resume", {
-                method: "PATCH",
-                body: formData,
-            });
-
-            if (!response.ok) throw new Error("Upload failed");
+            await uploadResume(resumeFile);
 
             toast.success("Resume uploaded successfully!");
             setResumeFile(null);
@@ -907,6 +884,15 @@ export default function AccountPage() {
         } finally {
             setIsUploadingResume(false);
         }
+    };
+
+    // Re-fetches the full student/profile state after a resume upload —
+    // shared by the manual "Skills & Resume" Upload button and the
+    // ResumeQuickStart one-click pipeline.
+    const refreshStudent = async () => {
+        const updatedStudent = await apiService.getStudent();
+        setStudent(updatedStudent as any);
+        setOriginalStudent(updatedStudent as any);
     };
 
     const handleDeleteResume = async () => {
@@ -1494,12 +1480,14 @@ export default function AccountPage() {
                         title="Education & experience"
                         description="Your CV: schools, roles, and projects."
                     >
-                        {/* Resume-drop fast start — reuses the EXISTING upload in
-                            the Skills & resume section; no parser (spec 08 Open-Q1). */}
+                        {/* Resume-drop fast start (spec 08 Open-Q1): one click or
+                            drag-and-drop uploads AND parses the resume, then opens
+                            the review dialog — no scroll-jump to the Skills &
+                            resume section required. */}
                         <ResumeQuickStart
                             hasResume={!!student.resume?.name}
                             profile={student}
-                            onGoToResumeUpload={() => scrollToSection("skills")}
+                            onUploaded={refreshStudent}
                             onMerged={applyProfilePatch}
                         />
                         <JoyCard>
@@ -2033,10 +2021,7 @@ export default function AccountPage() {
                                     loading={isUploadingResume}
                                     onClick={async () => {
                                         await handleResumeUpload();
-                                        const updatedStudent =
-                                            await apiService.getStudent();
-                                        setStudent(updatedStudent as any);
-                                        setOriginalStudent(updatedStudent as any);
+                                        await refreshStudent();
                                     }}
                                 >
                                     Upload

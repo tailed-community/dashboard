@@ -4,6 +4,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Users, Loader2, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { htmlToText } from "@/lib/html";
 
 export interface Community {
   id: string;
@@ -102,7 +103,7 @@ export function CommunityCard({
         
         {/* Excerpt */}
         <p className="text-sm text-gray-500 mb-4 line-clamp-2 min-h-[2.5rem]">
-          {community.shortDescription || community.description}
+          {htmlToText(community.shortDescription || community.description)}
         </p>
 
         {/* Separator */}

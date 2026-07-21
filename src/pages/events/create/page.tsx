@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import {
     Dialog,
     DialogContent,
@@ -12,8 +12,9 @@ import { useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { CalendarDays, MapPin, Users, Loader2, Upload, Link as LinkIcon } from "lucide-react";
+import { MapPin, Users, Loader2, Link as LinkIcon, Info } from "lucide-react";
 import { apiFetch } from "@/lib/fetch";
+import { LIVE_ROUTES } from "@/components/playground/playground-routes";
 import { EventAwardsEditor } from "@/components/events/awards";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,6 +41,9 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { DateTimeField } from "@/components/ui/date-time-field";
+import { splitWireDateTime } from "@/lib/datetime-wire";
+import { ImageUploadField } from "@/components/media/image-upload-field";
 import { Switch } from "@/components/ui/switch";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { useAuth } from "@/hooks/use-auth";
@@ -80,10 +84,8 @@ const eventSchema = z.object({
         .max(200, "Slug must be less than 200 characters")
         .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Slug must be lowercase letters, numbers, and hyphens only"),
     description: z.string().min(10, "Description must be at least 10 characters"),
-    startDate: z.string().min(1, "Start date is required"),
-    startTime: z.string().min(1, "Start time is required"),
-    endDate: z.string().optional(),
-    endTime: z.string().optional(),
+    start: z.date({ required_error: "Start date and time are required" }),
+    end: z.date().optional(),
     location: z.string().optional(),
     city: z.string().optional(),
     digitalLink: z.string().url("Must be a valid URL").optional().or(z.literal("")),
@@ -103,7 +105,7 @@ const eventSchema = z.object({
     heroImage: z.instanceof(File).optional(),
     scheduleImage: z.instanceof(File).optional(),
     capacity: z.string().optional(),
-    maxTeamSize: z.string().min(1, "Max team size is required"),
+    maxTeamSize: z.string().optional(),
 }).refine((data) => {
     // If mode is In Person or Hybrid, location and city are required
     if ((data.mode === "In Person" || data.mode === "Hybrid") && (!data.location || !data.city)) {
@@ -124,6 +126,9 @@ const eventSchema = z.object({
     return true;
 }, {
     message: "Please fill in all required fields based on your selections",
+}).refine((data) => !data.end || !data.start || data.end > data.start, {
+    message: "End must be after the start",
+    path: ["end"],
 });
 
 type EventFormValues = z.input<typeof eventSchema>;
@@ -133,6 +138,7 @@ type Community = {
     id: string;
     name: string;
     acronym?: string;
+    status?: string;
 };
 
 const categories = [
@@ -189,8 +195,6 @@ export default function CreateEventPage() {
     const [showRegistrationPrompt, setShowRegistrationPrompt] = useState(false);
     const [communities, setCommunities] = useState<Community[]>([]);
     const [loadingCommunities, setLoadingCommunities] = useState(true);
-    const [heroImagePreview, setHeroImagePreview] = useState<string | null>(null);
-    const [scheduleImagePreview, setScheduleImagePreview] = useState<string | null>(null);
 
     const form = useForm<EventFormValues, undefined, EventFormData>({
         resolver: zodResolver(eventSchema),
@@ -198,10 +202,8 @@ export default function CreateEventPage() {
             title: "",
             slug: "",
             description: "",
-            startDate: "",
-            startTime: "",
-            endDate: "",
-            endTime: "",
+            start: undefined,
+            end: undefined,
             location: "",
             city: "",
             digitalLink: "",
@@ -240,27 +242,33 @@ export default function CreateEventPage() {
             .replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
     };
 
-    // Fetch communities from API
+    // Fetch communities the current user administers — only communities they
+    // can actually host an event under (i.e. approved by a moderator) are
+    // offered in the dropdown below.
     useEffect(() => {
         const fetchCommunities = async () => {
             try {
-                const response = await apiFetch("/communities?limit=100");
+                const response = await apiFetch("/communities/mine");
                 const result = await response.json();
-                
+
                 if (!response.ok) {
                     throw new Error(result.error || "Failed to fetch communities");
                 }
-                
-                const fetchedCommunities: Community[] = result.communities.map((c: any) => ({
-                    id: c.id,
-                    name: c.name || "Unnamed Community",
-                    acronym: c.acronym,
-                }));
+
+                const fetchedCommunities: Community[] = (result.communities || [])
+                    .map((c: any) => ({
+                        id: c.id,
+                        name: c.name || "Unnamed Community",
+                        acronym: c.acronym,
+                        status: c.status,
+                    }))
+                    // Missing status is treated as approved (older records predate moderation).
+                    .filter((c: Community) => !c.status || c.status === "approved");
 
                 setCommunities(fetchedCommunities);
             } catch (error) {
                 console.error("Error fetching communities:", error);
-                toast.error("Failed to load communities");
+                toast.error("Failed to load your communities");
             } finally {
                 setLoadingCommunities(false);
             }
@@ -268,6 +276,15 @@ export default function CreateEventPage() {
 
         fetchCommunities();
     }, []);
+
+    // If the user isn't an admin of any approved community, the "Community"
+    // host option isn't usable — default them into the independent/custom
+    // path once we know that for sure.
+    useEffect(() => {
+        if (!loadingCommunities && communities.length === 0 && form.getValues("hostType") === "community") {
+            form.setValue("hostType", "custom");
+        }
+    }, [loadingCommunities, communities, form]);
 
     const onSubmit = async (data: EventFormData) => {
         if (!user) {
@@ -285,8 +302,10 @@ export default function CreateEventPage() {
             formData.append("title", data.title);
             formData.append("slug", data.slug);
             formData.append("description", data.description);
-            formData.append("startDate", data.startDate);
-            formData.append("startTime", data.startTime);
+            // The API still takes day and time as separate fields.
+            const start = splitWireDateTime(data.start);
+            formData.append("startDate", start.date);
+            formData.append("startTime", start.time);
             formData.append("mode", data.mode);
             formData.append("isPaid", String(data.isPaid));
             formData.append("requiresApproval", String(data.requiresApproval));
@@ -294,8 +313,11 @@ export default function CreateEventPage() {
             formData.append("hostType", data.hostType);
             
             // Optional fields
-            if (data.endDate) formData.append("endDate", data.endDate);
-            if (data.endTime) formData.append("endTime", data.endTime);
+            if (data.end) {
+                const end = splitWireDateTime(data.end);
+                formData.append("endDate", end.date);
+                formData.append("endTime", end.time);
+            }
             if (data.location) formData.append("location", data.location);
             if (data.city) formData.append("city", data.city);
             if (data.digitalLink) formData.append("digitalLink", data.digitalLink);
@@ -338,9 +360,15 @@ export default function CreateEventPage() {
                 throw new Error(result.error || "Failed to create event");
             }
 
-            toast.success("Event created successfully!", {
-                description: "Your event has been published.",
-            });
+            if (result.moderationStatus === "pending") {
+                toast.success("Event submitted for review", {
+                    description: "It'll go live once a moderator approves it.",
+                });
+            } else {
+                toast.success("Event created successfully!", {
+                    description: "Your event has been published.",
+                });
+            }
 
             // Keep created event id
             const newEventId = result.eventId || null;
@@ -520,85 +548,48 @@ export default function CreateEventPage() {
                                     )}
                                 />
 
-                                {/* Start Date & Time */}
-                                <div className="grid gap-6 sm:grid-cols-2">
+                                {/* Start & End */}
+                                <div className="space-y-6">
                                     <FormField
                                         control={form.control}
-                                        name="startDate"
+                                        name="start"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel>Start Date *</FormLabel>
+                                                <FormLabel>Starts *</FormLabel>
                                                 <FormControl>
-                                                    <div className="relative">
-                                                        <CalendarDays className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                                                        <Input
-                                                            type="date"
-                                                            className="pl-10"
-                                                            {...field}
-                                                        />
-                                                    </div>
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-
-                                    <FormField
-                                        control={form.control}
-                                        name="startTime"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>Start Time *</FormLabel>
-                                                <FormControl>
-                                                    <Input
-                                                        type="time"
-                                                        {...field}
+                                                    <DateTimeField
+                                                        name={field.name}
+                                                        date={field.value}
+                                                        setDate={field.onChange}
+                                                        onBlur={field.onBlur}
+                                                        datePlaceholder="Pick a start date"
                                                     />
                                                 </FormControl>
                                                 <FormMessage />
                                             </FormItem>
                                         )}
                                     />
-                                </div>
 
-                                {/* End Date & Time (Optional) */}
-                                <div className="grid gap-6 sm:grid-cols-2">
                                     <FormField
                                         control={form.control}
-                                        name="endDate"
+                                        name="end"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel>End Date (Optional)</FormLabel>
+                                                <FormLabel>Ends (Optional)</FormLabel>
                                                 <FormControl>
-                                                    <div className="relative">
-                                                        <CalendarDays className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                                                        <Input
-                                                            type="date"
-                                                            className="pl-10"
-                                                            {...field}
-                                                        />
-                                                    </div>
+                                                    <DateTimeField
+                                                        name={field.name}
+                                                        date={field.value}
+                                                        setDate={field.onChange}
+                                                        onBlur={field.onBlur}
+                                                        datePlaceholder="Pick an end date"
+                                                        minDate={form.watch("start")}
+                                                        clearable
+                                                    />
                                                 </FormControl>
                                                 <FormDescription>
-                                                    Leave empty for single-day event
+                                                    Leave empty for a single-day event
                                                 </FormDescription>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-
-                                    <FormField
-                                        control={form.control}
-                                        name="endTime"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>End Time (Optional)</FormLabel>
-                                                <FormControl>
-                                                    <Input
-                                                        type="time"
-                                                        {...field}
-                                                    />
-                                                </FormControl>
                                                 <FormMessage />
                                             </FormItem>
                                         )}
@@ -813,12 +804,13 @@ export default function CreateEventPage() {
                                         name="maxTeamSize"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel>Max Team Size</FormLabel>
+                                                <FormLabel>Max Team Size (Optional)</FormLabel>
                                                 <FormControl>
                                                     <div className="relative">
                                                         <Users className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                                                         <Input
                                                             type="number"
+                                                            min={1}
                                                             placeholder="4"
                                                             className="pl-10"
                                                             {...field}
@@ -826,7 +818,7 @@ export default function CreateEventPage() {
                                                     </div>
                                                 </FormControl>
                                                 <FormDescription>
-                                                    Maximum participants per team
+                                                    Leave empty for solo or unlimited team sizes
                                                 </FormDescription>
                                                 <FormMessage />
                                             </FormItem>
@@ -863,36 +855,57 @@ export default function CreateEventPage() {
                                 <FormField
                                     control={form.control}
                                     name="hostType"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel>Event Host *</FormLabel>
-                                            <FormControl>
-                                                <div className="flex gap-4">
-                                                    <label className="flex items-center gap-2 cursor-pointer">
-                                                        <input
-                                                            type="radio"
-                                                            value="community"
-                                                            checked={field.value === "community"}
-                                                            onChange={() => field.onChange("community")}
-                                                            className="h-4 w-4"
-                                                        />
-                                                        <span className="text-sm">Community</span>
-                                                    </label>
-                                                    <label className="flex items-center gap-2 cursor-pointer">
-                                                        <input
-                                                            type="radio"
-                                                            value="custom"
-                                                            checked={field.value === "custom"}
-                                                            onChange={() => field.onChange("custom")}
-                                                            className="h-4 w-4"
-                                                        />
-                                                        <span className="text-sm">Custom Name</span>
-                                                    </label>
-                                                </div>
-                                            </FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
+                                    render={({ field }) => {
+                                        const hasApprovedCommunities = !loadingCommunities && communities.length > 0;
+                                        return (
+                                            <FormItem>
+                                                <FormLabel>Event Host *</FormLabel>
+                                                <FormControl>
+                                                    <div className="flex gap-4">
+                                                        <label
+                                                            className={`flex items-center gap-2 ${
+                                                                hasApprovedCommunities ? "cursor-pointer" : "cursor-not-allowed opacity-50"
+                                                            }`}
+                                                        >
+                                                            <input
+                                                                type="radio"
+                                                                value="community"
+                                                                checked={field.value === "community"}
+                                                                disabled={!hasApprovedCommunities}
+                                                                onChange={() => field.onChange("community")}
+                                                                className="h-4 w-4"
+                                                            />
+                                                            <span className="text-sm">Community</span>
+                                                        </label>
+                                                        <label className="flex items-center gap-2 cursor-pointer">
+                                                            <input
+                                                                type="radio"
+                                                                value="custom"
+                                                                checked={field.value === "custom"}
+                                                                onChange={() => field.onChange("custom")}
+                                                                className="h-4 w-4"
+                                                            />
+                                                            <span className="text-sm">Custom Name</span>
+                                                        </label>
+                                                    </div>
+                                                </FormControl>
+                                                {!loadingCommunities && !hasApprovedCommunities && (
+                                                    <FormDescription className="flex items-start gap-1.5">
+                                                        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                                        <span>
+                                                            You&apos;re not an admin of any (approved) community yet — you can still
+                                                            submit an independent event, or{" "}
+                                                            <Link to={LIVE_ROUTES.communityCreate} className="font-semibold underline underline-offset-2">
+                                                                create a community first
+                                                            </Link>
+                                                            .
+                                                        </span>
+                                                    </FormDescription>
+                                                )}
+                                                <FormMessage />
+                                            </FormItem>
+                                        );
+                                    }}
                                 />
 
                                 {/* Community Dropdown - Show if community selected */}
@@ -939,25 +952,34 @@ export default function CreateEventPage() {
 
                                 {/* Custom Host Name - Show if custom selected */}
                                 {watchHostType === "custom" && (
-                                    <FormField
-                                        control={form.control}
-                                        name="customHostName"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>Host Name *</FormLabel>
-                                                <FormControl>
-                                                    <Input
-                                                        placeholder="Tailed Community"
-                                                        {...field}
-                                                    />
-                                                </FormControl>
-                                                <FormDescription>
-                                                    Your name or organization hosting this event
-                                                </FormDescription>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
+                                    <>
+                                        <FormField
+                                            control={form.control}
+                                            name="customHostName"
+                                            render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>Host Name *</FormLabel>
+                                                    <FormControl>
+                                                        <Input
+                                                            placeholder="Tailed Community"
+                                                            {...field}
+                                                        />
+                                                    </FormControl>
+                                                    <FormDescription>
+                                                        Your name or organization hosting this event
+                                                    </FormDescription>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                        />
+                                        <div className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                                            <Info className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+                                            <span>
+                                                Independent events are reviewed by a moderator before they appear
+                                                publicly. Events hosted by an approved community go live immediately.
+                                            </span>
+                                        </div>
+                                    </>
                                 )}
 
                                 {/* Awards */}
@@ -978,44 +1000,19 @@ export default function CreateEventPage() {
                                 <FormField
                                     control={form.control}
                                     name="heroImage"
-                                    render={({ field: { value, onChange, ...field } }) => (
+                                    render={({ field: { value, onChange } }) => (
                                         <FormItem>
-                                            <FormLabel>Hero Image</FormLabel>
+                                            <FormLabel>Cover Image (Optional)</FormLabel>
                                             <FormControl>
-                                                <div className="space-y-4">
-                                                    <div className="flex items-center gap-4">
-                                                        <Input
-                                                            type="file"
-                                                            accept="image/*"
-                                                            onChange={(e) => {
-                                                                const file = e.target.files?.[0];
-                                                                if (file) {
-                                                                    onChange(file);
-                                                                    // Create preview
-                                                                    const reader = new FileReader();
-                                                                    reader.onloadend = () => {
-                                                                        setHeroImagePreview(reader.result as string);
-                                                                    };
-                                                                    reader.readAsDataURL(file);
-                                                                }
-                                                            }}
-                                                            {...field}
-                                                        />
-                                                        <Upload className="h-5 w-5 text-slate-400" />
-                                                    </div>
-                                                    {heroImagePreview && (
-                                                        <div className="relative w-full h-48 rounded-lg overflow-hidden border">
-                                                            <img
-                                                                src={heroImagePreview}
-                                                                alt="Hero preview"
-                                                                className="w-full h-full object-cover"
-                                                            />
-                                                        </div>
-                                                    )}
-                                                </div>
+                                                <ImageUploadField
+                                                    variant="event-hero"
+                                                    value={value}
+                                                    onChange={onChange}
+                                                />
                                             </FormControl>
                                             <FormDescription>
-                                                Upload a cover image for your event (optional)
+                                                Shown as a square on your event page and as the
+                                                background of your event card.
                                             </FormDescription>
                                             <FormMessage />
                                         </FormItem>
@@ -1040,43 +1037,19 @@ export default function CreateEventPage() {
                                 <FormField
                                     control={form.control}
                                     name="scheduleImage"
-                                    render={({ field: { value, onChange, ...field } }) => (
+                                    render={({ field: { value, onChange } }) => (
                                         <FormItem>
-                                            <FormLabel>Schedule Image</FormLabel>
+                                            <FormLabel>Schedule Image (Optional)</FormLabel>
                                             <FormControl>
-                                                <div className="space-y-4">
-                                                    <div className="flex items-center gap-4">
-                                                        <Input
-                                                            type="file"
-                                                            accept="image/*"
-                                                            onChange={(e) => {
-                                                                const file = e.target.files?.[0];
-                                                                if (file) {
-                                                                    onChange(file);
-                                                                    const reader = new FileReader();
-                                                                    reader.onloadend = () => {
-                                                                        setScheduleImagePreview(reader.result as string);
-                                                                    };
-                                                                    reader.readAsDataURL(file);
-                                                                }
-                                                            }}
-                                                            {...field}
-                                                        />
-                                                        <Upload className="h-5 w-5 text-slate-400" />
-                                                    </div>
-                                                    {scheduleImagePreview && (
-                                                        <div className="relative w-full h-full rounded-lg overflow-hidden border">
-                                                            <img
-                                                                src={scheduleImagePreview}
-                                                                alt="Schedule preview"
-                                                                className="w-full h-full object-cover"
-                                                            />
-                                                        </div>
-                                                    )}
-                                                </div>
+                                                <ImageUploadField
+                                                    variant="event-schedule"
+                                                    value={value}
+                                                    onChange={onChange}
+                                                />
                                             </FormControl>
                                             <FormDescription>
-                                                Upload a schedule image for your event (optional)
+                                                Shown at full width under “Schedule” on your event
+                                                page — its original shape is kept.
                                             </FormDescription>
                                             <FormMessage />
                                         </FormItem>

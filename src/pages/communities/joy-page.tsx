@@ -9,8 +9,10 @@ import { Seo } from "@/components/seo";
 import type { Community } from "@/components/community/community-card";
 import { MOCK_COMMUNITIES } from "@/pages/design-lab/playground-communities-mock";
 import { PlaygroundShell } from "@/components/playground/playground-chrome";
+import { PlaygroundButton } from "@/components/playground/playground-button";
 import { LIVE_ROUTES } from "@/components/playground/playground-routes";
 import { FRESH_ACCENTS, formatMemberCount } from "@/components/playground/joy-primitives";
+import { htmlToText } from "@/lib/html";
 
 /**
  * Live `/communities` list page — joy design system.
@@ -66,7 +68,7 @@ function CommunityTile({ community, accent }: { community: Community; accent: st
             </div>
 
             <p className="mt-3 line-clamp-2 min-h-[2.5rem] text-sm text-joy-ink-muted">
-                {community.shortDescription || community.description}
+                {htmlToText(community.shortDescription || community.description)}
             </p>
 
             <div className="mt-4 flex items-center gap-1.5 border-t border-joy-ink/8 pt-3 text-xs font-semibold text-joy-ink-muted">
@@ -237,6 +239,12 @@ export default function CommunitiesJoyPage() {
                                 Campus clubs, hackathon crews, and student-run orgs across Canada — join one, meet
                                 people who get it, and stop building your resume alone.
                             </p>
+                            <div className="mt-7 flex flex-wrap items-center gap-3">
+                                <PlaygroundButton to={LIVE_ROUTES.communityCreate}>Start a community</PlaygroundButton>
+                                <p className="text-sm text-joy-ink-muted">
+                                    Run a club or student group? Get it in front of thousands of students.
+                                </p>
+                            </div>
                         </div>
                     </div>
                 </section>

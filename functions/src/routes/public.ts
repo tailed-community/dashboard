@@ -4,6 +4,23 @@ import { DateTime } from "luxon";
 
 const router = Router();
 
+// Mirrors the moderationStatus legacy rule in routes/event.ts: events
+// created before moderation shipped have no `moderationStatus` field and
+// are treated as approved. These public surfaces must never leak
+// pending/rejected (independent-host) events.
+const isApprovedEvent = (data: FirebaseFirestore.DocumentData | undefined): boolean => {
+  const status = data?.moderationStatus;
+  return status !== "pending" && status !== "rejected";
+};
+
+// Mirrors the status legacy rule in routes/community.ts: communities
+// created before moderation shipped have no `status` field and are
+// treated as approved.
+const isApprovedCommunity = (data: FirebaseFirestore.DocumentData | undefined): boolean => {
+  const status = data?.status;
+  return status !== "pending" && status !== "rejected";
+};
+
 /**
  * GET /public/featured
  * Get featured event and top community for landing page
@@ -22,7 +39,9 @@ router.get("/featured", async (req: Request, res: Response) => {
       .limit(10)
       .get();
 
-    const eventDocs = eventsSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as any));
+    const eventDocs = eventsSnapshot.docs
+      .map((doc) => ({ id: doc.id, ...doc.data() } as any))
+      .filter((evt) => isApprovedEvent(evt));
     const featuredEvent =
       eventDocs.find((evt) => Boolean(evt.heroImage)) ?? eventDocs[0] ?? null;
 
@@ -37,7 +56,9 @@ router.get("/featured", async (req: Request, res: Response) => {
       .limit(10)
       .get();
 
-    const communityDocs = communitiesSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as any));
+    const communityDocs = communitiesSnapshot.docs
+      .map((doc) => ({ id: doc.id, ...doc.data() } as any))
+      .filter((c) => isApprovedCommunity(c));
     const topCommunity =
       communityDocs.find(
         (c) =>
@@ -80,10 +101,12 @@ router.get("/explore", async (req: Request, res: Response) => {
       .limit(parseInt(eventLimit as string, 10))
       .get();
 
-    const events = eventsSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    const events = eventsSnapshot.docs
+      .map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }))
+      .filter((event) => isApprovedEvent(event));
 
     // Get communities (sorted by member count)
     const communitiesSnapshot = await db
@@ -92,10 +115,12 @@ router.get("/explore", async (req: Request, res: Response) => {
       .limit(parseInt(communityLimit as string, 10))
       .get();
 
-    const communities = communitiesSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    const communities = communitiesSnapshot.docs
+      .map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }))
+      .filter((community) => isApprovedCommunity(community));
 
     return res.status(200).json({
       success: true,
@@ -137,10 +162,12 @@ router.get("/communities", async (req: Request, res: Response) => {
     }
 
     const snapshot = await query.get();
-    let communities = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    let communities = snapshot.docs
+      .map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }))
+      .filter((community) => isApprovedCommunity(community));
 
     // Apply client-side search filter if provided
     if (search && typeof search === "string") {
@@ -174,9 +201,9 @@ router.get("/communities/:identifier", async (req: Request, res: Response) => {
     const { identifier } = req.params;
 
     let communityDoc;
-    
+
     communityDoc = await db.collection("communities").doc(identifier).get();
-    
+
     if (!communityDoc.exists) {
       const slugQuery = await db
         .collection("communities")
@@ -193,9 +220,25 @@ router.get("/communities/:identifier", async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Community not found" });
     }
 
+    const rawCommunityData = communityDoc.data() || {};
+
+    if (!isApprovedCommunity(rawCommunityData)) {
+      const userId = req.user?.uid;
+      const admins = Array.isArray(rawCommunityData.admins) ? rawCommunityData.admins : [];
+      const isAuthorized =
+        !!userId &&
+        (admins.includes(userId) ||
+          rawCommunityData.createdBy === userId ||
+          req.user?.platformAdmin === true);
+
+      if (!isAuthorized) {
+        return res.status(404).json({ error: "Community not found" });
+      }
+    }
+
     const communityData = {
       id: communityDoc.id,
-      ...communityDoc.data(),
+      ...rawCommunityData,
     };
 
     return res.status(200).json({
@@ -258,10 +301,12 @@ router.get("/events", async (req: Request, res: Response) => {
     }
 
     const snapshot = await query.get();
-    const events = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    const events = snapshot.docs
+      .map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }))
+      .filter((event) => isApprovedEvent(event));
 
     return res.status(200).json({
       success: true,
@@ -305,9 +350,43 @@ router.get("/events/:identifier", async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Event not found" });
     }
 
+    const rawData = eventDoc.data() || {};
+
+    if (!isApprovedEvent(rawData)) {
+      const userId = req.user?.uid;
+      let isAuthorized = !!userId && (rawData.createdBy === userId || req.user?.platformAdmin === true);
+
+      if (!isAuthorized && userId && rawData.communityId) {
+        const communityDoc = await db.collection("communities").doc(rawData.communityId).get();
+        const admins = communityDoc.data()?.admins || [];
+        isAuthorized = admins.includes(userId);
+      }
+
+      if (!isAuthorized) {
+        return res.status(404).json({ error: "Event not found" });
+      }
+    }
+
+    // Mirror the `canEdit` flag from the authed GET /events/:identifier so the
+    // public detail page can render an edit affordance for whoever is allowed
+    // to use it. Deriving this client-side from `createdBy` alone would miss
+    // community admins, who can edit their community's events without having
+    // created them.
+    const requesterId = req.user?.uid;
+    const requesterIsPlatformAdmin = req.user?.platformAdmin === true;
+    let canEdit = requesterIsPlatformAdmin || (!!requesterId && rawData.createdBy === requesterId);
+
+    if (!canEdit && requesterId && rawData.communityId) {
+      const communityDoc = await db.collection("communities").doc(rawData.communityId).get();
+      const admins = communityDoc.data()?.admins || [];
+      canEdit = admins.includes(requesterId);
+    }
+
     const eventData = {
       id: eventDoc.id,
-      ...eventDoc.data(),
+      ...rawData,
+      canEdit,
+      editingAsPlatformAdmin: requesterIsPlatformAdmin && rawData.createdBy !== requesterId,
     };
 
     return res.status(200).json({

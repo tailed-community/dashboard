@@ -4,6 +4,7 @@ import { Toaster } from "./components/ui/sonner";
 import { SidebarContextProvider } from "./contexts/sidebar-context";
 import { ProtectedRoute } from "./components/protected-route";
 import { PrivateRoute } from "./components/private-route";
+import { AdminRoute } from "./components/admin-route";
 import { NotFoundComponent } from "./components/not-found-component";
 import { JoyLayout } from "./layouts/joy-layout";
 import { schedulePreload } from "./lib/route-preload";
@@ -31,6 +32,9 @@ import {
     exploreImport,
     jobApplyImport,
     legacyLandingImport,
+    moderationQueueImport,
+    adminContentImport,
+    adminAuditLogImport,
     selfIdSurveyImport,
     spotlightImport,
     workplaceValuesSurveyImport,
@@ -110,12 +114,21 @@ const ExplorePage = lazy(exploreImport);
 const AboutPage = lazy(aboutImport);
 // Booking page from feature branch
 const BookingPage = lazy(bookingImport);
+// Platform admin — moderation queue for pending communities/events.
+// Top-level (not under DashboardLayout), gated by AdminRoute (auth +
+// platformAdmin custom claim), self-contained shadcn/Tailwind page.
+const ModerationQueuePage = lazy(moderationQueueImport);
+// Platform admin — "all content" search/fix surface and the admin audit log.
+// Same top-level + AdminRoute treatment as the moderation queue.
+const AdminContentPage = lazy(adminContentImport);
+const AdminAuditLogPage = lazy(adminAuditLogImport);
 // Design-lab prototypes (internal landing redesign explorations)
 const DesignLabPage = lazy(() => import("./pages/design-lab/page"));
 const LabZine = lazy(() => import("./pages/design-lab/zine"));
 const LabStreakDuo = lazy(() => import("./pages/design-lab/streak-duo"));
 const LabAfterHours = lazy(() => import("./pages/design-lab/after-hours"));
 const LabPoster = lazy(() => import("./pages/design-lab/poster"));
+const LabPickers = lazy(() => import("./pages/design-lab/pickers"));
 const LabPlayground = lazy(() => import("./pages/design-lab/playground"));
 const LabPlaygroundJobs = lazy(() => import("./pages/design-lab/playground-jobs"));
 const LabPlaygroundEvents = lazy(() => import("./pages/design-lab/playground-events"));
@@ -236,6 +249,35 @@ function App() {
                                 <PrivateRoute>
                                     <WorkplaceValuesSurveyPage />
                                 </PrivateRoute>
+                            }
+                        />
+
+                        {/* PLATFORM ADMIN — moderation queue for pending
+                            communities/events. Top-level (not under
+                            DashboardLayout/JoyLayout), gated by AdminRoute
+                            (auth + platformAdmin custom claim). */}
+                        <Route
+                            path="/admin/moderation"
+                            element={
+                                <AdminRoute>
+                                    <ModerationQueuePage />
+                                </AdminRoute>
+                            }
+                        />
+                        <Route
+                            path="/admin/content"
+                            element={
+                                <AdminRoute>
+                                    <AdminContentPage />
+                                </AdminRoute>
+                            }
+                        />
+                        <Route
+                            path="/admin/audit-log"
+                            element={
+                                <AdminRoute>
+                                    <AdminAuditLogPage />
+                                </AdminRoute>
                             }
                         />
 
@@ -390,6 +432,7 @@ function App() {
                         <Route path="/design-lab/streak-duo" element={<LabStreakDuo />} />
                         <Route path="/design-lab/after-hours" element={<LabAfterHours />} />
                         <Route path="/design-lab/poster" element={<LabPoster />} />
+                        <Route path="/design-lab/pickers" element={<LabPickers />} />
                         <Route path="/design-lab/playground" element={<LabPlayground />} />
                         <Route path="/design-lab/playground/jobs" element={<LabPlaygroundJobs />} />
                         <Route path="/design-lab/playground/events" element={<LabPlaygroundEvents />} />

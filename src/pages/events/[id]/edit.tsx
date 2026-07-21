@@ -4,7 +4,7 @@ import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { CalendarDays, MapPin, Users, Loader2, Upload, Link as LinkIcon, ArrowLeft } from "lucide-react";
+import { MapPin, Users, Loader2, Link as LinkIcon, ArrowLeft } from "lucide-react";
 import { apiFetch } from "@/lib/fetch";
 import { getFileUrl } from "@/lib/firebase-client";
 import { Button } from "@/components/ui/button";
@@ -33,17 +33,19 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { DateTimeField } from "@/components/ui/date-time-field";
+import { joinWireDateTime, splitWireDateTime } from "@/lib/datetime-wire";
+import { ImageUploadField } from "@/components/media/image-upload-field";
 import { Switch } from "@/components/ui/switch";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { useAuth } from "@/hooks/use-auth";
+import { AdminBypassBanner } from "@/components/admin-bypass-banner";
 
 const editEventSchema = z.object({
     title: z.string().min(3, "Title must be at least 3 characters").max(200),
     description: z.string().min(10, "Description must be at least 10 characters"),
-    startDate: z.string().min(1, "Start date is required"),
-    startTime: z.string().min(1, "Start time is required"),
-    endDate: z.string().optional(),
-    endTime: z.string().optional(),
+    start: z.date({ required_error: "Start date and time are required" }),
+    end: z.date().optional(),
     location: z.string().optional(),
     city: z.string().optional(),
     digitalLink: z.string().url("Must be a valid URL").optional().or(z.literal("")),
@@ -60,6 +62,9 @@ const editEventSchema = z.object({
     removeScheduleImage: z.boolean().default(false),
     capacity: z.string().optional(),
     status: z.enum(["draft", "published", "cancelled"]).default("published"),
+}).refine((data) => !data.end || !data.start || data.end > data.start, {
+    message: "End must be after the start",
+    path: ["end"],
 });
 
 // EditEventFormData is inferred from schema when needed
@@ -118,16 +123,15 @@ export default function EditEventPage() {
     const [scheduleImagePreview, setScheduleImagePreview] = useState<string | null>(null);
     const [currentScheduleImagePath, setCurrentScheduleImagePath] = useState<string | null>(null);
     const [forbidden, setForbidden] = useState(false);
+    const [editingAsPlatformAdmin, setEditingAsPlatformAdmin] = useState(false);
 
     const form = useForm<any>({
         resolver: zodResolver(editEventSchema),
         defaultValues: {
             title: "",
             description: "",
-            startDate: "",
-            startTime: "",
-            endDate: "",
-            endTime: "",
+            start: undefined,
+            end: undefined,
             location: "",
             city: "",
             digitalLink: "",
@@ -187,6 +191,8 @@ export default function EditEventPage() {
                     return;
                 }
 
+                setEditingAsPlatformAdmin(Boolean(event.editingAsPlatformAdmin));
+
                 // Load current hero image preview
                 if (event.heroImage) {
                     setCurrentHeroImagePath(event.heroImage);
@@ -213,10 +219,8 @@ export default function EditEventPage() {
                 form.reset({
                     title: event.title || "",
                     description: event.description || "",
-                    startDate: event.startDate || "",
-                    startTime: event.startTime || "",
-                    endDate: event.endDate || "",
-                    endTime: event.endTime || "",
+                    start: joinWireDateTime(event.startDate, event.startTime),
+                    end: joinWireDateTime(event.endDate, event.endTime),
                     location: event.location || "",
                     city: event.city || "",
                     digitalLink: event.digitalLink || "",
@@ -317,8 +321,10 @@ export default function EditEventPage() {
 
             formData.append("title", data.title);
             formData.append("description", data.description);
-            formData.append("startDate", data.startDate);
-            formData.append("startTime", data.startTime);
+            // The API still takes day and time as separate fields.
+            const start = splitWireDateTime(data.start);
+            formData.append("startDate", start.date);
+            formData.append("startTime", start.time);
             formData.append("mode", data.mode);
             formData.append("isPaid", String(data.isPaid));
             formData.append("requiresApproval", String(data.requiresApproval));
@@ -326,8 +332,11 @@ export default function EditEventPage() {
             formData.append("hostType", data.hostType);
             formData.append("status", data.status || "published");
 
-            if (data.endDate) formData.append("endDate", data.endDate);
-            if (data.endTime) formData.append("endTime", data.endTime);
+            if (data.end) {
+                const end = splitWireDateTime(data.end);
+                formData.append("endDate", end.date);
+                formData.append("endTime", end.time);
+            }
             if (data.location) formData.append("location", data.location);
             if (data.city) formData.append("city", data.city);
             if (data.digitalLink) formData.append("digitalLink", data.digitalLink);
@@ -488,6 +497,10 @@ export default function EditEventPage() {
                     <p className="mt-2 text-slate-600">Update the details for this event</p>
                 </div>
 
+                {editingAsPlatformAdmin && (
+                    <AdminBypassBanner resource="event" className="mb-8" />
+                )}
+
                 <Card className="border-slate-200/80 bg-white shadow-soft-xl">
                     <CardHeader>
                         <CardTitle>Event Details</CardTitle>
@@ -533,19 +546,22 @@ export default function EditEventPage() {
                                     )}
                                 />
 
-                                {/* Start Date & Time */}
-                                <div className="grid gap-6 sm:grid-cols-2">
+                                {/* Start & End */}
+                                <div className="space-y-6">
                                     <FormField
                                         control={form.control}
-                                        name="startDate"
+                                        name="start"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel>Start Date *</FormLabel>
+                                                <FormLabel>Starts *</FormLabel>
                                                 <FormControl>
-                                                    <div className="relative">
-                                                        <CalendarDays className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                                                        <Input type="date" className="pl-10" {...field} />
-                                                    </div>
+                                                    <DateTimeField
+                                                        name={field.name}
+                                                        date={field.value}
+                                                        setDate={field.onChange}
+                                                        onBlur={field.onBlur}
+                                                        datePlaceholder="Pick a start date"
+                                                    />
                                                 </FormControl>
                                                 <FormMessage />
                                             </FormItem>
@@ -553,47 +569,22 @@ export default function EditEventPage() {
                                     />
                                     <FormField
                                         control={form.control}
-                                        name="startTime"
+                                        name="end"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel>Start Time *</FormLabel>
+                                                <FormLabel>Ends (Optional)</FormLabel>
                                                 <FormControl>
-                                                    <Input type="time" {...field} />
+                                                    <DateTimeField
+                                                        name={field.name}
+                                                        date={field.value}
+                                                        setDate={field.onChange}
+                                                        onBlur={field.onBlur}
+                                                        datePlaceholder="Pick an end date"
+                                                        minDate={form.watch("start")}
+                                                        clearable
+                                                    />
                                                 </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                </div>
-
-                                {/* End Date & Time */}
-                                <div className="grid gap-6 sm:grid-cols-2">
-                                    <FormField
-                                        control={form.control}
-                                        name="endDate"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>End Date (Optional)</FormLabel>
-                                                <FormControl>
-                                                    <div className="relative">
-                                                        <CalendarDays className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                                                        <Input type="date" className="pl-10" {...field} />
-                                                    </div>
-                                                </FormControl>
-                                                <FormDescription>Leave empty for single-day event</FormDescription>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
-                                    <FormField
-                                        control={form.control}
-                                        name="endTime"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>End Time (Optional)</FormLabel>
-                                                <FormControl>
-                                                    <Input type="time" {...field} />
-                                                </FormControl>
+                                                <FormDescription>Leave empty for a single-day event</FormDescription>
                                                 <FormMessage />
                                             </FormItem>
                                         )}
@@ -941,45 +932,21 @@ export default function EditEventPage() {
                                 <FormField
                                     control={form.control}
                                     name="heroImage"
-                                    render={({ field: { value, onChange, ...field } }) => (
+                                    render={({ field: { value, onChange } }) => (
                                         <FormItem>
-                                            <FormLabel>Hero Image</FormLabel>
+                                            <FormLabel>Cover Image (Optional)</FormLabel>
                                             <FormControl>
-                                                <div className="space-y-4">
-                                                    <div className="flex items-center gap-4">
-                                                        <Input
-                                                            type="file"
-                                                            accept="image/*"
-                                                            onChange={(e) => {
-                                                                const file = e.target.files?.[0];
-                                                                if (file) {
-                                                                    onChange(file);
-                                                                    const reader = new FileReader();
-                                                                    reader.onloadend = () => {
-                                                                        setHeroImagePreview(reader.result as string);
-                                                                    };
-                                                                    reader.readAsDataURL(file);
-                                                                }
-                                                            }}
-                                                            {...field}
-                                                        />
-                                                        <Upload className="h-5 w-5 text-slate-400" />
-                                                    </div>
-                                                    {heroImagePreview && (
-                                                        <div className="relative w-full h-48 rounded-lg overflow-hidden border">
-                                                            <img
-                                                                src={heroImagePreview}
-                                                                alt="Hero preview"
-                                                                className="w-full h-full object-cover"
-                                                            />
-                                                        </div>
-                                                    )}
-                                                </div>
+                                                <ImageUploadField
+                                                    variant="event-hero"
+                                                    value={value}
+                                                    onChange={onChange}
+                                                    existingUrl={heroImagePreview ?? undefined}
+                                                />
                                             </FormControl>
                                             <FormDescription>
                                                 {currentHeroImagePath
-                                                    ? "Upload a new image to replace the current one"
-                                                    : "Upload a cover image for your event (optional)"}
+                                                    ? "Upload a new image to replace the current one."
+                                                    : "Shown as a square on your event page and as the background of your event card."}
                                             </FormDescription>
                                             <FormMessage />
                                         </FormItem>
@@ -990,55 +957,27 @@ export default function EditEventPage() {
                                 <FormField
                                     control={form.control}
                                     name="scheduleImage"
-                                    render={({ field: { value, onChange, ...field } }) => (
+                                    render={({ field: { value, onChange } }) => (
                                         <FormItem>
-                                            <FormLabel>Schedule Image</FormLabel>
+                                            <FormLabel>Schedule Image (Optional)</FormLabel>
                                             <FormControl>
-                                                <div className="space-y-4">
-                                                    <div className="flex items-center gap-4">
-                                                        <Input
-                                                            type="file"
-                                                            accept="image/*"
-                                                            onChange={(e) => {
-                                                                const file = e.target.files?.[0];
-                                                                if (file) {
-                                                                    onChange(file);
-                                                                    form.setValue("removeScheduleImage", false);
-                                                                    const reader = new FileReader();
-                                                                    reader.onloadend = () => {
-                                                                        setScheduleImagePreview(reader.result as string);
-                                                                    };
-                                                                    reader.readAsDataURL(file);
-                                                                }
-                                                            }}
-                                                            {...field}
-                                                        />
-                                                        <Upload className="h-5 w-5 text-slate-400" />
-                                                    </div>
-                                                    {scheduleImagePreview && (
-                                                        <div className="relative w-full aspect-image rounded-lg overflow-hidden border">
-                                                            <img
-                                                                src={scheduleImagePreview}
-                                                                alt="Schedule preview"
-                                                                className="w-full h-full object-cover"
-                                                            />
-                                                        </div>
-                                                    )}
-                                                    {currentScheduleImagePath && (
-                                                        <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            onClick={() => {
-                                                                form.setValue("scheduleImage", undefined);
-                                                                form.setValue("removeScheduleImage", true);
-                                                                setCurrentScheduleImagePath(null);
-                                                                setScheduleImagePreview(null);
-                                                            }}
-                                                        >
-                                                            Delete schedule image
-                                                        </Button>
-                                                    )}
-                                                </div>
+                                                <ImageUploadField
+                                                    variant="event-schedule"
+                                                    value={value}
+                                                    onChange={(file) => {
+                                                        onChange(file);
+                                                        // Picking a replacement cancels a pending deletion.
+                                                        if (file) {
+                                                            form.setValue("removeScheduleImage", false);
+                                                        }
+                                                    }}
+                                                    existingUrl={scheduleImagePreview ?? undefined}
+                                                    onRemoveExisting={() => {
+                                                        form.setValue("removeScheduleImage", true);
+                                                        setCurrentScheduleImagePath(null);
+                                                        setScheduleImagePreview(null);
+                                                    }}
+                                                />
                                             </FormControl>
                                             <FormDescription>
                                                 {currentScheduleImagePath

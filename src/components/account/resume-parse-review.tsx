@@ -10,22 +10,40 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { formatRange } from "./profile-builder-shared";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  EMPLOYMENT_TYPE_OPTIONS,
+  SKILL_CATEGORY_OPTIONS,
+  formatRange,
+} from "./profile-builder-shared";
 import type { ParsedResume } from "@/lib/resume-parse";
+import type { Experience, Education, SkillEntry } from "@/lib/profile";
 
 /**
  * Review + confirm dialog for parsed resume suggestions (spec 08 §3.1 / Open-Q1).
  *
  * Parsing is a SUGGESTION — the student owns the truth. Every item can be
- * accepted (checkbox), edited (its identifying fields inline), or discarded
- * (unchecked). On confirm, only the checked items — with edits applied — are
- * handed back to the caller, which merges them into the profile (appending,
- * never overwriting existing entries).
+ * accepted (checkbox), edited (title/org/dates/description, employment type,
+ * school/program/grad year, skill category), or discarded (unchecked).
+ * Fields the parser left blank get a subtle amber flag so the eye goes to
+ * what needs a decision — there are no fake confidence scores, just "this
+ * one's empty, take a look." On confirm, only the checked items — with edits
+ * applied — are handed back to the caller, which merges them into the
+ * profile (appending, never overwriting existing entries) in a single call.
  */
+
+const UNSET = "__unset__";
 
 interface ResumeParseReviewProps {
   open: boolean;
@@ -67,6 +85,19 @@ export function ResumeParseReview({
   const toggle = (key: string, value: boolean) =>
     setIncluded((prev) => ({ ...prev, [key]: value }));
 
+  const updateExperience = (index: number, patch: Partial<Experience>) =>
+    setExperiences((prev) =>
+      prev.map((it, i) => (i === index ? { ...it, ...patch } : it)),
+    );
+  const updateEducation = (index: number, patch: Partial<Education>) =>
+    setEducation((prev) =>
+      prev.map((it, i) => (i === index ? { ...it, ...patch } : it)),
+    );
+  const updateSkill = (index: number, patch: Partial<SkillEntry>) =>
+    setSkills((prev) =>
+      prev.map((it, i) => (i === index ? { ...it, ...patch } : it)),
+    );
+
   const selectedCount =
     experiences.filter((e) => included[`exp:${e.id}`]).length +
     education.filter((e) => included[`edu:${e.id}`]).length +
@@ -98,8 +129,9 @@ export function ResumeParseReview({
           </DialogTitle>
           <DialogDescription>
             We read your resume — nothing is saved yet. Uncheck anything you
-            don't want, tweak the details, then add the rest to your profile.
-            You can keep editing everything afterwards.
+            don't want, tweak the details (fields with an amber outline came
+            up empty), then add the rest to your profile. You can keep
+            editing everything afterwards.
           </DialogDescription>
         </DialogHeader>
 
@@ -120,53 +152,145 @@ export function ResumeParseReview({
                         key={item.id}
                         checked={!!included[key]}
                         onCheckedChange={(v) => toggle(key, v)}
-                        meta={[
-                          item.employmentType
-                            ? item.employmentType.replace("-", " ")
-                            : "",
-                          formatRange(
-                            item.startDate,
-                            item.endDate,
-                            item.current,
-                          ),
-                          item.location ?? "",
-                        ]}
                       >
                         <FieldPair>
-                          <Field label="Title">
+                          <Field label="Title" empty={!item.title.trim()}>
                             <Input
                               value={item.title}
                               onChange={(e) =>
-                                setExperiences((prev) =>
-                                  prev.map((it, i) =>
-                                    i === index
-                                      ? { ...it, title: e.target.value }
-                                      : it,
-                                  ),
-                                )
+                                updateExperience(index, {
+                                  title: e.target.value,
+                                })
                               }
+                              className={emptyClass(item.title)}
                             />
                           </Field>
-                          <Field label="Organization">
+                          <Field
+                            label="Organization"
+                            empty={!item.organization.trim()}
+                          >
                             <Input
                               value={item.organization}
                               onChange={(e) =>
-                                setExperiences((prev) =>
-                                  prev.map((it, i) =>
-                                    i === index
-                                      ? { ...it, organization: e.target.value }
-                                      : it,
-                                  ),
-                                )
+                                updateExperience(index, {
+                                  organization: e.target.value,
+                                })
                               }
+                              className={emptyClass(item.organization)}
+                            />
+                          </Field>
+                          <Field label="Type" empty={!item.employmentType}>
+                            <Select
+                              value={item.employmentType ?? UNSET}
+                              onValueChange={(v) =>
+                                updateExperience(index, {
+                                  employmentType:
+                                    v === UNSET
+                                      ? undefined
+                                      : (v as Experience["employmentType"]),
+                                })
+                              }
+                            >
+                              <SelectTrigger
+                                size="sm"
+                                className={`w-full ${emptyClass(item.employmentType)}`}
+                              >
+                                <SelectValue placeholder="Select type" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={UNSET}>Not set</SelectItem>
+                                {EMPLOYMENT_TYPE_OPTIONS.map((opt) => (
+                                  <SelectItem key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </Field>
+                          <Field label="Location">
+                            <Input
+                              value={item.location ?? ""}
+                              onChange={(e) =>
+                                updateExperience(index, {
+                                  location: e.target.value,
+                                })
+                              }
+                              placeholder="Toronto, ON"
+                            />
+                          </Field>
+                          <Field
+                            label="Start (YYYY-MM)"
+                            empty={!item.startDate?.trim()}
+                          >
+                            <Input
+                              value={item.startDate ?? ""}
+                              onChange={(e) =>
+                                updateExperience(index, {
+                                  startDate: e.target.value,
+                                })
+                              }
+                              placeholder="2024-05"
+                              className={emptyClass(item.startDate)}
+                            />
+                          </Field>
+                          <Field label="End (YYYY-MM)">
+                            <Input
+                              value={item.current ? "" : (item.endDate ?? "")}
+                              onChange={(e) =>
+                                updateExperience(index, {
+                                  endDate: e.target.value,
+                                })
+                              }
+                              placeholder="2024-08"
+                              disabled={!!item.current}
                             />
                           </Field>
                         </FieldPair>
-                        {item.description && (
-                          <p className="mt-2 line-clamp-3 text-xs text-gray-500">
-                            {item.description}
-                          </p>
-                        )}
+                        <label className="mt-2 flex items-center gap-2 text-xs text-gray-600">
+                          <input
+                            type="checkbox"
+                            checked={!!item.current}
+                            onChange={(e) =>
+                              updateExperience(index, {
+                                current: e.target.checked,
+                                endDate: e.target.checked
+                                  ? null
+                                  : item.endDate,
+                              })
+                            }
+                          />
+                          Current
+                        </label>
+                        <div className="mt-2">
+                          <Label className="text-xs text-gray-500">
+                            Description
+                          </Label>
+                          <Textarea
+                            value={item.description ?? ""}
+                            onChange={(e) =>
+                              updateExperience(index, {
+                                description: e.target.value,
+                              })
+                            }
+                            rows={2}
+                            className="text-sm"
+                          />
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {formatRange(
+                            item.startDate,
+                            item.endDate,
+                            item.current,
+                          ) && (
+                            <Badge variant="secondary" className="truncate">
+                              {formatRange(
+                                item.startDate,
+                                item.endDate,
+                                item.current,
+                              )}
+                            </Badge>
+                          )}
+                        </div>
                       </ReviewRow>
                     );
                   })}
@@ -182,40 +306,54 @@ export function ResumeParseReview({
                         key={item.id}
                         checked={!!included[key]}
                         onCheckedChange={(v) => toggle(key, v)}
-                        meta={[
-                          item.fieldOfStudy ?? "",
-                          item.graduationYear
-                            ? `Grad ${item.graduationYear}`
-                            : "",
-                        ]}
                       >
                         <FieldPair>
-                          <Field label="School">
+                          <Field label="School" empty={!item.school.trim()}>
                             <Input
                               value={item.school}
                               onChange={(e) =>
-                                setEducation((prev) =>
-                                  prev.map((it, i) =>
-                                    i === index
-                                      ? { ...it, school: e.target.value }
-                                      : it,
-                                  ),
-                                )
+                                updateEducation(index, {
+                                  school: e.target.value,
+                                })
                               }
+                              className={emptyClass(item.school)}
                             />
                           </Field>
-                          <Field label="Program">
+                          <Field label="Program" empty={!item.program.trim()}>
                             <Input
                               value={item.program}
                               onChange={(e) =>
-                                setEducation((prev) =>
-                                  prev.map((it, i) =>
-                                    i === index
-                                      ? { ...it, program: e.target.value }
-                                      : it,
-                                  ),
-                                )
+                                updateEducation(index, {
+                                  program: e.target.value,
+                                })
                               }
+                              className={emptyClass(item.program)}
+                            />
+                          </Field>
+                          <Field label="Field of study">
+                            <Input
+                              value={item.fieldOfStudy ?? ""}
+                              onChange={(e) =>
+                                updateEducation(index, {
+                                  fieldOfStudy: e.target.value,
+                                })
+                              }
+                              placeholder="Software"
+                            />
+                          </Field>
+                          <Field
+                            label="Graduation year"
+                            empty={!item.graduationYear?.trim()}
+                          >
+                            <Input
+                              value={item.graduationYear ?? ""}
+                              onChange={(e) =>
+                                updateEducation(index, {
+                                  graduationYear: e.target.value,
+                                })
+                              }
+                              placeholder="2026"
+                              className={emptyClass(item.graduationYear)}
                             />
                           </Field>
                         </FieldPair>
@@ -236,7 +374,7 @@ export function ResumeParseReview({
                         onCheckedChange={(v) => toggle(key, v)}
                         meta={[item.role ?? "", item.url ?? ""]}
                       >
-                        <Field label="Name">
+                        <Field label="Name" empty={!item.name.trim()}>
                           <Input
                             value={item.name}
                             onChange={(e) =>
@@ -248,6 +386,7 @@ export function ResumeParseReview({
                                 ),
                               )
                             }
+                            className={emptyClass(item.name)}
                           />
                         </Field>
                         {item.description && (
@@ -263,28 +402,65 @@ export function ResumeParseReview({
 
               {skills.length > 0 && (
                 <Section title="Skills">
+                  <p className="-mt-1 mb-2 text-xs text-gray-500">
+                    Tap a skill to include/exclude it. Set a category where
+                    it's missing (amber outline).
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     {skills.map((item, index) => {
                       const key = `skill:${index}`;
                       const on = !!included[key];
                       return (
-                        <button
-                          type="button"
+                        <div
                           key={`${item.name}-${index}`}
-                          onClick={() => toggle(key, !on)}
-                          className={`rounded-full border px-3 py-1 text-sm transition ${
+                          className={`flex items-center gap-1 rounded-full border py-1 pl-3 pr-1.5 text-sm transition ${
                             on
-                              ? "border-brand-orange bg-brand-orange/10 text-gray-900"
-                              : "border-gray-200 bg-white text-gray-400 line-through"
+                              ? "border-brand-orange bg-brand-orange/10"
+                              : "border-gray-200 bg-white"
                           }`}
                         >
-                          {item.name}
-                          {item.category && (
-                            <span className="ml-1 text-xs text-gray-400">
-                              · {item.category}
-                            </span>
-                          )}
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => toggle(key, !on)}
+                            className={
+                              on
+                                ? "text-gray-900"
+                                : "text-gray-400 line-through"
+                            }
+                          >
+                            {item.name}
+                          </button>
+                          <Select
+                            value={item.category ?? UNSET}
+                            onValueChange={(v) =>
+                              updateSkill(index, {
+                                category:
+                                  v === UNSET
+                                    ? undefined
+                                    : (v as SkillEntry["category"]),
+                              })
+                            }
+                          >
+                            <SelectTrigger
+                              size="sm"
+                              className={`h-6 w-[6.5rem] border-0 bg-transparent px-1.5 text-xs shadow-none ${
+                                !item.category
+                                  ? "ring-1 ring-amber-400/70 rounded"
+                                  : ""
+                              }`}
+                            >
+                              <SelectValue placeholder="category" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={UNSET}>No category</SelectItem>
+                              {SKILL_CATEGORY_OPTIONS.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       );
                     })}
                   </div>
@@ -328,6 +504,15 @@ export function ResumeParseReview({
       </DialogContent>
     </Dialog>
   );
+}
+
+/** Amber flag classes for a field the parser left empty — draws the eye to
+ *  what needs a decision without pretending to score confidence. */
+function emptyClass(value?: string | null): string {
+  const isEmpty = !value || !String(value).trim();
+  return isEmpty
+    ? "border-amber-400 focus-visible:ring-amber-400/50"
+    : "";
 }
 
 function Section({
@@ -396,15 +581,22 @@ function FieldPair({ children }: { children: React.ReactNode }) {
 
 function Field({
   label,
+  empty,
   children,
 }: {
   label: string;
+  empty?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <div>
       <Label className="text-xs text-gray-500">{label}</Label>
       {children}
+      {empty && (
+        <p className="mt-0.5 text-[11px] font-medium text-amber-600">
+          Not in your resume — worth adding
+        </p>
+      )}
     </div>
   );
 }

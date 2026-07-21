@@ -5,16 +5,62 @@ import { db, studentAuth, storage } from "../lib/firebase";
 import { logger } from "firebase-functions";
 import { FieldPath, FieldValue } from "firebase-admin/firestore";
 import { parseResumePdf } from "../lib/resume-parser";
+import { useEmulators } from "../lib/env";
 
 const router = express.Router();
 
 /**
- * Generates a valid download URL for a document from student storage
- * Uses signed URLs in production (24h expiration) or download tokens in development
+ * Cached at module scope: once we've seen a CREDENTIAL/IAM-class failure from
+ * `getSignedUrl` (no private key on Application Default Credentials, or the
+ * runtime service account lacks roles/iam.serviceAccountTokenCreator), every
+ * further attempt this process makes will fail identically, so we stop
+ * retrying and skip straight to the fallback. A transient failure (network
+ * blip, rate limit) must NOT set this — it should be retried next call.
+ */
+let signingUnavailable = false;
+
+/** True once we've logged the one-time explanation for why signed URLs are
+ * unavailable, so it isn't repeated on every profile fetch. */
+let warnedSigningUnavailable = false;
+
+/** True once we've logged the one-time note that resume/cover letters are
+ * falling back to permanent download-token URLs. */
+let warnedTokenFallback = false;
+
+/** Storage paths we've already logged as "not found", so a stale Firestore
+ * pointer doesn't spam the logs on every subsequent profile fetch. */
+const warnedMissingDocuments = new Set<string>();
+
+/**
+ * Distinguishes a credential/IAM signing failure (permanent for this
+ * process — no private key, or missing roles/iam.serviceAccountTokenCreator)
+ * from a transient one (network, rate limit), which should keep being
+ * retried. See functions/.env.example for the fix.
+ */
+function isCredentialSigningError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return /client_email|cannot sign data|signblob|serviceaccounttokencreator/i.test(
+        message
+    );
+}
+
+/**
+ * Generates a valid download URL for a document from student storage.
+ *
+ * Prefers a v4 signed URL (24h expiration). If signing is unavailable —
+ * either because we're against the emulator, or because Application Default
+ * Credentials can't sign a blob (memoized after the first such failure, see
+ * `signingUnavailable` above) — the behavior depends on document type:
+ *   - resume / cover letter: fall back to a PERMANENT Firebase
+ *     download-token URL. Acceptable trade-off for local-dev usability.
+ *   - grades / transcripts: return null. These must NEVER be served via a
+ *     permanent, unauthenticated URL (see the security note below).
+ *
  * @param userId - Student user ID
  * @param documentId - Document ID
  * @param documentType - Type of document (resume, cover, grades)
- * @returns Download URL or original URL if generation fails
+ * @returns Download URL, or null if the file doesn't exist, or if signing is
+ *   unavailable for a grades document
  */
 async function generateDocumentUrl(
     userId: string,
@@ -48,15 +94,27 @@ async function generateDocumentUrl(
         // Check if file exists
         const [exists] = await file.exists();
         if (!exists) {
-            logger.warn(`Document not found: ${storagePath}`);
+            // A stale Firestore pointer (e.g. a deleted Storage object) would
+            // otherwise re-log this on every profile fetch forever.
+            if (!warnedMissingDocuments.has(storagePath)) {
+                warnedMissingDocuments.add(storagePath);
+                logger.warn(`Document not found: ${storagePath}`);
+            } else {
+                logger.debug(`Document still not found: ${storagePath}`);
+            }
             return null;
         }
 
-        // Use different URL generation strategy based on environment
-        const isProduction = process.env.NODE_ENV === "production";
+        // Signed URLs whenever we're against REAL Firebase and signing is
+        // known to work — dev included, not just production. This
+        // deliberately keys off the emulator, not the environment name: the
+        // fallback below can mint a PERMANENT, unexpiring, unauthenticated
+        // download-token URL for resume/cover letter, which must never be
+        // produced for real student transcripts and grade PDFs (those return
+        // null instead whenever signing is unavailable, emulator included).
+        const canSignUrls = !useEmulators() && !signingUnavailable;
 
-        if (isProduction) {
-            // Production: Use signed URLs with 24-hour expiration
+        if (canSignUrls) {
             try {
                 const expirationDate = new Date();
                 expirationDate.setDate(expirationDate.getDate() + 1); // 24 hours from now
@@ -69,15 +127,63 @@ async function generateDocumentUrl(
 
                 return url;
             } catch (signError) {
-                logger.error(
-                    `Failed to generate signed URL, falling back to token method:`,
-                    signError
-                );
-                // Fall through to token method if signing fails
+                if (isCredentialSigningError(signError)) {
+                    // Permanent for this process — cache it so we don't
+                    // re-attempt (and re-fail) a doomed sign on every call.
+                    signingUnavailable = true;
+                    if (!warnedSigningUnavailable) {
+                        warnedSigningUnavailable = true;
+                        logger.warn(
+                            "Signed URLs are unavailable: the runtime credential " +
+                                "cannot sign a blob (Application Default Credentials " +
+                                "with no private key, or the service account is " +
+                                "missing roles/iam.serviceAccountTokenCreator). " +
+                                "Falling back to download-token URLs for resume/cover " +
+                                "letter only — grades/transcripts will return no URL " +
+                                "until this is fixed. Fix: set " +
+                                "GOOGLE_APPLICATION_CREDENTIALS_BASE64 (or impersonate " +
+                                "a service account via `gcloud auth application-default " +
+                                "login`) locally, or grant the deployed runtime service " +
+                                "account roles/iam.serviceAccountTokenCreator on itself. " +
+                                "See functions/.env.example.",
+                            signError
+                        );
+                    }
+                } else {
+                    // Transient — do not cache; retry signing next call.
+                    logger.error(
+                        `Failed to generate signed URL, falling back to token method:`,
+                        signError
+                    );
+                }
+                // Fall through to the token/null fallback below.
             }
         }
 
-        // Development: Use Firebase download tokens (works with gcloud auth)
+        // Signing is unavailable (emulator, or a cached credential failure
+        // above). Grades/transcripts must never get a permanent,
+        // unauthenticated URL — honor that rather than fall back.
+        if (documentType === "grades") {
+            logger.debug(
+                `Signing unavailable; returning no URL for grades document ${storagePath}`
+            );
+            return null;
+        }
+
+        // Resume / cover letter: use Firebase download tokens (works with
+        // gcloud auth), which is an acceptable trade-off for local-dev
+        // usability.
+        if (!warnedTokenFallback) {
+            warnedTokenFallback = true;
+            logger.warn(
+                `Signed URLs unavailable; using permanent download-token URLs for ` +
+                    `resume/cover letter documents (never for grades). Expected in ` +
+                    `local-dev without signBlob credentials — see functions/.env.example.`
+            );
+        } else {
+            logger.debug(`Using download-token URL fallback for ${storagePath}`);
+        }
+
         const [metadata] = await file.getMetadata();
         let token = metadata.metadata?.firebaseStorageDownloadTokens;
 
@@ -1901,15 +2007,20 @@ router.patch("/grades/", async (req, res): Promise<void> => {
                     resumable: false,
                 });
 
+                // Unlike resume/cover letter, a null downloadUrl here is
+                // expected (not a failure): generateDocumentUrl deliberately
+                // never mints a permanent unauthenticated URL for grades
+                // when signing is unavailable (emulator, or local-dev
+                // without signBlob credentials). The upload itself still
+                // succeeded — persist it with no URL rather than failing the
+                // request. GET /profile re-derives the URL on every fetch
+                // (and will pick up a real signed URL once signing works),
+                // so nothing is lost.
                 const downloadUrl = await generateDocumentUrl(
                     userId,
                     gradesId,
                     "grades"
                 );
-
-                if (!downloadUrl) {
-                    throw new Error("Failed to generate download URL");
-                }
 
                 await db
                     .collection("profiles")

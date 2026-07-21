@@ -55,3 +55,8 @@ export const aboutImport = () => import("@/pages/about/page");
 
 // --- Booking ---
 export const bookingImport = () => import("@/pages/(dashboard)/book/[code]/page");
+
+// --- Platform admin ---
+export const moderationQueueImport = () => import("@/pages/admin/moderation/page");
+export const adminContentImport = () => import("@/pages/admin/content/page");
+export const adminAuditLogImport = () => import("@/pages/admin/audit-log/page");

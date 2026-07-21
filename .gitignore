@@ -23,11 +23,21 @@ dist-ssr
 *.sln
 *.sw?
 
+# --- Environment config ---
+# Frontend: every VITE_* value is public (it ships inside the client bundle),
+# so the per-environment files ARE committed on purpose — see .env.example.
+# Only per-developer overrides stay local.
 .env
+.env.*.local
+
+# Backend: these hold real secrets (SMTP URL, API keys). Never commit any of
+# them; CI writes its own at deploy time. The template is the only exception.
+functions/.env
+functions/.env.*
+!functions/.env.example
 
 firestore-debug.log
 firebase-debug.log
-functions/.env
 functions/firebase-debug.log
 .data
 *firebase-export*

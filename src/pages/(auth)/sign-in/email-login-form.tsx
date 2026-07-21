@@ -9,7 +9,7 @@ import {
     FormLabel,
     FormMessage,
 } from "@/components/ui/form";
-import { sendLoginLink, TENANT_IDS } from "@/lib/auth";
+import { sendLoginLink } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { trackEvent } from "@/lib/analytics";
 import { m } from "@/paraglide/messages.js";
@@ -64,11 +64,7 @@ export function EmailLoginForm({
         try {
             // No existence pre-check, no rejection: always send the link.
             // Firebase creates the auth user on completion for new emails.
-            await sendLoginLink(
-                data.email,
-                TENANT_IDS.STUDENTS,
-                data.redirectUrl
-            );
+            await sendLoginLink(data.email, data.redirectUrl);
 
             setLinkSent(true);
             toast.success("Check your email", {
@@ -118,7 +114,7 @@ export function EmailLoginForm({
                     {linkSent ? (
                         <div className="flex flex-col items-center text-center gap-4 py-4">
                             <img
-                                src="/Tailed_Community_logo.png"
+                                src="/tailed-community-logo.png"
                                 alt="Logo"
                                 width={155}
                                 height={65}
@@ -149,7 +145,7 @@ export function EmailLoginForm({
                             >
                                 <div className="flex flex-col items-center text-center">
                                     <img
-                                        src="/Tailed_Community_logo.png"
+                                        src="/tailed-community-logo.png"
                                         alt="Logo"
                                         width={155}
                                         height={65}

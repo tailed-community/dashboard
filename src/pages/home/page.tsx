@@ -63,7 +63,7 @@ function HomeProfileNudge() {
     return (
         <Link
             to={HOME_ROUTES.me}
-            className="mb-6 inline-flex items-center gap-2 rounded-xl border border-joy-ink/8 bg-joy-grass/10 px-4 py-2 text-sm font-semibold text-joy-ink transition hover:bg-joy-grass/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60"
+            className="mb-6 flex items-center gap-2 rounded-xl border border-joy-ink/8 bg-joy-grass/10 px-4 py-2 text-sm font-semibold text-joy-ink transition hover:bg-joy-grass/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60"
         >
             Welcome back — your profile is{" "}
             <span className="font-bold text-joy-grass">{score}% complete</span>

@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { Users, Loader2 } from "lucide-react";
+import { Users, Loader2, Info } from "lucide-react";
 import { apiFetch } from "@/lib/fetch";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,6 +31,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { ImageUploadField } from "@/components/media/image-upload-field";
 import { Textarea } from "@/components/ui/textarea";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { useAuth } from "@/hooks/use-auth";
@@ -66,9 +67,6 @@ export default function CreateCommunityPage() {
     const navigate = useNavigate();
     const { user } = useAuth();
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [logoPreview, setLogoPreview] = useState<string | null>(null);
-    const [bannerPreview, setBannerPreview] = useState<string | null>(null);
-
     const form = useForm<CommunityFormData>({
         resolver: zodResolver(communitieschema),
         defaultValues: {
@@ -79,6 +77,19 @@ export default function CreateCommunityPage() {
             category: "",
         },
     });
+
+    // The card preview below mirrors whatever logo is currently selected.
+    const logoFile = form.watch("logo");
+    const [logoPreview, setLogoPreview] = useState<string | null>(null);
+    useEffect(() => {
+        if (!(logoFile instanceof File)) {
+            setLogoPreview(null);
+            return;
+        }
+        const url = URL.createObjectURL(logoFile);
+        setLogoPreview(url);
+        return () => URL.revokeObjectURL(url);
+    }, [logoFile]);
 
     // Auto-generate slug from name
     const generateSlug = (name: string) => {
@@ -130,8 +141,9 @@ export default function CreateCommunityPage() {
                 throw new Error(result.error || "Failed to create community");
             }
 
-            toast.success("Community created successfully!", {
-                description: "Your community has been published.",
+            toast.success("Community submitted for review", {
+                description:
+                    "A moderator will approve it shortly, and it'll appear publicly once approved.",
             });
 
             navigate("/communities");
@@ -314,42 +326,19 @@ export default function CreateCommunityPage() {
                                 <FormField
                                     control={form.control}
                                     name="logo"
-                                    render={({ field: { value, onChange, ...field } }) => (
+                                    render={({ field: { value, onChange } }) => (
                                         <FormItem>
                                             <FormLabel>Community Logo</FormLabel>
                                             <FormControl>
-                                                <div className="space-y-4">
-                                                    <div className="flex items-center gap-4">
-                                                        <Input
-                                                            type="file"
-                                                            accept="image/*"
-                                                            onChange={(e) => {
-                                                                const file = e.target.files?.[0];
-                                                                if (file) {
-                                                                    onChange(file);
-                                                                    const reader = new FileReader();
-                                                                    reader.onloadend = () => {
-                                                                        setLogoPreview(reader.result as string);
-                                                                    };
-                                                                    reader.readAsDataURL(file);
-                                                                }
-                                                            }}
-                                                            {...field}
-                                                        />
-                                                    </div>
-                                                    {logoPreview && (
-                                                        <div className="relative h-32 w-32 rounded-lg border-2 border-slate-200 overflow-hidden">
-                                                            <img
-                                                                src={logoPreview}
-                                                                alt="Logo preview"
-                                                                className="h-full w-full object-cover"
-                                                            />
-                                                        </div>
-                                                    )}
-                                                </div>
+                                                <ImageUploadField
+                                                    variant="community-logo"
+                                                    value={value}
+                                                    onChange={onChange}
+                                                />
                                             </FormControl>
                                             <FormDescription>
-                                                Upload a logo for your community (square images work best)
+                                                Shown as a square on your community page and as a
+                                                small tile in the communities grid.
                                             </FormDescription>
                                             <FormMessage />
                                         </FormItem>
@@ -360,42 +349,19 @@ export default function CreateCommunityPage() {
                                 <FormField
                                     control={form.control}
                                     name="banner"
-                                    render={({ field: { value, onChange, ...field } }) => (
+                                    render={({ field: { value, onChange } }) => (
                                         <FormItem>
                                             <FormLabel>Banner Image</FormLabel>
                                             <FormControl>
-                                                <div className="space-y-4">
-                                                    <div className="flex items-center gap-4">
-                                                        <Input
-                                                            type="file"
-                                                            accept="image/*"
-                                                            onChange={(e) => {
-                                                                const file = e.target.files?.[0];
-                                                                if (file) {
-                                                                    onChange(file);
-                                                                    const reader = new FileReader();
-                                                                    reader.onloadend = () => {
-                                                                        setBannerPreview(reader.result as string);
-                                                                    };
-                                                                    reader.readAsDataURL(file);
-                                                                }
-                                                            }}
-                                                            {...field}
-                                                        />
-                                                    </div>
-                                                    {bannerPreview && (
-                                                        <div className="relative h-44 w-full rounded-lg border-2 border-slate-200 overflow-hidden">
-                                                            <img
-                                                                src={bannerPreview}
-                                                                alt="Banner preview"
-                                                                className="h-full w-full object-cover"
-                                                            />
-                                                        </div>
-                                                    )}
-                                                </div>
+                                                <ImageUploadField
+                                                    variant="community-banner"
+                                                    value={value}
+                                                    onChange={onChange}
+                                                />
                                             </FormControl>
                                             <FormDescription>
-                                                Upload a banner image for your community card
+                                                Displayed as a wide banner across the top of your
+                                                community page.
                                             </FormDescription>
                                             <FormMessage />
                                         </FormItem>
@@ -435,6 +401,16 @@ export default function CreateCommunityPage() {
                                     </div>
                                 )}
 
+                                {/* Moderation notice */}
+                                <div className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                                    <Info className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+                                    <span>
+                                        New communities are reviewed by a moderator before they go live. You&apos;ll
+                                        still be able to manage it right away — it just won&apos;t appear in public
+                                        listings until it&apos;s approved.
+                                    </span>
+                                </div>
+
                                 {/* Submit Buttons */}
                                 <div className="flex gap-3 pt-4">
                                     <Button
@@ -454,7 +430,7 @@ export default function CreateCommunityPage() {
                                         {isSubmitting ? (
                                             <>
                                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                Creating...
+                                                Submitting...
                                             </>
                                         ) : (
                                             "Create Community"

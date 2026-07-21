@@ -11,6 +11,7 @@ import CommunitySettingsTab, {
 import EventAttendeesTab from "./components/event-attendees-tab.tsx";
 import CommunityMembersTab from "./components/community-members-tab.tsx";
 import CommunityAdminsTab from "./components/community-admins-tab.tsx";
+import { AdminBypassBanner } from "@/components/admin-bypass-banner";
 
 export default function CommunityAdminPage() {
     const { id: slug } = useParams<{ id: string }>();
@@ -19,6 +20,7 @@ export default function CommunityAdminPage() {
     const [community, setCommunity] = useState<CommunityData | null>(null);
     const [loading, setLoading] = useState(true);
     const [isCreator, setIsCreator] = useState(false);
+    const [editingAsPlatformAdmin, setEditingAsPlatformAdmin] = useState(false);
 
     useEffect(() => {
         if (!slug || !user) {
@@ -56,10 +58,21 @@ export default function CommunityAdminPage() {
                     updatedAt: new Date(result.community.updatedAt),
                 } as CommunityData;
 
-                setCommunity(communityData);
+                // GET /communities/:identifier is a public endpoint, so a
+                // successful response proves nothing about permission — it
+                // only means the community exists. Gate on the server's
+                // `canEdit` flag (community admin OR platform admin), which
+                // is the same signal the event edit page uses.
+                if (!result.community.canEdit) {
+                    toast.error("You don't have permission to access this page");
+                    navigate(`/communities/${slug}`);
+                    return;
+                }
 
-                // Backend already validates creator access via authentication
-                // If we get here, user is authorized
+                setCommunity(communityData);
+                setEditingAsPlatformAdmin(
+                    Boolean(result.community.editingAsPlatformAdmin)
+                );
                 setIsCreator(true);
             } catch (error) {
                 console.error("Error fetching community:", error);
@@ -111,6 +124,10 @@ export default function CommunityAdminPage() {
                             </p>
                         </div>
                     </div>
+
+                    {editingAsPlatformAdmin && (
+                        <AdminBypassBanner resource="community" />
+                    )}
                 </div>
 
                 {/* Tabbed Interface */}

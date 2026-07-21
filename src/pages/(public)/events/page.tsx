@@ -201,6 +201,13 @@ export default function EventsPage() {
                             online for everyone else.
                         </p>
 
+                        <div className="mt-7 flex flex-wrap items-center gap-3">
+                            <PlaygroundButton to={LIVE_ROUTES.eventCreate}>Host an event</PlaygroundButton>
+                            <p className="text-sm text-joy-ink-muted">
+                                Know about a hackathon or meetup we&apos;re missing? Put it on the map.
+                            </p>
+                        </div>
+
                         {!loading && events.length > 0 && (
                             <div className="mt-6 flex items-center gap-2">
                                 <span className="joy-pulse-dot h-2 w-2 rounded-full bg-joy-grass-bright" aria-hidden="true" />
