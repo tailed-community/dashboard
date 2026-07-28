@@ -8,9 +8,15 @@ import { frontendUrl } from "../lib/env";
 import { richTextField } from "../lib/rich-text";
 import { logAdminAction, diffFields } from "../lib/admin-audit";
 import { transferOwnershipSchema, resolveTargetUser } from "../lib/admin-ownership";
+import marketingAssetsRouter from "./community-marketing";
 import Busboy from "busboy";
 
 const router = Router();
+
+// Marketing / promotional files (sponsorship packages, media kits, posters).
+// Lives in its own module because it owns a subcollection and its own upload
+// pipeline; every handler in it is admin-guarded independently.
+router.use("/:communityId/marketing-assets", marketingAssetsRouter);
 
 // Communities created before moderation shipped have no `status` field.
 // Legacy rule: a missing status is treated as "approved" everywhere.
