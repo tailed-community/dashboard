@@ -35,7 +35,7 @@ export const Step = ({
         {icon}
       </div>
       <div className="ml-4">
-        <p className="text-sm font-medium leading-none">{title}</p>
+        <p className="text-sm font-bold leading-none">{title}</p>
         {description && (
           <p className="mt-1 text-sm text-muted-foreground">{description}</p>
         )}

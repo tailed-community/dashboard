@@ -145,7 +145,7 @@ export function ImageCropperDialog({
                     )}
                 </DialogHeader>
 
-                <div className="relative h-[360px] w-full overflow-hidden rounded-lg bg-slate-900">
+                <div className="relative h-[360px] w-full overflow-hidden rounded-2xl bg-joy-ink">
                     {imageSrc && (
                         <Cropper
                             image={imageSrc}
@@ -165,7 +165,7 @@ export function ImageCropperDialog({
 
                 <div className="space-y-4">
                     <div className="flex items-center gap-3">
-                        <ZoomIn className="h-4 w-4 shrink-0 text-slate-400" />
+                        <ZoomIn className="h-4 w-4 shrink-0 text-muted-foreground" />
                         <Slider
                             value={[zoom]}
                             min={1}

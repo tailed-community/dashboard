@@ -60,8 +60,10 @@ export function TimeField({
                 }
             }}
             className={cn(
-                "flex h-9 w-full items-center gap-1 rounded-md border border-input bg-transparent px-3 shadow-xs transition-[color,box-shadow] dark:bg-input/30",
-                "focus-within:border-ring focus-within:ring-ring/50 focus-within:ring-[3px]",
+                // Kept in lockstep with <Input> so the wrapper is indistinguishable
+                // from a plain text field sitting next to it.
+                "flex h-10 w-full items-center gap-1 rounded-xl border border-input bg-background px-3.5 transition-[color,box-shadow,border-color]",
+                "hover:border-joy-ink/25 focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-ring/60",
                 disabled && "pointer-events-none opacity-50",
                 className
             )}
@@ -99,14 +101,17 @@ export function TimeField({
                 setDate={setDate}
                 disabled={disabled}
                 ref={periodRef}
-                className="h-7 w-auto gap-1 border-0 bg-transparent px-1 shadow-none focus:ring-0 focus-visible:ring-0 dark:bg-transparent dark:hover:bg-transparent"
+                // `data-[size=...]:h-*` on SelectTrigger outranks a bare `h-7`,
+                // so the AM/PM select has to override on the same attribute or
+                // it stretches to the wrapper's full height.
+                className="w-auto gap-1 border-0 bg-transparent px-1 shadow-none hover:border-transparent focus:ring-0 focus-visible:ring-0 data-[size=default]:h-7 data-[size=sm]:h-7"
                 onLeftFocus={() => minuteRef.current?.focus()}
             />
             {clearable && date && !disabled && (
                 <button
                     type="button"
                     aria-label="Clear time"
-                    className="ml-auto rounded-sm p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                    className="ml-auto rounded-lg p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                     onClick={() => setDate(undefined)}
                 >
                     <X className="size-3.5" />

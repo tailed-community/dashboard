@@ -55,7 +55,7 @@ export const HTMLContent: React.FC<HTMLContentProps> = ({
                     "prose-blockquote:border-l-4 prose-blockquote:border-primary prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-muted-foreground",
                     // Text formatting
                     "prose-strong:font-bold prose-strong:text-foreground",
-                    "prose-a:text-primary prose-a:underline prose-a:font-medium hover:prose-a:text-primary/80",
+                    "prose-a:text-primary prose-a:underline prose-a:font-bold hover:prose-a:text-primary/80",
                     "prose-em:italic prose-em:text-foreground",
                     // Direct element targeting for better control
                     "[&_h1]:text-3xl [&_h1]:font-bold [&_h1]:my-4 first:[&_h1]:mt-0",
@@ -78,7 +78,7 @@ export const HTMLContent: React.FC<HTMLContentProps> = ({
                         {skills.map((skill, index) => (
                             <span
                                 key={index}
-                                className="inline-flex items-center rounded-md bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary ring-1 ring-inset ring-primary/20 transition-colors hover:bg-primary/20"
+                                className="inline-flex items-center rounded-xl bg-primary/10 px-3 py-1.5 text-sm font-bold text-primary ring-1 ring-inset ring-primary/20 transition-colors hover:bg-primary/20"
                             >
                                 {skill}
                             </span>
