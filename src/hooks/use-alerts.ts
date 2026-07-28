@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useAuth } from "@/hooks/use-auth";
 import {
   getMyAlerts,
   getAlert,
@@ -17,14 +18,35 @@ export interface MyAlertsState {
  * Live list of the signed-in user's job alerts (`GET /alerts/mine`).
  * Mirrors the `useLiveJobs` useState + useEffect + `cancelled`-flag pattern
  * (`joy-live-jobs.ts`). Bump the internal `reloadKey` via `refetch` to reload.
+ *
+ * Gated on auth, and deliberately keyed on `user?.uid` rather than firing once
+ * on mount. `/alerts/mine` is authenticated, and `authenticatedFetch` reads
+ * `studentAuth.currentUser` at call time — which is still null until Firebase
+ * restores the session. Since auth is non-blocking, this hook can mount before
+ * that happens, so an unconditional fetch would go out with no Authorization
+ * header and 401. Not just console noise: nothing re-ran the request once auth
+ * landed, so a signed-in user's alert count sat at 0. Logged-out visitors (the
+ * public home mounts this via `useProfileSummary`) now skip the call entirely.
  */
 export function useMyAlerts(): MyAlertsState {
+  const { user, loading: authLoading } = useAuth();
   const [alerts, setAlerts] = useState<JobAlert[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState<number>(0);
 
   useEffect(() => {
+    // Auth still resolving — stay in the loading state rather than briefly
+    // reporting "no alerts" for a user who has them.
+    if (authLoading) return;
+
+    if (!user) {
+      setAlerts([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
 
     async function load() {
@@ -50,7 +72,7 @@ export function useMyAlerts(): MyAlertsState {
     return () => {
       cancelled = true;
     };
-  }, [reloadKey]);
+  }, [user?.uid, authLoading, reloadKey]);
 
   return { alerts, loading, error, refetch: () => setReloadKey((k) => k + 1) };
 }
