@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { DateTime } from "luxon";
-import { ArrowLeft, CalendarDays, ExternalLink, Pencil, Sparkles, Users } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, CalendarDays, ExternalLink, Pencil, Sparkles, Users } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { usePlatformAdmin } from "@/hooks/use-platform-admin";
 import { apiFetch } from "@/lib/fetch";
@@ -26,13 +26,16 @@ type DetailEvent = EventItem | MockEventItem;
  * `ApiEvent` doesn't bother declaring (it's typed loosely on purpose — see
  * playground-events.tsx) are still present on the wire. The first two decide
  * the real register/RSVP CTA below; `canEdit` (with `createdBy` as a fallback)
- * decides whether to offer the organizer their "Edit event" shortcut.
+ * decides whether to offer the organizer their "Edit event" shortcut;
+ * `communityId` (a community doc id — `/communities/:idOrSlug` accepts either)
+ * turns the host line into a link through to the community that's hosting.
  */
 type PublicApiEvent = ApiEvent & {
     requiresApproval?: boolean;
     registrationLink?: string;
     createdBy?: string;
     canEdit?: boolean;
+    communityId?: string;
 };
 
 function isMockEvent(event: DetailEvent): event is MockEventItem {
@@ -188,6 +191,14 @@ export default function EventDetailPage() {
         navigate(`/events/${id}/register`);
     }
 
+    // Community-hosted events link through to their host's page, where the rest
+    // of that community's upcoming/past events live. Mock/sample events (no
+    // `rawEvent`) and custom-host events have nothing to link to.
+    const hostCommunityPath =
+        rawEvent?.hostType === "community" && rawEvent.communityId
+            ? LIVE_ROUTES.communityDetail(rawEvent.communityId)
+            : null;
+
     const canonicalPath = `/events/${id}`;
     const seoDescription =
         htmlToExcerpt(descriptionText(event)) || "Student community event on Tail'ed.";
@@ -281,7 +292,20 @@ export default function EventDetailPage() {
                             <ModeIcon mode={event.mode as EventMode} className="h-4 w-4 shrink-0" />
                             {event.location}
                         </span>
-                        <span className="joy-mono text-xs text-joy-ink/40">Hosted by {event.host}</span>
+                        {hostCommunityPath ? (
+                            <Link
+                                to={hostCommunityPath}
+                                className="joy-mono group inline-flex w-fit items-center gap-1 rounded text-xs text-joy-ink/40 hover:text-joy-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60"
+                            >
+                                Hosted by{" "}
+                                <span className="font-bold text-joy-grass underline decoration-joy-grass/40 underline-offset-2 group-hover:decoration-joy-grass">
+                                    {event.host}
+                                </span>
+                                <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-joy-grass" aria-hidden="true" />
+                            </Link>
+                        ) : (
+                            <span className="joy-mono text-xs text-joy-ink/40">Hosted by {event.host}</span>
+                        )}
                         <div className="mt-1 flex items-center gap-1.5 border-t border-joy-ink/8 pt-3 text-sm text-joy-ink-muted">
                             <Users className="h-4 w-4 shrink-0" aria-hidden="true" />
                             {event.attendees.toLocaleString("en-US")} going

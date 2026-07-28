@@ -59,20 +59,24 @@ export interface EventItem {
     description?: string;
 }
 
-/** "Today" / "Tomorrow" / "Wed" / "In 12d" / "Mar 4" — same rolling window logic as the production events page. Exported for reuse by the mock-data file and the detail page. */
+/** "Today" / "Tomorrow" / "Wed" / "In 12d" / "Mar 4" — same rolling window logic as the production events page. Past events read "2 months ago", so lists that include them (a community's event history) aren't all labelled "Today". Exported for reuse by the mock-data file and the detail page. */
 export function formatEventWhen(startDate: string, startTime: string): { date: string; time: string; relative: string; daysUntil: number } {
     const dt = DateTime.fromISO(`${startDate}T${startTime}`);
+    if (!dt.isValid) return { date: "TBA", time: "", relative: "TBA", daysUntil: 0 };
     const now = DateTime.now();
     const diffDays = Math.ceil(dt.diff(now, "days").days || 0);
     let relative: string;
-    if (diffDays <= 0) relative = "Today";
+    // `diffDays` is ceil'd, so an event that started earlier today lands on 0
+    // (not negative) and still reads "Today".
+    if (diffDays < 0) relative = dt.toRelative({ base: now }) || dt.toFormat("MMM d, yyyy");
+    else if (diffDays === 0) relative = "Today";
     else if (diffDays === 1) relative = "Tomorrow";
     else if (diffDays <= 7) relative = dt.toFormat("ccc");
     else if (diffDays <= 30) relative = `In ${diffDays}d`;
     else relative = dt.toFormat("MMM d");
     return {
-        date: dt.isValid ? dt.toFormat("MMM d, yyyy") : "TBA",
-        time: dt.isValid ? dt.toFormat("h:mm a") : "",
+        date: dt.toFormat("MMM d, yyyy"),
+        time: dt.toFormat("h:mm a"),
         relative,
         daysUntil: diffDays,
     };
