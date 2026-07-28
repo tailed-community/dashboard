@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Check, Loader2, Settings, Users } from "lucide-react";
+import { ArrowLeft, CalendarDays, Check, Loader2, Settings, Users } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { usePlatformAdmin } from "@/hooks/use-platform-admin";
@@ -13,7 +13,9 @@ import { getMockCommunityById } from "@/pages/design-lab/playground-communities-
 import { PlaygroundShell } from "@/components/playground/playground-chrome";
 import { PlaygroundButton } from "@/components/playground/playground-button";
 import { LIVE_ROUTES } from "@/components/playground/playground-routes";
-import { formatMemberCount } from "@/components/playground/joy-primitives";
+import { FRESH_ACCENTS, formatMemberCount } from "@/components/playground/joy-primitives";
+import { JoyEventTile } from "@/components/playground/joy-event-tile";
+import { toEventItem, type ApiEvent, type EventItem } from "@/pages/design-lab/playground-events";
 import { RichText } from "@/components/ui/rich-text";
 import { htmlToExcerpt } from "@/lib/html";
 
@@ -48,6 +50,13 @@ type CommunityDetail = Community & {
     admins?: string[];
 };
 
+/** How many past events show before the "show all" toggle. */
+const PAST_PREVIEW_COUNT = 4;
+
+function toEventItems(raw: unknown): EventItem[] {
+    return Array.isArray(raw) ? (raw as ApiEvent[]).map(toEventItem) : [];
+}
+
 export default function CommunityDetailJoyPage() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
@@ -59,6 +68,11 @@ export default function CommunityDetailJoyPage() {
     const [notFound, setNotFound] = useState(false);
     const [isMember, setIsMember] = useState(false);
     const [joinLoading, setJoinLoading] = useState(false);
+    const [upcomingEvents, setUpcomingEvents] = useState<EventItem[]>([]);
+    const [pastEvents, setPastEvents] = useState<EventItem[]>([]);
+    const [eventsLoading, setEventsLoading] = useState(true);
+    const [eventsFailed, setEventsFailed] = useState(false);
+    const [showAllPast, setShowAllPast] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -154,6 +168,49 @@ export default function CommunityDetailJoyPage() {
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [id]);
+
+    // This community's own event history — what's coming up, and what they've
+    // already run — so someone who landed here from a single event can see more
+    // from the same group. `communityId` is the community doc id (the events
+    // collection stores that, never the slug), so this keys off the resolved
+    // `community.id` rather than the `:id` route param, which may be a slug.
+    // Sample/mock communities have no real events behind them.
+    const communityId = isMock ? undefined : community?.id;
+    useEffect(() => {
+        if (!communityId) return;
+        let cancelled = false;
+
+        (async () => {
+            setEventsLoading(true);
+            setEventsFailed(false);
+            setShowAllPast(false);
+            try {
+                const query = `communityId=${encodeURIComponent(communityId)}`;
+                const [upcomingRes, pastRes] = await Promise.all([
+                    apiFetch(`/public/events?${query}&upcoming=true&limit=24`),
+                    apiFetch(`/public/events?${query}&limit=24`),
+                ]);
+                const [upcomingData, pastData] = await Promise.all([upcomingRes.json(), pastRes.json()]);
+                if (!upcomingRes.ok) throw new Error(upcomingData?.error || "Failed to load upcoming events");
+                if (!pastRes.ok) throw new Error(pastData?.error || "Failed to load past events");
+                if (cancelled) return;
+                setUpcomingEvents(toEventItems(upcomingData.events));
+                setPastEvents(toEventItems(pastData.events));
+            } catch (err) {
+                console.error(`Error fetching events for community ${communityId}:`, err);
+                if (cancelled) return;
+                setUpcomingEvents([]);
+                setPastEvents([]);
+                setEventsFailed(true);
+            } finally {
+                if (!cancelled) setEventsLoading(false);
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [communityId]);
 
     // Keep membership in sync if the auth state resolves/changes after the
     // community has already loaded (e.g. user signs in on this page).
@@ -418,6 +475,105 @@ export default function CommunityDetailJoyPage() {
                                 className="mt-3"
                             />
                         </div>
+
+                        {/* ---------------- Events ---------------- */}
+                        {!isMock && (
+                            <section className="mt-10" aria-labelledby="community-events-heading">
+                                <div className="flex flex-wrap items-baseline justify-between gap-3">
+                                    <h2
+                                        id="community-events-heading"
+                                        className="joy-display text-2xl font-extrabold text-joy-ink"
+                                    >
+                                        Events
+                                    </h2>
+                                    {!eventsLoading && !eventsFailed && (upcomingEvents.length > 0 || pastEvents.length > 0) && (
+                                        <p className="joy-mono text-xs text-joy-ink-muted">
+                                            {upcomingEvents.length} upcoming · {pastEvents.length} past
+                                        </p>
+                                    )}
+                                </div>
+
+                                {eventsLoading ? (
+                                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                                        <div className="h-40 animate-pulse rounded-2xl border-2 border-joy-ink/8 bg-white" />
+                                        <div className="h-40 animate-pulse rounded-2xl border-2 border-joy-ink/8 bg-white" />
+                                    </div>
+                                ) : eventsFailed ? (
+                                    <p className="mt-4 rounded-2xl border border-joy-ink/8 bg-white p-5 text-sm text-joy-ink-muted">
+                                        We couldn&apos;t load this community&apos;s events just now — try refreshing in a
+                                        moment.
+                                    </p>
+                                ) : (
+                                    <>
+                                        <p className="joy-mono mt-6 text-xs font-bold uppercase tracking-wide text-joy-grass">
+                                            Upcoming
+                                        </p>
+                                        {upcomingEvents.length > 0 ? (
+                                            <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                                                {upcomingEvents.map((event, i) => (
+                                                    <JoyEventTile
+                                                        key={event.id}
+                                                        event={event}
+                                                        accent={FRESH_ACCENTS[i % FRESH_ACCENTS.length]}
+                                                    />
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div className="mt-3 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-joy-ink/8 bg-white p-5 shadow-sm">
+                                                <div>
+                                                    <p className="joy-display text-base font-bold text-joy-ink">
+                                                        Nothing on the calendar yet
+                                                    </p>
+                                                    <p className="mt-1 text-sm text-joy-ink-muted">
+                                                        {pastEvents.length > 0
+                                                            ? "This community hasn't posted its next event — their past ones are below."
+                                                            : "Join to hear about it first when they post their next one."}
+                                                    </p>
+                                                </div>
+                                                <PlaygroundButton
+                                                    to={LIVE_ROUTES.events}
+                                                    variant="outline"
+                                                    className="shrink-0"
+                                                >
+                                                    <CalendarDays className="h-4 w-4" aria-hidden="true" />
+                                                    Browse all events
+                                                </PlaygroundButton>
+                                            </div>
+                                        )}
+
+                                        {pastEvents.length > 0 && (
+                                            <>
+                                                <p className="joy-mono mt-8 text-xs font-bold uppercase tracking-wide text-joy-ink/40">
+                                                    Past events
+                                                </p>
+                                                <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                                                    {(showAllPast ? pastEvents : pastEvents.slice(0, PAST_PREVIEW_COUNT)).map(
+                                                        (event, i) => (
+                                                            <JoyEventTile
+                                                                key={event.id}
+                                                                event={event}
+                                                                accent={FRESH_ACCENTS[i % FRESH_ACCENTS.length]}
+                                                            />
+                                                        )
+                                                    )}
+                                                </div>
+                                                {pastEvents.length > PAST_PREVIEW_COUNT && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowAllPast((v) => !v)}
+                                                        className="mt-4 rounded text-sm font-bold text-joy-grass hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60"
+                                                    >
+                                                        {showAllPast
+                                                            ? "Show fewer past events"
+                                                            : `Show all ${pastEvents.length} past events`}
+                                                    </button>
+                                                )}
+                                            </>
+                                        )}
+                                    </>
+                                )}
+                            </section>
+                        )}
                     </div>
                 </section>
             </PlaygroundShell>

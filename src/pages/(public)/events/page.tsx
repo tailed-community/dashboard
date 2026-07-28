@@ -8,6 +8,7 @@ import { PlaygroundShell } from "@/components/playground/playground-chrome";
 import { PlaygroundButton } from "@/components/playground/playground-button";
 import { LIVE_ROUTES } from "@/components/playground/playground-routes";
 import { FRESH_ACCENTS, ModeIcon, modeChipClass, type EventMode } from "@/components/playground/joy-primitives";
+import { JoyEventTile } from "@/components/playground/joy-event-tile";
 import { Seo } from "@/components/seo";
 
 /**
@@ -37,40 +38,6 @@ const MODE_FILTERS: { label: string; value: "all" | Mode }[] = [
     { label: "In Person", value: "In Person" },
     { label: "Hybrid", value: "Hybrid" },
 ];
-
-/** One card in the events grid — rounded-2xl white card, cycling accent border, matches the fresh-drops job grid. */
-function EventTile({ event, accent }: { event: EventItem; accent: string }) {
-    return (
-        <Link
-            to={LIVE_ROUTES.eventDetail(event.slug || event.id)}
-            className={`flex flex-col rounded-2xl border-2 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60 ${accent}`}
-        >
-            <div className="flex items-center justify-between gap-2">
-                <span className="joy-mono text-xs font-bold uppercase tracking-wide text-joy-grass">
-                    {event.relative}
-                </span>
-                <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${modeChipClass(event.mode as EventMode)}`}>
-                    {event.mode}
-                </span>
-            </div>
-            <p className="joy-display mt-2 line-clamp-2 text-base font-bold text-joy-ink">{event.title}</p>
-            <p className="joy-mono mt-1 text-xs text-joy-ink-muted">
-                {event.date} · {event.time}
-            </p>
-            <div className="mt-3 flex items-center gap-1.5 text-xs text-joy-ink/50">
-                <ModeIcon mode={event.mode as EventMode} className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">{event.city || event.location}</span>
-            </div>
-            <div className="mt-3 flex items-center justify-between gap-2 border-t border-joy-ink/8 pt-3">
-                <span className="truncate text-xs font-semibold text-joy-ink-muted">{event.host}</span>
-                <span className="flex shrink-0 items-center gap-1 text-xs text-joy-ink/40">
-                    <Users className="h-3.5 w-3.5" aria-hidden="true" />
-                    {event.attendees}
-                </span>
-            </div>
-        </Link>
-    );
-}
 
 export default function EventsPage() {
     const [events, setEvents] = useState<EventItem[]>([]);
@@ -412,7 +379,7 @@ export default function EventsPage() {
                         ) : (
                             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                                 {gridEvents.map((event, i) => (
-                                    <EventTile key={event.id} event={event} accent={FRESH_ACCENTS[i % FRESH_ACCENTS.length]} />
+                                    <JoyEventTile key={event.id} event={event} accent={FRESH_ACCENTS[i % FRESH_ACCENTS.length]} />
                                 ))}
                             </div>
                         )}
