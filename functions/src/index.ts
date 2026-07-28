@@ -15,6 +15,7 @@ import adminRouter from "./routes/admin";
 import publicRouter from "./routes/public";
 import alertsRouter from "./routes/alerts";
 import surveysRouter from "./routes/surveys";
+import shareRouter from "./routes/share";
 import { jobsDigest } from "./scheduled/jobs-digest";
 import { onboardingEmails } from "./scheduled/onboarding-emails";
 
@@ -73,6 +74,9 @@ app.use("/communities", communityRouter);
 app.use("/admin", adminRouter);
 app.use("/alerts", alertsRouter);
 app.use("/surveys", surveysRouter);
+// Public share links (/s/:shareId, /f/:shareId). Mounted at the root because
+// Firebase Hosting rewrites those exact paths here — see firebase.json.
+app.use(shareRouter);
 
 // Validate configuration at load time so a misconfigured environment fails
 // immediately and visibly, rather than as a mysterious 500 on the first

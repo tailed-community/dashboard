@@ -18,7 +18,17 @@
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "frameworksBackend": {
       "region": "us-central1"
-    }
+    },
+    "rewrites": [
+      {
+        "source": "/s/**",
+        "function": { "functionId": "app", "region": "us-central1" }
+      },
+      {
+        "source": "/f/**",
+        "function": { "functionId": "app", "region": "us-central1" }
+      }
+    ]
   },
   "emulators": {
     "auth": {

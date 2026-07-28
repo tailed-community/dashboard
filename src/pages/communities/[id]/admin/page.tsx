@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/use-auth";
-import { ArrowLeft, Loader2, Settings, Users, UserCog } from "lucide-react";
+import { ArrowLeft, CalendarDays, Loader2, Megaphone, Settings, Users, UserCog } from "lucide-react";
 import { apiFetch } from "@/lib/fetch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
@@ -9,8 +9,10 @@ import CommunitySettingsTab, {
     type CommunityData,
 } from "./components/community-settings-tab.tsx";
 import EventAttendeesTab from "./components/event-attendees-tab.tsx";
+import CommunityEventsTab from "./components/community-events-tab.tsx";
 import CommunityMembersTab from "./components/community-members-tab.tsx";
 import CommunityAdminsTab from "./components/community-admins-tab.tsx";
+import CommunityMarketingTab from "./components/community-marketing-tab.tsx";
 import { AdminBypassBanner } from "@/components/admin-bypass-banner";
 
 export default function CommunityAdminPage() {
@@ -120,7 +122,7 @@ export default function CommunityAdminPage() {
                                 {community.name} Admin
                             </h1>
                             <p className="text-slate-600 mt-2">
-                                Manage your community settings and event attendees
+                                Manage your community settings, events, and members
                             </p>
                         </div>
                     </div>
@@ -132,10 +134,18 @@ export default function CommunityAdminPage() {
 
                 {/* Tabbed Interface */}
                 <Tabs defaultValue="settings" className="w-full">
-                    <TabsList className="grid w-full max-w-3xl grid-cols-4 mb-8">
+                    <TabsList className="grid w-full max-w-5xl grid-cols-6 mb-8">
                         <TabsTrigger value="settings" className="flex items-center gap-2">
                             <Settings className="h-4 w-4" />
                             Settings
+                        </TabsTrigger>
+                        <TabsTrigger value="events" className="flex items-center gap-2">
+                            <CalendarDays className="h-4 w-4" />
+                            Events
+                        </TabsTrigger>
+                        <TabsTrigger value="marketing" className="flex items-center gap-2">
+                            <Megaphone className="h-4 w-4" />
+                            Marketing
                         </TabsTrigger>
                         <TabsTrigger value="admins" className="flex items-center gap-2">
                             <UserCog className="h-4 w-4" />
@@ -153,6 +163,14 @@ export default function CommunityAdminPage() {
 
                     <TabsContent value="settings">
                         <CommunitySettingsTab community={community} onUpdate={setCommunity} />
+                    </TabsContent>
+
+                    <TabsContent value="events">
+                        <CommunityEventsTab communityId={community.id} />
+                    </TabsContent>
+
+                    <TabsContent value="marketing">
+                        <CommunityMarketingTab communityId={community.id} />
                     </TabsContent>
 
                     <TabsContent value="admins">
