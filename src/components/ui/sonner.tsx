@@ -14,8 +14,17 @@ const Toaster = ({ ...props }: ToasterProps) => {
           "--normal-bg": "var(--popover)",
           "--normal-text": "var(--popover-foreground)",
           "--normal-border": "var(--border)",
+          // Joy silhouette: same 2xl radius as cards and dialogs.
+          "--border-radius": "1rem",
+          "--success-bg": "var(--joy-mint)",
+          "--success-text": "var(--joy-grass)",
+          "--success-border": "var(--joy-grass)",
+          "--error-bg": "var(--card)",
+          "--error-text": "var(--destructive)",
+          "--error-border": "var(--destructive)",
         } as React.CSSProperties
       }
+      toastOptions={{ className: "font-joy-body font-semibold" }}
       {...props}
     />
   );

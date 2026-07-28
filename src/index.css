@@ -60,6 +60,8 @@
   --color-joy-sky-ink: var(--joy-sky-ink);
   --color-joy-sun: var(--joy-sun);
   --color-joy-sun-ink: var(--joy-sun-ink);
+  --color-joy-berry: var(--joy-berry);
+  --color-joy-berry-deep: var(--joy-berry-deep);
   --font-joy-display: 'Baloo 2', ui-rounded, system-ui, sans-serif;
   --font-joy-body: 'Nunito', ui-sans-serif, system-ui, sans-serif;
   --color-sidebar: var(--sidebar);
@@ -73,45 +75,12 @@
 }
 
 :root {
-  --radius: 0.75rem;
-  --background: oklch(0.985 0.01 75);
-  --foreground: oklch(0.25 0.02 45);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.25 0.02 45);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.25 0.02 45);
-  --primary: oklch(0.25 0.02 45);
-  --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.97 0.008 75);
-  --secondary-foreground: oklch(0.25 0.02 45);
-  --muted: oklch(0.97 0.008 75);
-  --muted-foreground: oklch(0.52 0.015 45);
-  --accent: oklch(0.77 0.08 220);
-  --accent-foreground: oklch(0.99 0 0);
-  --destructive: oklch(0.64 0.22 25);
-  --border: oklch(0.91 0.01 75);
-  --input: oklch(0.93 0.008 75);
-  --ring: oklch(0.62 0.15 45);
-  --chart-1: oklch(0.62 0.15 45);
-  --chart-2: oklch(0.88 0.12 80);
-  --chart-3: oklch(0.77 0.08 220);
-  --chart-4: oklch(0.64 0.22 25);
-  --chart-5: oklch(0.82 0.06 280);
-  --brand-orange: oklch(0.62 0.15 45);
-  --brand-yellow: oklch(0.88 0.12 80);
-  --brand-blue: oklch(0.7958 0.0615 254.67);
-  --brand-cream: oklch(0.985 0.01 75);
-  --brand-cream-50: oklch(0.985 0.01 75);
-  --brand-cream-100: oklch(0.96 0.02 75);
-  --brand-cream-200: oklch(0.92 0.03 75);
-  --brand-cream-300: oklch(0.87 0.04 75);
-  --brand-cream-400: oklch(0.75 0.05 75);
-  --brand-cream-500: oklch(0.65 0.05 75);
-  --brand-cream-600: oklch(0.55 0.05 75);
-  --brand-cream-700: oklch(0.45 0.05 75);
-  --brand-cream-800: oklch(0.35 0.05 75);
-  --brand-cream-900: oklch(0.25 0.05 75);
-  --brand-cream-950: oklch(0.15 0.05 75);
+  /* ---------------- Joy palette (source of truth) ----------------
+   * Every other token below is derived from these. The playground/joy
+   * components reference them directly (bg-joy-surface, text-joy-ink, ...);
+   * the shadcn components in src/components/ui reference them through the
+   * semantic aliases further down, so both halves of the site share one
+   * palette. Change a colour here and it moves everywhere. */
   --joy-surface: #FFFBF0;
   --joy-surface-sunk: #FFF3DC;
   --joy-surface-alt: #FFF6E0;
@@ -125,48 +94,121 @@
   --joy-sky-ink: #0A6FA8;
   --joy-sun: #FFC800;
   --joy-sun-ink: #8A6200;
-  --sidebar: oklch(0.99 0 0);
-  --sidebar-foreground: oklch(0.25 0.01 85);
-  --sidebar-primary: oklch(0.25 0.01 85);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.97 0.005 85);
-  --sidebar-accent-foreground: oklch(0.25 0.01 85);
-  --sidebar-border: oklch(0.93 0.005 85);
-  --sidebar-ring: oklch(0.708 0 0);
+  /* Berry: the joy palette had no red, but destructive actions need one that
+   * sits in the same warm, saturated family. 4.6:1 on white/cream. */
+  --joy-berry: #C62828;
+  --joy-berry-deep: #8E1C1C;
+
+  /* Hairlines and washes are ink-at-low-alpha in the joy pages
+   * (border-joy-ink/8, hover:bg-joy-ink/5) so they composite over whatever
+   * surface is behind them. The semantic tokens keep that property. */
+  --joy-ink-rgb: 43 33 24;
+
+  --radius: 0.75rem;
+
+  /* ---------------- shadcn semantic aliases -> joy ---------------- */
+  --background: var(--joy-surface);
+  --foreground: var(--joy-ink);
+  --card: #FFFFFF;
+  --card-foreground: var(--joy-ink);
+  --popover: #FFFFFF;
+  --popover-foreground: var(--joy-ink);
+  /* Primary is the grass CTA, not the near-black it used to be — matches
+   * PlaygroundButton's primary variant. */
+  --primary: var(--joy-grass);
+  --primary-foreground: #FFFFFF;
+  --secondary: var(--joy-surface-sunk);
+  --secondary-foreground: var(--joy-ink);
+  --muted: var(--joy-surface-alt);
+  --muted-foreground: var(--joy-ink-muted);
+  /* Accent is a hover/selected wash (menus, ghost buttons, skeletons), so it
+   * has to stay light — mint, with ink on top. */
+  --accent: var(--joy-mint);
+  --accent-foreground: var(--joy-ink);
+  --destructive: var(--joy-berry);
+  --destructive-deep: var(--joy-berry-deep);
+  --border: rgb(var(--joy-ink-rgb) / 0.12);
+  --input: rgb(var(--joy-ink-rgb) / 0.14);
+  --ring: var(--joy-grass);
+  --chart-1: var(--joy-grass);
+  --chart-2: var(--joy-sun);
+  --chart-3: var(--joy-sky);
+  --chart-4: var(--joy-berry);
+  --chart-5: var(--joy-sky-ink);
+
+  /* ---------------- Legacy brand-* aliases ----------------
+   * Pre-joy pages (events, communities, admin, account) still reference
+   * these. Rather than sweep ~150 call sites, the tokens now resolve to
+   * their joy counterparts so those pages inherit the palette. The
+   * design-lab research deliberately moved off orange
+   * (docs/design-research/2026-07-landing-design-lab-research.md), so
+   * brand-orange — the old conversion colour — resolves to grass.
+   * Sweep the call sites and delete this block when the pages are reskinned. */
+  --brand-orange: var(--joy-grass);
+  --brand-yellow: var(--joy-sun);
+  --brand-blue: var(--joy-sky);
+  --brand-cream: var(--joy-surface);
+  --brand-cream-50: var(--joy-surface);
+  --brand-cream-100: var(--joy-surface-alt);
+  --brand-cream-200: var(--joy-surface-sunk);
+  --brand-cream-300: #F2E6CE;
+  --brand-cream-400: #D9C8AB;
+  --brand-cream-500: #B7A488;
+  --brand-cream-600: #8F7E64;
+  --brand-cream-700: var(--joy-ink-muted);
+  --brand-cream-800: #4A3D30;
+  --brand-cream-900: var(--joy-ink);
+  --brand-cream-950: #1A130D;
+
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: var(--joy-ink);
+  --sidebar-primary: var(--joy-grass);
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: var(--joy-mint);
+  --sidebar-accent-foreground: var(--joy-ink);
+  --sidebar-border: rgb(var(--joy-ink-rgb) / 0.12);
+  --sidebar-ring: var(--joy-grass);
 }
 
+/* Nothing in the app adds `.dark` today — there is no theme toggle. The block
+ * is kept so the `dark:` variants scattered through src/components/ui aren't
+ * dangling, and it's tuned to the joy palette (warm ink instead of the stock
+ * neutral greys) so switching it on later isn't a redesign. */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --joy-surface: #1A130D;
+  --joy-surface-sunk: #120D08;
+  --joy-surface-alt: #241A12;
+  --joy-mint: #24331A;
+  --joy-ink: #FFF6E4;
+  --joy-ink-muted: #BCAC97;
+  --joy-ink-rgb: 255 246 228;
+  --background: var(--joy-surface);
+  --foreground: var(--joy-ink);
+  --card: var(--joy-surface-alt);
+  --card-foreground: var(--joy-ink);
+  --popover: var(--joy-surface-alt);
+  --popover-foreground: var(--joy-ink);
+  --primary: var(--joy-grass-bright);
+  --primary-foreground: #10240A;
+  --secondary: #2E2218;
+  --secondary-foreground: var(--joy-ink);
+  --muted: #2E2218;
+  --muted-foreground: var(--joy-ink-muted);
+  --accent: var(--joy-mint);
+  --accent-foreground: var(--joy-ink);
+  --destructive: #F26B6B;
+  --destructive-deep: #A32E2E;
+  --border: rgb(var(--joy-ink-rgb) / 0.14);
+  --input: rgb(var(--joy-ink-rgb) / 0.18);
+  --ring: var(--joy-grass-bright);
+  --sidebar: var(--joy-surface-alt);
+  --sidebar-foreground: var(--joy-ink);
+  --sidebar-primary: var(--joy-grass-bright);
+  --sidebar-primary-foreground: #10240A;
+  --sidebar-accent: var(--joy-mint);
+  --sidebar-accent-foreground: var(--joy-ink);
+  --sidebar-border: rgb(var(--joy-ink-rgb) / 0.14);
+  --sidebar-ring: var(--joy-grass-bright);
 }
 
 @layer base {
@@ -174,13 +216,16 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-joy-body;
     font-feature-settings: "rlig" 1, "calt" 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+  /* Baloo 2 for headings, Nunito for everything else — the joy pages opt in
+   * per-element with `.joy-display` / `font-joy-body`; making it the default
+   * pulls the pre-joy pages onto the same type ramp without touching them. */
   h1, h2, h3, h4, h5, h6 {
-    @apply font-semibold tracking-tight;
+    @apply font-joy-display font-bold tracking-tight;
   }
   button {
     @apply transition-all duration-200;
@@ -209,6 +254,23 @@
 .joy-mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-variant-numeric: tabular-nums;
+}
+
+/* Chunky pressed-edge affordance: a solid bottom shadow that collapses as the
+ * control is pushed down. Shared by PlaygroundButton's primary variant and the
+ * shadcn <Button>, so both feel identical. Set --joy-press-edge to colour the
+ * edge (defaults to a low-alpha ink for light surfaces). */
+.joy-press {
+  box-shadow: 0 3px 0 var(--joy-press-edge, rgb(var(--joy-ink-rgb) / 0.15));
+}
+.joy-press:active:not(:disabled):not([aria-disabled="true"]) {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--joy-press-edge, rgb(var(--joy-ink-rgb) / 0.15));
+}
+@media (prefers-reduced-motion: reduce) {
+  .joy-press:active:not(:disabled):not([aria-disabled="true"]) {
+    transform: none;
+  }
 }
 
 @keyframes joyPulse {

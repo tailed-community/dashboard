@@ -140,7 +140,7 @@ export function RichTextEditor({
   }, [value, editor]);
 
   return (
-    <div className={cn("border rounded-md bg-background overflow-hidden", className)}>
+    <div className={cn("border rounded-xl bg-background overflow-hidden", className)}>
       <MenuBar editor={editor} />
       <EditorContent editor={editor} />
     </div>

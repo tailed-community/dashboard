@@ -99,7 +99,7 @@ export function DatePicker({
                             role="button"
                             tabIndex={0}
                             aria-label="Clear date"
-                            className="ml-auto rounded-sm p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                            className="ml-auto rounded-lg p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                             onClick={(event) => {
                                 event.preventDefault();
                                 event.stopPropagation();
