@@ -30,6 +30,7 @@ jobs:
               working-directory: functions
               run: |
                   touch .env
+                  echo "APP_ENV=production" >> .env
                   echo "DEVPOST_API_KEY=${{ secrets.DEVPOST_API_KEY }}" >> .env
                   echo "EMAIL_SERVER=${{ secrets.EMAIL_SERVER }}" >> .env
                   echo "FB_API_KEY=${{ secrets.FB_API_KEY }}" >> .env
