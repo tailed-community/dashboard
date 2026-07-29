@@ -11,6 +11,33 @@ export interface DigestSubscriptionLike {
   locations?: string[] | null;
 }
 
+/**
+ * Minimum gap between two sends for a `weekly` subscription. The digest cron
+ * runs daily, so weekly subscribers are skipped until this much time has
+ * passed since their last send. Deliberately 7 days minus 12h of slack: the
+ * scheduler can fire a few minutes late, and a strict 7×24h would drift the
+ * send day forward by one day every week.
+ */
+export const WEEKLY_MIN_INTERVAL_MS =
+  7 * 24 * 60 * 60 * 1000 - 12 * 60 * 60 * 1000;
+
+/**
+ * Whether a subscription should receive a digest in the run happening at
+ * `now`. Daily subscriptions are always due — the cron's own schedule *is*
+ * their cadence. Weekly ones are due only once WEEKLY_MIN_INTERVAL_MS has
+ * passed since `lastSentAtMs`, and immediately if they've never sent (0/null).
+ * Pure so the cadence rule is testable without Firestore.
+ */
+export function isDigestDue(
+  frequency: "daily" | "weekly" | null | undefined,
+  lastSentAtMs: number | null,
+  now: number
+): boolean {
+  if (frequency !== "weekly") return true;
+  if (!lastSentAtMs) return true;
+  return now - lastSentAtMs >= WEEKLY_MIN_INTERVAL_MS;
+}
+
 function tokenize(value: string): string[] {
   return value
     .toLowerCase()

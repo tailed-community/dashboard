@@ -163,6 +163,14 @@ export default function HomePage() {
     const [submitting, setSubmitting] = useState(false);
     const [subscribed, setSubscribed] = useState(() => isJobAlertSubscribed());
 
+    // A signed-in visitor has already given us an address (and the API takes it
+    // from their ID token regardless of what we send), so the builder drops the
+    // email field and the Google path entirely — one button, nothing to re-enter.
+    // While auth resolves, trust the prior-session hint so the signed-in layout
+    // doesn't flash the logged-out one.
+    const { user, loading: authLoading, likelySignedIn } = useAuth();
+    const signedIn = authLoading ? likelySignedIn : !!user;
+
     const alertSectionRef = useRef<HTMLElement>(null);
     const keywordInputRef = useRef<HTMLInputElement>(null);
 
@@ -192,15 +200,20 @@ export default function HomePage() {
     async function handleEmailSubmit(e: FormEvent) {
         e.preventDefault();
         const trimmed = email.trim();
-        if (!trimmed || submitting) return;
+        // Signed-in submissions carry no email — the API uses the token's.
+        if ((!signedIn && !trimmed) || submitting) return;
+        // Showing the signed-in layout off a stale hint: hold the submit until
+        // auth lands, so we never post an email-less body for a logged-out visitor.
+        if (signedIn && authLoading) return;
         setSubmitting(true);
         try {
             const response = await apiFetch("/alerts/subscribe", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    email: trimmed,
+                    ...(signedIn ? {} : { email: trimmed }),
                     source: "landing_strip",
+                    frequency,
                     ...(alertQuery.trim() ? { query: alertQuery.trim() } : {}),
                     ...(jobType ? { jobType } : {}),
                 }),
@@ -474,7 +487,9 @@ export default function HomePage() {
                             <div className="flex flex-col items-center gap-3 py-4 text-center">
                                 <MilestoneBadge size={64} />
                                 <p className="joy-display text-lg font-bold text-joy-ink">
-                                    You&apos;re in — first digest tomorrow morning
+                                    {frequency === "weekly"
+                                        ? "You're in — first digest within the week"
+                                        : "You're in — first digest tomorrow morning"}
                                 </p>
                                 <p className="joy-mono text-sm text-joy-ink-muted">
                                     {scopeSummary(frequency, alertQuery, jobType)}
@@ -544,39 +559,54 @@ export default function HomePage() {
                                 </div>
 
                                 <div className="mt-6">
-                                    <form onSubmit={handleEmailSubmit} className="flex flex-col gap-2 sm:flex-row">
-                                        <input
-                                            type="email"
-                                            required
-                                            value={email}
-                                            onChange={(e) => setEmail(e.target.value)}
-                                            placeholder="you@school.edu"
-                                            className="min-w-0 flex-1 rounded-xl border border-joy-ink/10 bg-white px-3.5 py-2.5 text-sm text-joy-ink placeholder:text-joy-ink/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60"
-                                        />
-                                        <PlaygroundButton type="submit" className="shrink-0">
-                                            {submitting ? "Signing up…" : "Get alerts"}
-                                        </PlaygroundButton>
-                                    </form>
+                                    {signedIn ? (
+                                        <form onSubmit={handleEmailSubmit}>
+                                            <PlaygroundButton type="submit" className="w-full">
+                                                {submitting ? "Signing up…" : "Get alerts"}
+                                            </PlaygroundButton>
+                                            <p className="mt-1.5 text-center text-xs text-joy-ink-muted">
+                                                {user?.email
+                                                    ? `We'll send them to ${user.email}.`
+                                                    : "We'll send them to your account email."}
+                                            </p>
+                                        </form>
+                                    ) : (
+                                        <>
+                                            <form onSubmit={handleEmailSubmit} className="flex flex-col gap-2 sm:flex-row">
+                                                <input
+                                                    type="email"
+                                                    required
+                                                    value={email}
+                                                    onChange={(e) => setEmail(e.target.value)}
+                                                    placeholder="you@school.edu"
+                                                    className="min-w-0 flex-1 rounded-xl border border-joy-ink/10 bg-white px-3.5 py-2.5 text-sm text-joy-ink placeholder:text-joy-ink/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60"
+                                                />
+                                                <PlaygroundButton type="submit" className="shrink-0">
+                                                    {submitting ? "Signing up…" : "Get alerts"}
+                                                </PlaygroundButton>
+                                            </form>
 
-                                    <div className="my-5 flex items-center gap-3 text-xs font-bold uppercase tracking-wide text-joy-ink/40">
-                                        <span className="h-px flex-1 bg-joy-ink/15" />
-                                        or
-                                        <span className="h-px flex-1 bg-joy-ink/15" />
-                                    </div>
+                                            <div className="my-5 flex items-center gap-3 text-xs font-bold uppercase tracking-wide text-joy-ink/40">
+                                                <span className="h-px flex-1 bg-joy-ink/15" />
+                                                or
+                                                <span className="h-px flex-1 bg-joy-ink/15" />
+                                            </div>
 
-                                    <div>
-                                        <button
-                                            type="button"
-                                            onClick={handleGoogleContinue}
-                                            className="flex w-full items-center justify-center gap-2.5 rounded-xl border border-joy-ink/12 bg-white px-4 py-2.5 text-sm font-semibold text-joy-ink transition hover:border-joy-ink/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60"
-                                        >
-                                            <FcGoogle className="h-4 w-4" aria-hidden="true" />
-                                            Continue with Google
-                                        </button>
-                                        <p className="mt-1.5 text-center text-xs text-joy-ink-muted">
-                                            We&apos;ll save this alert.
-                                        </p>
-                                    </div>
+                                            <div>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleGoogleContinue}
+                                                    className="flex w-full items-center justify-center gap-2.5 rounded-xl border border-joy-ink/12 bg-white px-4 py-2.5 text-sm font-semibold text-joy-ink transition hover:border-joy-ink/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60"
+                                                >
+                                                    <FcGoogle className="h-4 w-4" aria-hidden="true" />
+                                                    Continue with Google
+                                                </button>
+                                                <p className="mt-1.5 text-center text-xs text-joy-ink-muted">
+                                                    We&apos;ll save this alert.
+                                                </p>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                             </>
                         )}

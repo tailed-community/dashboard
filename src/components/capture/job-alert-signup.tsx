@@ -1,11 +1,11 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { Check, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/fetch";
-import { studentAuth } from "@/lib/auth";
+import { useAuth } from "@/hooks/use-auth";
 import { trackEvent } from "@/lib/analytics";
 import { getStorageFlag, setStorageFlag } from "@/lib/storage-flags";
 
@@ -29,9 +29,10 @@ interface JobAlertSignupProps {
   /** Called after a successful subscribe (e.g. to dismiss a parent prompt/toast). */
   onSubscribed?: () => void;
   /**
-   * Pre-fills (and takes priority over studentAuth.currentUser?.email) —
-   * used after RSVP, where the email was already captured in the
-   * registration form and must not be asked for twice.
+   * Pre-fills the field for logged-out visitors — used after RSVP, where the
+   * email was already captured in the registration form and must not be asked
+   * for twice. Ignored when signed in: that alert always goes to the account's
+   * own address (the API enforces this too).
    */
   defaultEmail?: string;
 }
@@ -48,6 +49,11 @@ export function isJobAlertSubscribed(): boolean {
  * an email address. Used across the landing page, jobs board, job detail,
  * and post-RSVP confirmation. Never blocks the surrounding flow — failures
  * just toast an error and leave the form usable.
+ *
+ * For a signed-in visitor there is nothing to trade: we already have their
+ * address and the backend takes it from their ID token regardless of what the
+ * body says. So they get a single button instead of a field asking for an
+ * email we know — see the `signedIn` branch below.
  */
 export function JobAlertSignup({
   source,
@@ -59,22 +65,24 @@ export function JobAlertSignup({
   onSubscribed,
   defaultEmail,
 }: JobAlertSignupProps) {
+  const { user, loading: authLoading, likelySignedIn } = useAuth();
   const [email, setEmail] = useState(defaultEmail || "");
   const [submitting, setSubmitting] = useState(false);
   const [subscribed, setSubscribed] = useState(() => isJobAlertSubscribed());
 
-  useEffect(() => {
-    if (!email && studentAuth.currentUser?.email) {
-      setEmail(studentAuth.currentUser.email);
-    }
-    // Only prefill once, on mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // While auth is still resolving, trust the prior-session hint so a signed-in
+  // visitor doesn't see the email field flash before the button replaces it.
+  const signedIn = authLoading ? likelySignedIn : !!user;
+  const accountEmail = user?.email ?? null;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     const trimmed = email.trim();
-    if (!trimmed || submitting) return;
+    // Signed-in callers send no email at all — the API uses their token's.
+    if ((!signedIn && !trimmed) || submitting) return;
+    // Rendering the signed-in layout off a stale hint: hold the submit until
+    // auth lands, so we never post an email-less body for a logged-out visitor.
+    if (signedIn && authLoading) return;
 
     setSubmitting(true);
     try {
@@ -82,7 +90,7 @@ export function JobAlertSignup({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: trimmed,
+          ...(signedIn ? {} : { email: trimmed }),
           source,
           ...(query ? { query } : {}),
           ...(locations && locations.length > 0 ? { locations } : {}),
@@ -114,6 +122,35 @@ export function JobAlertSignup({
         <Check className="h-4 w-4 text-green-600 shrink-0" aria-hidden="true" />
         <span>You're subscribed to job alerts</span>
       </div>
+    );
+  }
+
+  // Signed in — we already know where to send it. One button, no email field.
+  if (signedIn) {
+    return (
+      <form
+        onSubmit={handleSubmit}
+        className={cn(
+          variant === "card"
+            ? "flex flex-col items-stretch gap-1.5 w-full"
+            : "flex flex-col items-start gap-1 w-full",
+          className,
+        )}
+      >
+        <Button
+          type="submit"
+          size={variant === "card" ? "lg" : "sm"}
+          disabled={submitting || authLoading}
+          className={cn("shrink-0", variant === "card" && "rounded-full w-full")}
+        >
+          {submitting ? "Signing you up…" : "Get job alerts"}
+        </Button>
+        {accountEmail && (
+          <p className="text-xs text-muted-foreground">
+            Sent to {accountEmail}
+          </p>
+        )}
+      </form>
     );
   }
 
