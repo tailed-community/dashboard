@@ -3,17 +3,6 @@ on:
     push:
         branches:
             - main
-env:
-    FB_PROJECT_ID: ${{ secrets.FB_PROJECT_ID }}
-    FB_API_KEY: ${{ secrets.FB_API_KEY }}
-    FB_STORAGE_BUCKET: ${{ secrets.FB_STORAGE_BUCKET }}
-    FB_MESSAGING_SENDER_ID: ${{ secrets.FB_MESSAGING_SENDER_ID }}
-    FB_APP_ID: ${{ secrets.FB_APP_ID }}
-    EMAIL_SERVER: ${{ secrets.EMAIL_SERVER }}
-    FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
-    GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
-    GOOGLE_APPLICATION_CREDENTIALS_BASE64: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_BASE64 }}
-    TARGET: default
 jobs:
     main:
         name: Deploy to Firebase
@@ -26,21 +15,118 @@ jobs:
               run: |
                   npm i
                   npm install -g firebase-tools
+            # Writes functions/.env, which the Firebase CLI turns into the
+            # deployed runtime's environment variables.
+            #
+            # Secrets are passed through `env:` rather than interpolated into
+            # the script with ${{ }}. Interpolation splices the raw value into
+            # the shell source, so a secret containing a newline, a quote or a
+            # backtick either corrupts the file or executes as code. Read as
+            # environment variables they are just data.
+            #
+            # Every value is trimmed and stripped of CR/LF before it is
+            # written. That is not cosmetic: a trailing space or CR on
+            # FRONTEND_URL is invisible in the GitHub UI, survives into
+            # process.env, and makes firebase-admin reject the passwordless
+            # sign-in continue URL with `auth/invalid-continue-uri`
+            # ("The continue URL must be a valid URL string") on every login.
             - name: Create .env
               working-directory: functions
+              env:
+                  APP_ENV: production
+                  DEVPOST_API_KEY: ${{ secrets.DEVPOST_API_KEY }}
+                  EMAIL_SERVER: ${{ secrets.EMAIL_SERVER }}
+                  EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+                  FB_API_KEY: ${{ secrets.FB_API_KEY }}
+                  FB_APP_ID: ${{ secrets.FB_APP_ID }}
+                  FB_AUTH_DOMAIN: ${{ secrets.FB_AUTH_DOMAIN }}
+                  FB_MESSAGING_SENDER_ID: ${{ secrets.FB_MESSAGING_SENDER_ID }}
+                  FB_PROJECT_ID: ${{ secrets.FB_PROJECT_ID }}
+                  FB_STORAGE_BUCKET: ${{ secrets.FB_STORAGE_BUCKET }}
+                  FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+                  # Origin the magic link lands on (/auth/callback). Defaults
+                  # to FRONTEND_URL when unset; set it only if the two differ.
+                  # Its domain must be in the Firebase authorized-domains list.
+                  AUTH_CONTINUE_URL: ${{ secrets.AUTH_CONTINUE_URL }}
+                  # Public origin of THIS api, for session-less unsubscribe
+                  # links. Derived from FB_PROJECT_ID when unset.
+                  API_PUBLIC_URL: ${{ secrets.API_PUBLIC_URL }}
+                  # Salt for the hashed visitor IPs on share links. The code
+                  # falls back to a constant, which offers no protection in an
+                  # environment that sees real traffic.
+                  SHARE_IP_SALT: ${{ secrets.SHARE_IP_SALT }}
+                  GOOGLE_APPLICATION_CREDENTIALS_BASE64: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_BASE64 }}
               run: |
-                  touch .env
-                  echo "APP_ENV=production" >> .env
-                  echo "DEVPOST_API_KEY=${{ secrets.DEVPOST_API_KEY }}" >> .env
-                  echo "EMAIL_SERVER=${{ secrets.EMAIL_SERVER }}" >> .env
-                  echo "FB_API_KEY=${{ secrets.FB_API_KEY }}" >> .env
-                  echo "FB_APP_ID=${{ secrets.FB_APP_ID }}" >> .env
-                  echo "FB_AUTH_DOMAIN=${{ secrets.FB_AUTH_DOMAIN }}" >> .env
-                  echo "FB_MESSAGING_SENDER_ID=${{ secrets.FB_MESSAGING_SENDER_ID }}" >> .env
-                  echo "FB_PROJECT_ID=${{ secrets.FB_PROJECT_ID }}" >> .env
-                  echo "FB_STORAGE_BUCKET=${{ secrets.FB_STORAGE_BUCKET }}" >> .env
-                  echo "FRONTEND_URL=${{ secrets.FRONTEND_URL }}" >> .env
-                  echo "GOOGLE_APPLICATION_CREDENTIALS_BASE64=${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_BASE64 }}" >> .env
+                  set -euo pipefail
+
+                  : > .env
+
+                  # $1 = key, $2 = "required" | "optional"
+                  write_var() {
+                    local key="$1" requirement="$2" value
+                    value="${!key-}"
+                    # Drop CR/LF anywhere (multi-line base64, Windows
+                    # clipboards) then trim surrounding whitespace.
+                    value="$(printf '%s' "$value" | tr -d '\r\n')"
+                    value="${value#"${value%%[![:space:]]*}"}"
+                    value="${value%"${value##*[![:space:]]}"}"
+
+                    if [ -z "$value" ]; then
+                      if [ "$requirement" = required ]; then
+                        echo "::error::Required secret $key is empty or not set. Set it in Settings > Secrets and variables > Actions."
+                        MISSING=1
+                      fi
+                      return 0
+                    fi
+                    printf '%s=%s\n' "$key" "$value" >> .env
+                  }
+
+                  # A URL secret without a scheme passes every presence check
+                  # and then breaks at runtime, so reject it here.
+                  require_url() {
+                    local key="$1" value="${!1-}"
+                    value="$(printf '%s' "$value" | tr -d '\r\n')"
+                    case "$value" in
+                      ""|http://*|https://*) ;;
+                      *)
+                        echo "::error::$key must start with http:// or https:// (got a value without a scheme)."
+                        MISSING=1
+                        ;;
+                    esac
+                  }
+
+                  MISSING=0
+
+                  write_var APP_ENV required
+                  write_var FB_PROJECT_ID required
+                  write_var FB_API_KEY required
+                  write_var FB_APP_ID optional
+                  write_var FB_AUTH_DOMAIN optional
+                  write_var FB_MESSAGING_SENDER_ID optional
+                  write_var FB_STORAGE_BUCKET required
+                  # Without a mail server every email is logged instead of
+                  # sent, so the api refuses to start in production anyway.
+                  write_var EMAIL_SERVER required
+                  write_var EMAIL_FROM optional
+                  write_var FRONTEND_URL required
+                  write_var AUTH_CONTINUE_URL optional
+                  write_var API_PUBLIC_URL optional
+                  write_var SHARE_IP_SALT optional
+                  write_var DEVPOST_API_KEY optional
+                  write_var GOOGLE_APPLICATION_CREDENTIALS_BASE64 optional
+
+                  require_url FRONTEND_URL
+                  require_url AUTH_CONTINUE_URL
+                  require_url API_PUBLIC_URL
+
+                  if [ "$MISSING" -ne 0 ]; then
+                    echo "Refusing to deploy with an incomplete environment." >&2
+                    exit 1
+                  fi
+
+                  # Keys only — never echo the values into a public build log.
+                  echo "Wrote functions/.env with keys:"
+                  cut -d= -f1 .env | sed 's/^/  - /'
             - name: Authenticate to Google Cloud
               uses: google-github-actions/auth@v2
               with:

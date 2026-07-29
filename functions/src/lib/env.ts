@@ -168,14 +168,60 @@ export const emailFrom = () =>
 const stripTrailingSlash = (url: string) => url.replace(/\/+$/, "");
 
 /**
+ * Reads a URL-shaped variable, normalising the ways a value arrives mangled
+ * from CI: surrounding quotes (a secret pasted with them), leading/trailing
+ * whitespace, and a trailing CR from a Windows clipboard. Every one of those
+ * survives `process.env` intact, and every one of them makes firebase-admin
+ * reject the magic-link continue URL — its validator treats a space, a
+ * newline and a quote alike as illegal URL characters.
+ *
+ * Returns undefined for an absent OR blank value, so callers fall back to
+ * their defaults instead of building a URL on top of "".
+ */
+function readUrlVar(name: string): string | undefined {
+  const raw = process.env[name];
+  if (typeof raw !== "string") return undefined;
+  const cleaned = raw
+    .trim()
+    .replace(/^['"]+|['"]+$/g, "")
+    .trim();
+  return cleaned ? stripTrailingSlash(cleaned) : undefined;
+}
+
+/**
+ * Mirrors firebase-admin's own URL check (`utils/validator.isURL`): an
+ * http(s) URL containing no illegal characters. We re-implement it rather than
+ * import it so a bad value fails ONCE at startup, naming the variable, instead
+ * of surfacing on every sign-in as
+ *   auth/invalid-continue-uri — "The continue URL must be a valid URL string"
+ * which names nothing and sends you reading Firebase docs instead of your
+ * deploy config. Returns a human-readable problem, or null when valid.
+ */
+function urlProblem(value: string): string | null {
+  // Same character class firebase-admin rejects on — notably excludes
+  // whitespace, quotes and backslashes.
+  if (/[^a-z0-9:/?#[\]@!$&'()*+,;=.\-_~%]/i.test(value)) {
+    return "contains a character that is illegal in a URL (a stray quote, space or newline from CI?)";
+  }
+  let protocol: string;
+  try {
+    protocol = new URL(value).protocol;
+  } catch {
+    return "is not a parseable URL (missing the https:// scheme?)";
+  }
+  if (protocol !== "http:" && protocol !== "https:") {
+    return `has scheme "${protocol}" — it must be http:// or https://`;
+  }
+  return null;
+}
+
+/**
  * Public origin of the frontend site. Used for email assets (the logo PNG must
  * be fetchable by mail clients, so this is never localhost) and for job and
  * community links inside emails.
  */
 export function frontendUrl(): string {
-  return stripTrailingSlash(
-    process.env.FRONTEND_URL || "https://community.tailed.ca"
-  );
+  return readUrlVar("FRONTEND_URL") || "https://community.tailed.ca";
 }
 
 /**
@@ -190,8 +236,8 @@ export function frontendUrl(): string {
  * deployed-dev share APP_ENV=dev without any per-machine URL configuration.
  */
 export function authContinueUrl(): string {
-  const configured = process.env.AUTH_CONTINUE_URL;
-  if (configured) return stripTrailingSlash(configured);
+  const configured = readUrlVar("AUTH_CONTINUE_URL");
+  if (configured) return configured;
   if (isStandalone()) return "http://localhost:5174";
   return frontendUrl();
 }
@@ -206,8 +252,8 @@ export function authContinueUrl(): string {
  * pointing at the DEV project — links that would not unsubscribe anyone.
  */
 export function apiPublicUrl(): string {
-  const configured = process.env.API_PUBLIC_URL;
-  if (configured) return stripTrailingSlash(configured);
+  const configured = readUrlVar("API_PUBLIC_URL");
+  if (configured) return configured;
 
   if (isStandalone()) return "http://localhost:3001";
 
@@ -249,8 +295,10 @@ export function assertEnvValid(): void {
   }
 
   if (env !== "emulator" && rt === "cloud") {
-    if (!process.env.FRONTEND_URL) missing.push("FRONTEND_URL");
-    if (!process.env.FB_PROJECT_ID && !process.env.API_PUBLIC_URL) {
+    // Checked through readUrlVar, not raw presence: a secret that CI wrote as
+    // `FRONTEND_URL=` or `FRONTEND_URL=" "` is missing, not configured.
+    if (!readUrlVar("FRONTEND_URL")) missing.push("FRONTEND_URL");
+    if (!process.env.FB_PROJECT_ID && !readUrlVar("API_PUBLIC_URL")) {
       missing.push("FB_PROJECT_ID (or an explicit API_PUBLIC_URL)");
     }
   }
@@ -259,6 +307,29 @@ export function assertEnvValid(): void {
     throw new Error(
       `[env] APP_ENV="${env}" runtime="${rt}" but required configuration is ` +
         `missing:\n  - ${missing.join("\n  - ")}`
+    );
+  }
+
+  // MALFORMED is a separate failure from MISSING, and the one that actually
+  // bit us: `FRONTEND_URL=community.tailed.ca` (no scheme) passes every
+  // presence check above, then makes generateSignInWithEmailLink reject the
+  // continue URL on every single sign-in attempt. Catch it here, once, with
+  // the variable named.
+  const invalid: string[] = [];
+  const checkUrl = (name: string, value: string) => {
+    const problem = urlProblem(value);
+    if (problem) invalid.push(`${name} resolved to "${value}", which ${problem}`);
+  };
+  checkUrl("FRONTEND_URL", frontendUrl());
+  checkUrl("AUTH_CONTINUE_URL", authContinueUrl());
+  if (env !== "emulator") checkUrl("API_PUBLIC_URL", apiPublicUrl());
+
+  if (invalid.length) {
+    throw new Error(
+      `[env] APP_ENV="${env}" runtime="${rt}" but configured URLs are not ` +
+        `usable:\n  - ${invalid.join("\n  - ")}\n` +
+        `Each must be a full origin including the scheme, e.g. ` +
+        `https://community.tailed.ca`
     );
   }
 
