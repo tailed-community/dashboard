@@ -154,8 +154,14 @@ async function deleteDigestRuns(alertRef: FirebaseFirestore.DocumentReference): 
   }
 }
 
+/**
+ * `email` is optional on purpose: an authenticated caller's address is taken
+ * from their verified ID token and the body value is ignored entirely (see the
+ * handler), so the frontend doesn't have to send — or ask for — an email it
+ * already knows. It stays required for anonymous captures.
+ */
 const subscribeSchema = z.object({
-  email: z.string().trim().toLowerCase().email().max(254),
+  email: z.string().trim().toLowerCase().email().max(254).optional(),
   source: z.enum([
     "search",
     "landing_strip",
@@ -168,6 +174,7 @@ const subscribeSchema = z.object({
   query: z.string().trim().max(200).optional().nullable(),
   locations: z.array(z.string().trim().max(100)).max(10).optional().nullable(),
   jobType: z.enum(["internship", "new-grad"]).optional().nullable(),
+  frequency: z.enum(["daily", "weekly"]).optional(),
 });
 
 /**
@@ -175,6 +182,13 @@ const subscribeSchema = z.object({
  * Public — no auth required. Creates (or, on duplicate, updates) a job-alert
  * subscription. Always responds { success: true } on valid input; never
  * blocks the caller's underlying action (search/save/RSVP/etc).
+ *
+ * Address of record: for an authenticated caller it is ALWAYS the ID token's
+ * email — a body `email` is ignored, so a signed-in user can't point a digest
+ * (or the welcome email, which carries a one-tap sign-in link) at someone
+ * else's inbox. Only anonymous captures may supply an address, and those are
+ * unverified single opt-in by design (spec 04), rate-limited by the per-email
+ * subscription cap below and revocable from every email's unsubscribe link.
  */
 router.post("/subscribe", async (req: Request, res: Response) => {
   try {
@@ -186,7 +200,27 @@ router.post("/subscribe", async (req: Request, res: Response) => {
       });
     }
 
-    const { email, source, query, locations, jobType } = validationResult.data;
+    const {
+      email: bodyEmail,
+      source,
+      query,
+      locations,
+      jobType,
+      frequency = "daily",
+    } = validationResult.data;
+
+    const authedEmail = req.user?.email?.trim().toLowerCase() || null;
+    if (authedEmail && bodyEmail && bodyEmail !== authedEmail) {
+      // Not an error for the caller — we just never honour it. Logged because
+      // a legitimate frontend has no reason to send a different address.
+      console.warn(
+        `alerts/subscribe: ignoring body email for authenticated uid ${req.user?.uid} (source: ${source})`
+      );
+    }
+    const email = authedEmail ?? bodyEmail ?? null;
+    if (!email) {
+      return res.status(400).json({ error: "An email address is required" });
+    }
     // Shared field normalization (empty query/locations → null, absent jobType → null).
     // Pass all three keys explicitly so every field is normalized even when omitted.
     const normalized = normalizeAlertFields({ query, locations, jobType });
@@ -253,6 +287,9 @@ router.post("/subscribe", async (req: Request, res: Response) => {
       await existingDoc.ref.update({
         locations: normalizedLocations,
         source,
+        // Re-subscribing with a different cadence must move the existing row,
+        // otherwise the dedupe branch would silently keep the old schedule.
+        frequency,
         userId: existingData.userId || userId,
         updatedAt: new Date(),
       });
@@ -277,7 +314,7 @@ router.post("/subscribe", async (req: Request, res: Response) => {
       query: normalizedQuery,
       locations: normalizedLocations,
       jobType: normalizedJobType,
-      frequency: "daily",
+      frequency,
       active: true,
       unsubscribeToken,
       userId,
@@ -321,13 +358,13 @@ router.post("/subscribe", async (req: Request, res: Response) => {
         }
       }
 
-      await sendJobAlertWelcomeEmail(
-        email,
-        normalizedQuery,
+      await sendJobAlertWelcomeEmail(email, {
+        query: normalizedQuery,
         unsubscribeUrl,
         signInUrl,
-        welcomeLocale
-      );
+        locale: welcomeLocale,
+        frequency,
+      });
     } catch (emailError) {
       console.error(`Failed to send job alert welcome email to ${email}:`, emailError);
       // Don't fail the subscription if the welcome email fails to send.

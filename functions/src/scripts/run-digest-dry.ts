@@ -4,8 +4,8 @@
  * Usage: `npm --prefix functions run digest:dry`
  *
  * Step 1 (always runs, no network/Firestore needed): a handful of inline
- * unit tests against the pure `matchJobsToSubscription` function. Exits
- * non-zero immediately if any assertion fails.
+ * unit tests against the pure `matchJobsToSubscription` and `isDigestDue`
+ * functions. Exits non-zero immediately if any assertion fails.
  *
  * Step 2 (best-effort): attempts a real dry run — `runJobsDigest({ dryRun:
  * true })` — which fetches the live jobs feed and reads real
@@ -14,7 +14,11 @@
  * this environment, this step is skipped with a clear message; it never
  * fails the script (the match tests are the pass/fail signal).
  */
-import { matchJobsToSubscription } from "../lib/digest-matching";
+import {
+  isDigestDue,
+  matchJobsToSubscription,
+  WEEKLY_MIN_INTERVAL_MS,
+} from "../lib/digest-matching";
 import type { DigestJob } from "../lib/jobs-feed";
 
 function makeJob(overrides: Partial<DigestJob>): DigestJob {
@@ -181,11 +185,45 @@ test("combined filters (query + jobType + locations) must all pass", () => {
   assert(result.length === 1 && result[0].id === "match", "expected only the fully-matching job to pass all filters");
 });
 
+console.log("\nRunning isDigestDue (cadence gate) inline tests...\n");
+
+const NOW = Date.parse("2026-07-29T11:30:00Z");
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+test("daily subscriptions are always due", () => {
+  assert(isDigestDue("daily", NOW - 60_000, NOW), "expected a daily sub sent a minute ago to still be due");
+  assert(isDigestDue(undefined, NOW - 60_000, NOW), "expected a legacy sub with no frequency to be treated as daily");
+});
+
+test("weekly subscriptions that have never sent are due immediately", () => {
+  assert(isDigestDue("weekly", null, NOW), "expected a never-sent weekly sub to be due");
+  assert(isDigestDue("weekly", 0, NOW), "expected an epoch-zero lastSentAt to count as never-sent");
+});
+
+test("weekly subscriptions are skipped until a week has passed", () => {
+  assert(!isDigestDue("weekly", NOW - DAY_MS, NOW), "expected a weekly sub sent yesterday to be skipped");
+  assert(!isDigestDue("weekly", NOW - 6 * DAY_MS, NOW), "expected a weekly sub sent 6 days ago to be skipped");
+  assert(isDigestDue("weekly", NOW - 7 * DAY_MS, NOW), "expected a weekly sub sent 7 days ago to be due");
+});
+
+test("weekly cadence carries 12h of slack so the send day doesn't drift", () => {
+  // Sent 7 days ago minus 11h — last week's run fired slightly late, this one
+  // slightly early. Must still send rather than slipping to tomorrow.
+  assert(
+    isDigestDue("weekly", NOW - (7 * DAY_MS - 11 * 60 * 60 * 1000), NOW),
+    "expected an 11h-early weekly send to still be due"
+  );
+  assert(
+    !isDigestDue("weekly", NOW - (WEEKLY_MIN_INTERVAL_MS - 60_000), NOW),
+    "expected a send one minute short of the interval to be skipped"
+  );
+});
+
 if (failures > 0) {
-  console.error(`\n${failures} match test(s) FAILED.`);
+  console.error(`\n${failures} test(s) FAILED.`);
   process.exit(1);
 }
-console.log(`\nAll match tests passed.\n`);
+console.log(`\nAll match + cadence tests passed.\n`);
 
 async function runLiveDryRun() {
   try {

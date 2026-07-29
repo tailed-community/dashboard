@@ -2,7 +2,11 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { FieldPath, type Timestamp } from "firebase-admin/firestore";
 import { db } from "../lib/firebase";
 import { fetchDigestJobs, type DigestJob } from "../lib/jobs-feed";
-import { matchJobsToSubscription, type DigestSubscriptionLike } from "../lib/digest-matching";
+import {
+  isDigestDue,
+  matchJobsToSubscription,
+  type DigestSubscriptionLike,
+} from "../lib/digest-matching";
 import { sendJobsDigestEmail } from "../lib/email-service";
 import { buildUnsubscribeUrl } from "../lib/links";
 import { getPreferredLocaleForUid, type Locale } from "../lib/locale";
@@ -22,6 +26,10 @@ interface JobAlertSubscriptionDoc extends DigestSubscriptionLike {
   unsubscribeToken: string;
   createdAt: Timestamp | Date | null;
   lastSentJobDate: number | null;
+  /** Cadence chosen by the subscriber. Legacy docs without it are daily. */
+  frequency: "daily" | "weekly";
+  /** When this subscription last received a digest — the weekly cadence gate. */
+  lastSentAt: Timestamp | Date | null;
   /** owning profile uid (null for anonymous captures) — used to resolve locale. */
   userId: string | null;
 }
@@ -47,6 +55,11 @@ function computeWatermark(sub: JobAlertSubscriptionDoc, now: number): number {
   }
   const createdAtMs = toEpochMs(sub.createdAt);
   return Math.max(createdAtMs, now - NEVER_SENT_LOOKBACK_MS);
+}
+
+/** Cadence gate for one subscription — see `isDigestDue` for the rule. */
+function isDue(sub: JobAlertSubscriptionDoc, now: number): boolean {
+  return isDigestDue(sub.frequency, toEpochMs(sub.lastSentAt) || null, now);
 }
 
 async function fetchActiveSubscriptions(): Promise<JobAlertSubscriptionDoc[]> {
@@ -79,6 +92,8 @@ async function fetchActiveSubscriptions(): Promise<JobAlertSubscriptionDoc[]> {
         unsubscribeToken: data.unsubscribeToken,
         createdAt: data.createdAt ?? null,
         lastSentJobDate: typeof data.lastSentJobDate === "number" ? data.lastSentJobDate : null,
+        frequency: data.frequency === "weekly" ? "weekly" : "daily",
+        lastSentAt: data.lastSentAt ?? null,
         userId: typeof data.userId === "string" ? data.userId : null,
       });
     }
@@ -115,13 +130,16 @@ export interface RunJobsDigestSummary {
   subscribers: number;
   emailsSent: number;
   skippedNoMatches: number;
+  /** Weekly subscriptions whose next send isn't due yet in this run. */
+  skippedNotDue: number;
   errors: number;
 }
 
 /**
- * Runs one pass of the daily jobs digest: fetches the feed once, then for
- * every active subscription computes new matches since its watermark, caps
- * at 12, sends (unless dryRun), and advances the watermark on success only.
+ * Runs one pass of the jobs digest: fetches the feed once, then for every
+ * active subscription that is due in this run (see `isDue` — daily always,
+ * weekly once a week) computes new matches since its watermark, caps at 12,
+ * sends (unless dryRun), and advances the watermark on success only.
  * Exported as a plain function so it's directly callable from the dry-run
  * script without going through the Cloud Scheduler trigger.
  */
@@ -135,6 +153,7 @@ export async function runJobsDigest(
     subscribers: 0,
     emailsSent: 0,
     skippedNoMatches: 0,
+    skippedNotDue: 0,
     errors: 0,
   };
 
@@ -165,6 +184,14 @@ export async function runJobsDigest(
 
   await runWithConcurrency(subscriptions, SEND_CONCURRENCY, async (sub) => {
     try {
+      // Cadence gate first — a weekly subscriber that isn't due yet must not
+      // have its watermark advanced, or the roles it skipped today would never
+      // appear in the digest it does receive.
+      if (!isDue(sub, now)) {
+        summary.skippedNotDue += 1;
+        return;
+      }
+
       const watermark = computeWatermark(sub, now);
       const candidates = jobs.filter((job) => job.dateAddedMs > watermark);
       const matched = matchJobsToSubscription(candidates, sub);
@@ -186,6 +213,7 @@ export async function runJobsDigest(
         console.log("jobs-digest[dry-run] would send", {
           subscriptionId: sub.id,
           email: sub.email,
+          frequency: sub.frequency,
           query: sub.query,
           jobType: sub.jobType,
           locations: sub.locations,
@@ -202,6 +230,7 @@ export async function runJobsDigest(
         unsubscribeUrl,
         totalMatchCount: matched.length,
         locale,
+        frequency: sub.frequency,
       });
 
       // Atomically advance the subscription watermark AND record the batch

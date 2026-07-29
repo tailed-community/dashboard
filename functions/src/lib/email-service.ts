@@ -830,15 +830,23 @@ export const sendEventApprovalEmail = async (
  * unsubscribe link — this is the only confirmation step for v1 (no
  * double opt-in; see docs/specs/04-email-capture.md "Out of scope").
  */
+/** How often a subscription's digest is sent (mirrors the Firestore field). */
+export type AlertFrequency = "daily" | "weekly";
+
 interface JobAlertWelcomeCopy {
-  subject: string;
+  subject: (frequency: AlertFrequency) => string;
   preheader: string;
   kicker: string;
   title: string;
-  subtitle: (whatLine: string) => string;
+  /**
+   * Cadence-aware wording ("each morning" / "once a week") is threaded through
+   * `subject`, `subtitle`, `bullets` and `text` so a weekly subscriber is never
+   * told they'll hear from us every morning.
+   */
+  subtitle: (whatLine: string, frequency: AlertFrequency) => string;
   whatLine: (query: string | null | undefined) => string;
   whatLineText: (query: string | null | undefined) => string;
-  bullets: string[];
+  bullets: (frequency: AlertFrequency) => string[];
   cta: string;
   accountDarkTitle: string;
   accountDarkBody: string;
@@ -851,25 +859,33 @@ interface JobAlertWelcomeCopy {
     whatLineText: string;
     signInUrl: string | undefined;
     unsubscribeUrl: string;
+    frequency: AlertFrequency;
   }) => string;
 }
 
 const JOB_ALERT_WELCOME_CONTENT: Record<Locale, JobAlertWelcomeCopy> = {
   en: {
-    subject: "You're in — daily job alerts from Tail'ed",
+    subject: (frequency) =>
+      frequency === "weekly"
+        ? "You're in — weekly job alerts from Tail'ed"
+        : "You're in — daily job alerts from Tail'ed",
     preheader: "You're subscribed to Tail'ed Community job alerts.",
     kicker: "You're subscribed",
     title: "You're in.",
-    subtitle: (whatLine) =>
-      `You'll now get ${whatLine} delivered to your inbox each morning — free, forever, no spam.`,
+    subtitle: (whatLine, frequency) =>
+      `You'll now get ${whatLine} delivered to your inbox ${
+        frequency === "weekly" ? "once a week" : "each morning"
+      } — free, forever, no spam.`,
     whatLine: (query) =>
       query
         ? `new <strong style="color: #EB7A24;">${escapeHtml(query)}</strong> roles`
         : `new internships and new-grad roles`,
     whatLineText: (query) =>
       query ? `new "${query}" roles` : `new internships and new-grad roles`,
-    bullets: [
-      "One email each morning — only when there are new matches.",
+    bullets: (frequency) => [
+      frequency === "weekly"
+        ? "One email a week — only when there are new matches."
+        : "One email each morning — only when there are new matches.",
       "Apply straight from the email — links go right to the posting.",
       "Your free Tail'ed account is ready — no password to remember.",
       "Unsubscribe anytime, one click.",
@@ -887,20 +903,27 @@ const JOB_ALERT_WELCOME_CONTENT: Record<Locale, JobAlertWelcomeCopy> = {
       `You subscribed to job alerts${
         query ? ` for &quot;${escapeHtml(query)}&quot;` : ""
       } on community.tailed.ca.`,
-    text: ({ whatLineText, signInUrl, unsubscribeUrl }) =>
-      `You're in!\n\nYou'll now get ${whatLineText} delivered to your inbox each morning — free, forever, no spam.\n\nBrowse jobs now: ${EMAIL_SITE_URL}/jobs\n${
+    text: ({ whatLineText, signInUrl, unsubscribeUrl, frequency }) =>
+      `You're in!\n\nYou'll now get ${whatLineText} delivered to your inbox ${
+        frequency === "weekly" ? "once a week" : "each morning"
+      } — free, forever, no spam.\n\nBrowse jobs now: ${EMAIL_SITE_URL}/jobs\n${
         signInUrl
           ? `\nYour free Tail'ed account is ready. Sign in (no password) to edit your alerts and complete your profile:\n${signInUrl}\n`
           : ""
       }\nYour first digest lands as soon as there are fresh matches.\n\nUnsubscribe: ${unsubscribeUrl}\n\n© ${new Date().getFullYear()} Tail'ed. All rights reserved.`,
   },
   fr: {
-    subject: "Ça y est — tes alertes d'emploi quotidiennes de Tail'ed",
+    subject: (frequency) =>
+      frequency === "weekly"
+        ? "Ça y est — tes alertes d'emploi hebdomadaires de Tail'ed"
+        : "Ça y est — tes alertes d'emploi quotidiennes de Tail'ed",
     preheader: "Tu es abonné(e) aux alertes d'emploi de Tail'ed Community.",
     kicker: "Abonnement confirmé",
     title: "Ça y est.",
-    subtitle: (whatLine) =>
-      `Tu recevras désormais ${whatLine} directement dans ta boîte courriel chaque matin — gratuit, pour toujours, sans pourriel.`,
+    subtitle: (whatLine, frequency) =>
+      `Tu recevras désormais ${whatLine} directement dans ta boîte courriel ${
+        frequency === "weekly" ? "une fois par semaine" : "chaque matin"
+      } — gratuit, pour toujours, sans pourriel.`,
     whatLine: (query) =>
       query
         ? `de nouveaux postes <strong style="color: #EB7A24;">${escapeHtml(
@@ -911,8 +934,10 @@ const JOB_ALERT_WELCOME_CONTENT: Record<Locale, JobAlertWelcomeCopy> = {
       query
         ? `de nouveaux postes « ${query} »`
         : `de nouveaux stages et postes pour nouveaux diplômés`,
-    bullets: [
-      "Un seul courriel chaque matin — uniquement quand il y a de nouveaux matchs.",
+    bullets: (frequency) => [
+      frequency === "weekly"
+        ? "Un seul courriel par semaine — uniquement quand il y a de nouveaux matchs."
+        : "Un seul courriel chaque matin — uniquement quand il y a de nouveaux matchs.",
       "Postule directement depuis le courriel — les liens mènent droit à l'offre.",
       "Ton compte Tail'ed gratuit est prêt — aucun mot de passe à retenir.",
       "Désabonne-toi quand tu veux, en un clic.",
@@ -930,8 +955,10 @@ const JOB_ALERT_WELCOME_CONTENT: Record<Locale, JobAlertWelcomeCopy> = {
       `Tu t'es abonné(e) aux alertes d'emploi${
         query ? ` pour &quot;${escapeHtml(query)}&quot;` : ""
       } sur community.tailed.ca.`,
-    text: ({ whatLineText, signInUrl, unsubscribeUrl }) =>
-      `Ça y est !\n\nTu recevras désormais ${whatLineText} directement dans ta boîte courriel chaque matin — gratuit, pour toujours, sans pourriel.\n\nParcourir les emplois : ${EMAIL_SITE_URL}/jobs\n${
+    text: ({ whatLineText, signInUrl, unsubscribeUrl, frequency }) =>
+      `Ça y est !\n\nTu recevras désormais ${whatLineText} directement dans ta boîte courriel ${
+        frequency === "weekly" ? "une fois par semaine" : "chaque matin"
+      } — gratuit, pour toujours, sans pourriel.\n\nParcourir les emplois : ${EMAIL_SITE_URL}/jobs\n${
         signInUrl
           ? `\nTon compte Tail'ed gratuit est prêt. Connecte-toi (sans mot de passe) pour modifier tes alertes et compléter ton profil :\n${signInUrl}\n`
           : ""
@@ -941,30 +968,42 @@ const JOB_ALERT_WELCOME_CONTENT: Record<Locale, JobAlertWelcomeCopy> = {
 
 export const sendJobAlertWelcomeEmail = async (
   email: string,
-  query: string | null | undefined,
-  unsubscribeUrl: string,
-  /**
-   * One-time sign-in link (generated server-side by buildSignInLink). When
-   * present, the email offers one-tap access to the soft account created on
-   * capture. Omitted for already-authenticated subscribers.
-   */
-  signInUrl?: string,
-  locale: Locale = "en"
+  options: {
+    query?: string | null;
+    unsubscribeUrl: string;
+    /**
+     * One-time sign-in link (generated server-side by buildSignInLink). When
+     * present, the email offers one-tap access to the soft account created on
+     * capture. Omitted for already-authenticated subscribers.
+     */
+    signInUrl?: string;
+    locale?: Locale;
+    /** Cadence the subscription was actually created with — drives the copy. */
+    frequency?: AlertFrequency;
+  }
 ) => {
+  const {
+    query,
+    unsubscribeUrl,
+    signInUrl,
+    locale = "en",
+    frequency = "daily",
+  } = options;
   const c = JOB_ALERT_WELCOME_CONTENT[locale];
   const whatLine = c.whatLine(query);
   const whatLineText = c.whatLineText(query);
 
   const mailOptions = {
     to: email,
-    subject: c.subject,
+    subject: c.subject(frequency),
     html: emailShell(
       c.preheader,
-      emailHeader(c.kicker, c.title, c.subtitle(whatLine)) +
+      emailHeader(c.kicker, c.title, c.subtitle(whatLine, frequency)) +
         `
         <tr><td style="padding:22px 30px 6px;">
           <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
-            ${c.bullets
+            ${c
+              .bullets(frequency)
               .map(
                 (t) =>
                   `<tr><td style="padding:7px 0;font:400 14px/1.5 ${EMAIL_FONT};color:#2A1F1A;">${EMAIL_DOT}${t}</td></tr>`
@@ -991,7 +1030,7 @@ export const sendJobAlertWelcomeEmail = async (
             )) +
         emailFooter(c.footerLine(query), unsubscribeUrl, locale)
     ),
-    text: c.text({ whatLineText, signInUrl, unsubscribeUrl }),
+    text: c.text({ whatLineText, signInUrl, unsubscribeUrl, frequency }),
   };
 
   return deliver(mailOptions);
@@ -1572,12 +1611,12 @@ interface DigestCopy {
   subjectWhatDefault: string;
   typeNewGrad: string;
   typeInternship: string;
-  kicker: string;
-  headerTitle: (count: number) => string;
+  kicker: (frequency: AlertFrequency) => string;
+  headerTitle: (count: number, frequency: AlertFrequency) => string;
   headerSubtitle: (whatLine: string) => string;
   whatLine: (query: string | null | undefined) => string;
   whatLineText: (query: string | null | undefined) => string;
-  scopeText: (shown: number, total: number) => string;
+  scopeText: (shown: number, total: number, frequency: AlertFrequency) => string;
   preheader: (scopeText: string) => string;
   browseAll: string;
   darkTitle: string;
@@ -1585,13 +1624,27 @@ interface DigestCopy {
   darkCta: string;
   seeRole: string;
   footerLine: (query: string | null | undefined) => string;
-  textHeading: string;
+  textHeading: (frequency: AlertFrequency) => string;
   textIntro: (whatLineText: string) => string;
-  moreLineText: (shown: number, total: number) => string;
+  moreLineText: (
+    shown: number,
+    total: number,
+    frequency: AlertFrequency
+  ) => string;
   browseAllText: string;
   unsubscribeText: string;
   rightsText: string;
 }
+
+/**
+ * The window a digest covers, in words. Every period-dependent string in
+ * DIGEST_CONTENT reads from here so a weekly digest never claims the roles
+ * landed today.
+ */
+const DIGEST_PERIOD_LABEL: Record<Locale, Record<AlertFrequency, string>> = {
+  en: { daily: "today", weekly: "this week" },
+  fr: { daily: "aujourd'hui", weekly: "cette semaine" },
+};
 
 const DIGEST_CONTENT: Record<Locale, DigestCopy> = {
   en: {
@@ -1601,8 +1654,12 @@ const DIGEST_CONTENT: Record<Locale, DigestCopy> = {
     subjectWhatDefault: "job",
     typeNewGrad: "New grad",
     typeInternship: "Internship",
-    kicker: "Daily Job Alert",
-    headerTitle: (count) => `${count} new role${count === 1 ? "" : "s"} today`,
+    kicker: (frequency) =>
+      frequency === "weekly" ? "Weekly Job Alert" : "Daily Job Alert",
+    headerTitle: (count, frequency) =>
+      `${count} new role${count === 1 ? "" : "s"} ${
+        DIGEST_PERIOD_LABEL.en[frequency]
+      }`,
     headerSubtitle: (whatLine) =>
       `Here are the ${whatLine} we found since your last digest.`,
     whatLine: (query) =>
@@ -1611,10 +1668,14 @@ const DIGEST_CONTENT: Record<Locale, DigestCopy> = {
         : `new internships and new-grad roles`,
     whatLineText: (query) =>
       query ? `new "${query}" roles` : `new internships and new-grad roles`,
-    scopeText: (shown, total) =>
+    scopeText: (shown, total, frequency) =>
       total > shown
-        ? `Showing the newest ${shown} of ${total} matches today`
-        : `${shown} new match${shown === 1 ? "" : "es"} today`,
+        ? `Showing the newest ${shown} of ${total} matches ${
+            DIGEST_PERIOD_LABEL.en[frequency]
+          }`
+        : `${shown} new match${shown === 1 ? "" : "es"} ${
+            DIGEST_PERIOD_LABEL.en[frequency]
+          }`,
     preheader: (scopeText) =>
       `${scopeText} — fresh roles for your Tail'ed Community alert.`,
     browseAll: "Browse all jobs",
@@ -1627,12 +1688,17 @@ const DIGEST_CONTENT: Record<Locale, DigestCopy> = {
       `You subscribed to job alerts${
         query ? ` for &quot;${escapeHtml(query)}&quot;` : ""
       } on community.tailed.ca.`,
-    textHeading: "Your daily job digest",
+    textHeading: (frequency) =>
+      frequency === "weekly"
+        ? "Your weekly job digest"
+        : "Your daily job digest",
     textIntro: (whatLineText) =>
       `Here are the ${whatLineText} we found since your last digest.`,
-    moreLineText: (shown, total) =>
+    moreLineText: (shown, total, frequency) =>
       total > shown
-        ? `\nShowing the newest ${shown} of ${total} matches today.\n`
+        ? `\nShowing the newest ${shown} of ${total} matches ${
+            DIGEST_PERIOD_LABEL.en[frequency]
+          }.\n`
         : "",
     browseAllText: "Browse all jobs",
     unsubscribeText: "Unsubscribe",
@@ -1645,11 +1711,14 @@ const DIGEST_CONTENT: Record<Locale, DigestCopy> = {
     subjectWhatDefault: "d'emploi",
     typeNewGrad: "Nouveau diplômé",
     typeInternship: "Stage",
-    kicker: "Alerte d'emploi quotidienne",
-    headerTitle: (count) =>
+    kicker: (frequency) =>
+      frequency === "weekly"
+        ? "Alerte d'emploi hebdomadaire"
+        : "Alerte d'emploi quotidienne",
+    headerTitle: (count, frequency) =>
       `${count} nouveau${count === 1 ? "" : "x"} poste${
         count === 1 ? "" : "s"
-      } aujourd'hui`,
+      } ${DIGEST_PERIOD_LABEL.fr[frequency]}`,
     headerSubtitle: (whatLine) =>
       `Voici ${whatLine} qu'on a trouvés depuis ton dernier résumé.`,
     whatLine: (query) =>
@@ -1662,12 +1731,14 @@ const DIGEST_CONTENT: Record<Locale, DigestCopy> = {
       query
         ? `de nouveaux postes « ${query} »`
         : `de nouveaux stages et postes pour nouveaux diplômés`,
-    scopeText: (shown, total) =>
+    scopeText: (shown, total, frequency) =>
       total > shown
-        ? `Les ${shown} matchs les plus récents sur ${total} aujourd'hui`
+        ? `Les ${shown} matchs les plus récents sur ${total} ${
+            DIGEST_PERIOD_LABEL.fr[frequency]
+          }`
         : `${shown} nouveau${shown === 1 ? "" : "x"} match${
             shown === 1 ? "" : "s"
-          } aujourd'hui`,
+          } ${DIGEST_PERIOD_LABEL.fr[frequency]}`,
     preheader: (scopeText) =>
       `${scopeText} — de nouveaux postes pour ton alerte Tail'ed Community.`,
     browseAll: "Parcourir tous les emplois",
@@ -1680,12 +1751,17 @@ const DIGEST_CONTENT: Record<Locale, DigestCopy> = {
       `Tu t'es abonné(e) aux alertes d'emploi${
         query ? ` pour &quot;${escapeHtml(query)}&quot;` : ""
       } sur community.tailed.ca.`,
-    textHeading: "Ton résumé d'emplois quotidien",
+    textHeading: (frequency) =>
+      frequency === "weekly"
+        ? "Ton résumé d'emplois hebdomadaire"
+        : "Ton résumé d'emplois quotidien",
     textIntro: (whatLineText) =>
       `Voici ${whatLineText} qu'on a trouvés depuis ton dernier résumé.`,
-    moreLineText: (shown, total) =>
+    moreLineText: (shown, total, frequency) =>
       total > shown
-        ? `\nLes ${shown} matchs les plus récents sur ${total} aujourd'hui.\n`
+        ? `\nLes ${shown} matchs les plus récents sur ${total} ${
+            DIGEST_PERIOD_LABEL.fr[frequency]
+          }.\n`
         : "",
     browseAllText: "Parcourir tous les emplois",
     unsubscribeText: "Se désabonner",
@@ -1694,11 +1770,13 @@ const DIGEST_CONTENT: Record<Locale, DigestCopy> = {
 };
 
 /**
- * Send the daily jobs digest email (WS5). `jobs` must already be capped
+ * Send the jobs digest email (WS5). `jobs` must already be capped
  * (12 max) and sorted newest-first by the caller — this function only
  * renders. Every job link carries `?utm_source=digest&utm_medium=email` so
  * digest -> click is measurable in analytics. `options.locale` defaults to
  * "en"; the caller resolves it from the subscriber's profile.
+ * `options.frequency` is the subscription's cadence and only affects copy
+ * ("today" vs "this week") — the cron decides who is actually due.
  */
 export const sendJobsDigestEmail = async (
   email: string,
@@ -1708,9 +1786,16 @@ export const sendJobsDigestEmail = async (
     unsubscribeUrl: string;
     totalMatchCount: number;
     locale?: Locale;
+    frequency?: AlertFrequency;
   }
 ) => {
-  const { query, unsubscribeUrl, totalMatchCount, locale = "en" } = options;
+  const {
+    query,
+    unsubscribeUrl,
+    totalMatchCount,
+    locale = "en",
+    frequency = "daily",
+  } = options;
   const c = DIGEST_CONTENT[locale];
 
   const subjectWhat = query
@@ -1760,8 +1845,12 @@ export const sendJobsDigestEmail = async (
     .join("\n\n");
 
   const whatLine = c.whatLine(query);
-  const scopeText = c.scopeText(jobs.length, totalMatchCount);
-  const moreLineText = c.moreLineText(jobs.length, totalMatchCount);
+  const scopeText = c.scopeText(jobs.length, totalMatchCount, frequency);
+  const moreLineText = c.moreLineText(
+    jobs.length,
+    totalMatchCount,
+    frequency
+  );
 
   const mailOptions = {
     to: email,
@@ -1769,8 +1858,8 @@ export const sendJobsDigestEmail = async (
     html: emailShell(
       c.preheader(scopeText),
       emailHeader(
-        c.kicker,
-        c.headerTitle(jobs.length),
+        c.kicker(frequency),
+        c.headerTitle(jobs.length, frequency),
         c.headerSubtitle(whatLine)
       ) +
         `
@@ -1794,7 +1883,7 @@ export const sendJobsDigestEmail = async (
         ) +
         emailFooter(c.footerLine(query), unsubscribeUrl, locale)
     ),
-    text: `${c.textHeading}\n\n${c.textIntro(
+    text: `${c.textHeading(frequency)}\n\n${c.textIntro(
       c.whatLineText(query)
     )}\n\n${rowsText}\n${moreLineText}\n${c.browseAllText}: ${EMAIL_SITE_URL}/jobs\n\n${
       c.unsubscribeText
