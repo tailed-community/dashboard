@@ -29,41 +29,17 @@ Tail'ed Community is a comprehensive platform designed to empower tech students 
 - Node.js 18+
 - npm or pnpm
 - Firebase CLI (for development)
+- Github CLI to fork repo
 
 ### Installation
 
-1. **Clone the repository**
+1. **Init Command**
 
 ```bash
-git clone https://github.com/tailed-community/dashboard.git
+npx tailed init
 cd dashboard
+npx tailed start
 ```
-
-2. **Install dependencies**
-
-```bash
-npm install
-# or
-pnpm install
-```
-
-3. **Set up environment variables**
-
-```bash
-cp .env.example .env.local
-# Edit .env.local with your Firebase configuration
-```
-
-4. **Start the development server**
-
-```bash
-npm run dev
-# or
-pnpm dev
-```
-
-5. **Open your browser**
-   Visit [http://localhost:5174](http://localhost:5173)
 
 ## 🛠️ Tech Stack
 

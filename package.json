@@ -13,7 +13,8 @@
     "preview": "vite preview",
     "machine-translate": "inlang machine translate --project project.inlang",
     "inlang-compile": "npx @inlang/paraglide-js compile --project ./project.inlang --outdir ./src/paraglide",
-    "prepare": "husky"
+    "prepare": "husky",
+    "tailed": "npx tailed start"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.1.1",
