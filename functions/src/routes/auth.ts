@@ -8,21 +8,6 @@ import { buildSignInLink } from "../lib/auth-links";
 import { sendSignInLinkEmail } from "../lib/email-service";
 import { z } from "zod";
 
-const createAccountSchema = z.object({
-    firstName: z.string().min(1, "First name is required"),
-    lastName: z.string().min(1, "Last name is required"),
-    email: z.string().email("Invalid email address"),
-    location: z.string().min(1, "Location is required"),
-    phoneNumber: z.string().min(1, "Phone number is required"),
-    university: z.string().min(1, "University/College is required"),
-    major: z.string().min(1, "Major/Program is required"),
-    graduationYear: z
-        .number()
-        .int()
-        .min(1950)
-        .max(new Date().getFullYear() + 4, "Invalid graduation year"),
-});
-
 const checkUserExistsSchema = z.object({
     email: z.string().email(),
 });
@@ -130,108 +115,17 @@ router.post("/check-user-exists", async (req, res) => {
     }
 });
 
-router.post("/create-account", async (req, res) => {
-    try {
-        // Validate request body using Zod
-        const result = createAccountSchema.safeParse(req.body);
-
-        if (!result.success) {
-            return res.status(400).json({
-                error: "Invalid request data",
-                details: result.error.format(),
-            });
-        }
-        const {
-            firstName,
-            lastName,
-            email,
-            location,
-            phoneNumber,
-            university,
-            major,
-            graduationYear,
-        } = result.data;
-        const tenantAuth = await studentAuth();
-
-        // Check if user already exists
-        try {
-            const user = await tenantAuth.getUserByEmail(email);
-            let existingUser = null;
-            if (user) {
-                existingUser = await db
-                    .collection("profiles")
-                    .doc(user.uid)
-                    .get();
-            }
-            if (existingUser?.exists) {
-                return res.status(400).json({
-                    error: "Email already in use",
-                    message:
-                        "This email address is already associated with an account.",
-                });
-            }
-        } catch (error: any) {
-            if (error.code !== "auth/user-not-found") {
-                throw error;
-            }
-        }
-
-        // Create new user in Firebase Auth
-        const userRecord = await tenantAuth.createUser({
-            email,
-            emailVerified: false,
-        });
-
-        // Create user profile in Firestore
-        await db
-            .collection("profiles")
-            .doc(userRecord.uid)
-            .set({
-                userId: userRecord.uid,
-                firstName,
-                lastName,
-                email,
-                location,
-                phone: phoneNumber,
-                school: university,
-                program: major,
-                graduationYear,
-                linkedinUrl: null,
-                devpost: null,
-                initials: `${firstName.charAt(0)}${lastName.charAt(0)}`,
-                createdAt: new Date(),
-                updatedAt: new Date(),
-            });
-
-        return res.status(200).json({
-            success: true,
-            userId: userRecord.uid,
-            message: "Account created successfully",
-        });
-    } catch (error: any) {
-        console.error("Error creating account:", error);
-
-        if (error.code === "auth/email-already-exists") {
-            return res.status(400).json({
-                error: "Email already in use",
-                message:
-                    "The email address is already in use by another account.",
-            });
-        }
-
-        if (error.code === "auth/invalid-phone-number") {
-            return res.status(400).json({
-                error: "Invalid phone number",
-                message: "The phone number provided is invalid.",
-            });
-        }
-
-        return res.status(500).json({
-            error: "Server error",
-            message: "Failed to create account. Please try again later.",
-        });
-    }
-});
+/**
+ * `POST /auth/create-account` was REMOVED.
+ *
+ * It was unauthenticated (the global `decodedToken` middleware only populates
+ * `req.user` — it never rejects), so any caller could create a Firebase Auth
+ * user plus a `profiles/{uid}` doc with an arbitrary email. Nothing in the app
+ * called it: the only reference was a commented-out example in
+ * `src/lib/fetch.ts`. Account provisioning now goes exclusively through
+ * `POST /auth/ensure-account` below, which derives both uid and email from a
+ * verified ID token.
+ */
 
 const ensureAccountSchema = z.object({
     firstName: z.string().trim().min(1).optional(),

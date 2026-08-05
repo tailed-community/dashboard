@@ -51,8 +51,8 @@ export async function apiFetch(
 }
 
 // Example usage:
-// const response = await apiFetch('/auth/create-account', {
+// const response = await apiFetch('/auth/ensure-account', {
 //   method: 'POST',
 //   headers: { 'Content-Type': 'application/json' },
-//   body: JSON.stringify(userData),
+//   body: JSON.stringify({ firstName, lastName, photoURL }),
 // });

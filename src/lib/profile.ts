@@ -322,6 +322,72 @@ export async function updateOnboardingState(partial: {
 }
 
 /**
+ * The only profile fields a client may write through `PATCH /profile/update`.
+ *
+ * Mirrors the server's allowlist (`profileUpdateSchema` in
+ * `functions/src/routes/profile.ts`) — the server is the enforcing side; this is
+ * here so we never *send* a field the server would drop. Deliberately absent:
+ *
+ *  - `email`   — server-owned, reconciled from the Firebase Auth record.
+ *  - `id` / `userId` / `profileScore` / `initials` — derived or identity fields.
+ *  - `resume`  — written only by the resume upload/delete endpoints.
+ *  - `appliedJobs` / `communities` / `events` / `organizations` — membership,
+ *    owned by the flows that grant it.
+ *  - `workplaceValues` / `demographicSurveyCompletedAt` — written by the survey
+ *    routes, which score and stamp them server-side.
+ */
+export const WRITABLE_PROFILE_FIELDS = [
+  "firstName",
+  "lastName",
+  "phone",
+  "location",
+  "school",
+  "program",
+  "graduationYear",
+  "linkedinUrl",
+  "portfolioUrl",
+  "devpostUsername",
+  "devpost",
+  "githubUsername",
+  "github",
+  "skills",
+  "skillsStructured",
+  "experiences",
+  "education",
+  "projects",
+  "workAuthorization",
+  "preferredLanguage",
+  "onboardingState",
+] as const satisfies readonly (keyof StudentProfile)[];
+
+export type WritableProfileField = (typeof WRITABLE_PROFILE_FIELDS)[number];
+
+/**
+ * Narrow a full profile object down to the writable slice.
+ *
+ * The account page used to `JSON.stringify` its entire `student` state into the
+ * PATCH body. That is how a stale in-memory `email` ended up written onto a
+ * different account's profile doc after a mid-session account switch: the body
+ * carried an email the signed-in user didn't own. Sending only the fields the
+ * page actually edits removes the whole class of problem.
+ *
+ * Keys absent from `profile` stay absent (so we never send `undefined` and
+ * accidentally trip the server's null → FieldValue.delete() path); explicit
+ * `null` is preserved, because github/devpost disconnect relies on it.
+ */
+export function pickWritableProfileFields(
+  profile: Partial<StudentProfile>,
+): Partial<StudentProfile> {
+  const slice: Record<string, unknown> = {};
+  for (const key of WRITABLE_PROFILE_FIELDS) {
+    if (key in profile && profile[key] !== undefined) {
+      slice[key] = profile[key];
+    }
+  }
+  return slice as Partial<StudentProfile>;
+}
+
+/**
  * Persist a partial slice of the structured profile (CV / profile-builder
  * sections — `experiences`, `education`, `projects`, `skillsStructured`,
  * `workAuthorization`) through the same `PATCH /profile/update` transport used by
@@ -337,7 +403,7 @@ export async function updateProfileFields(
   const response = await apiFetch("/profile/update", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(partial),
+    body: JSON.stringify(pickWritableProfileFields(partial)),
   });
 
   if (!response.ok) {

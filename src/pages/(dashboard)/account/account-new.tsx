@@ -22,12 +22,12 @@ import { toast } from "sonner";
 import { apiFetch } from "@/lib/fetch";
 import { fetchGithubUserProfile } from "@/lib/github";
 import { studentAuth, initializeStudentSession } from "@/lib/auth";
+import { onIdTokenChanged } from "firebase/auth";
 import {
-    linkWithPopup,
-    GithubAuthProvider,
-    signInWithCredential,
-} from "firebase/auth";
-import { FirebaseError } from "firebase/app";
+    connectGithubForUser,
+    GITHUB_ALREADY_LINKED_MESSAGE,
+    GITHUB_USER_MISMATCH_MESSAGE,
+} from "@/lib/github-link";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { getFileUrl } from "@/lib/firebase-client";
 import { trackEvent } from "@/lib/analytics";
@@ -47,6 +47,7 @@ import { LanguagePreference } from "@/components/account/language-preference";
 import {
     updateProfileFields,
     calculateProfileScore,
+    pickWritableProfileFields,
     type ProfileCompletion,
     type StudentProfile,
 } from "@/lib/profile";
@@ -96,12 +97,18 @@ const apiService = {
             throw error;
         }
     },
+    /**
+     * Persist the editable slice of the profile. Only `WRITABLE_PROFILE_FIELDS`
+     * are sent — never the whole `student` state. Posting the full object is what
+     * let a stale in-memory `email` be written onto another account's profile
+     * doc after a mid-session account switch.
+     */
     updateStudent: async (studentData: StudentProps) => {
         try {
             const response = await apiFetch("/profile/update", {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(studentData),
+                body: JSON.stringify(pickWritableProfileFields(studentData)),
             });
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
@@ -318,12 +325,9 @@ const COMPLETENESS_FIELDS: { key: keyof ProfileCompletion; label: string }[] = [
     { key: "skills", label: "Skills" },
 ];
 
-export default function AccountPage() {
-    const navigate = useNavigate();
-    const [searchParams] = useSearchParams();
-    const profileUserId = searchParams.get("userId")?.trim() || "";
-
-    const [student, setStudent] = useState({
+/** Blank profile state — also what we hard-reset to when the session's uid changes. */
+const emptyStudent = (): StudentProps =>
+    ({
         id: "",
         email: "",
         firstName: "",
@@ -348,6 +352,13 @@ export default function AccountPage() {
         organizations: [],
     } as StudentProps);
 
+export default function AccountPage() {
+    const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const profileUserId = searchParams.get("userId")?.trim() || "";
+
+    const [student, setStudent] = useState<StudentProps>(emptyStudent);
+
     const [originalStudent, setOriginalStudent] = useState<StudentProps | null>(
         null
     );
@@ -368,6 +379,40 @@ export default function AccountPage() {
 
     const [skillsArray, setSkillsArray] = useState<string[]>([]);
     const [newSkill, setNewSkill] = useState("");
+
+    /* -------------------- uid-drift guard -------------------- *
+     * Everything on this page is loaded for ONE uid. If the signed-in user
+     * changes mid-session (a provider-link popup, a magic link completed in
+     * another tab, a sign-out), the state in memory belongs to the previous
+     * account — and saving it would write one account's fields, including its
+     * email, onto the other account's profile doc. So we track the live uid,
+     * hard-discard state whenever it changes, and refuse to PATCH with a token
+     * that doesn't match the uid the state was loaded for.
+     * ---------------------------------------------------------- */
+    const [authUid, setAuthUid] = useState<string | null>(
+        () => studentAuth.currentUser?.uid ?? null
+    );
+    /** The uid the currently-held `student` state was loaded for. */
+    const loadedForUidRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        return onIdTokenChanged(studentAuth, (user) => {
+            setAuthUid(user?.uid ?? null);
+        });
+    }, []);
+
+    /**
+     * Guard every profile write: the state we are about to send must have been
+     * loaded for the uid whose token will sign the request.
+     */
+    const assertSameSession = () => {
+        const liveUid = studentAuth.currentUser?.uid ?? null;
+        if (!liveUid || liveUid !== loadedForUidRef.current) {
+            throw new Error(
+                "Your session changed. Reload the page before saving so you don't write to the wrong account."
+            );
+        }
+    };
 
     // Track which fields are being edited
     const [isEditing, setIsEditing] = useState({
@@ -413,12 +458,41 @@ export default function AccountPage() {
     // per mount and can NEVER overwrite a language the user has already saved.
     const attemptedLanguageDefault = useRef(false);
 
-    // Load student data
+    // Load student data — keyed on the live uid, so a mid-session account change
+    // discards the previous account's state and reloads from scratch.
     useEffect(() => {
+        const previousUid = loadedForUidRef.current;
+        if (previousUid && previousUid !== authUid) {
+            // Hard discard. Unsaved edits belong to the previous account and must
+            // never be carried into the new session.
+            loadedForUidRef.current = null;
+            setStudent(emptyStudent());
+            setOriginalStudent(null);
+            setHasChanges(false);
+            setSkillsArray([]);
+            attemptedLanguageDefault.current = false;
+            if (authUid) {
+                // A different account is now signed in (as opposed to a plain
+                // sign-out, where PrivateRoute takes over).
+                toast.error("Signed-in account changed", {
+                    description:
+                        "Your unsaved profile edits were discarded so they aren't written to the wrong account.",
+                });
+            }
+        }
+
+        if (!authUid) {
+            setIsLoading(false);
+            return;
+        }
+
         const loadStudent = async () => {
             setIsLoading(true);
             try {
                 const data = await apiService.getStudent();
+                // The session may have changed while the request was in flight.
+                if (studentAuth.currentUser?.uid !== authUid) return;
+                loadedForUidRef.current = authUid;
                 setStudent(data);
                 setOriginalStudent(data);
                 maybeSeedBrowserLanguage(data);
@@ -469,7 +543,7 @@ export default function AccountPage() {
         };
 
         loadStudent();
-    }, []);
+    }, [authUid]);
 
     useEffect(() => {
         const loadActivity = async () => {
@@ -776,6 +850,8 @@ export default function AccountPage() {
 
         setIsSaving(true);
         try {
+            assertSameSession();
+
             const preSaveCompleted = originalStudent
                 ? calculateProfileScore(originalStudent).completed
                 : null;
@@ -828,7 +904,10 @@ export default function AccountPage() {
             });
             toast.success("Profile updated successfully!");
         } catch (error) {
-            toast.error("Failed to save changes");
+            toast.error("Failed to save changes", {
+                description:
+                    error instanceof Error ? error.message : undefined,
+            });
         } finally {
             setIsSaving(false);
         }
@@ -976,89 +1055,13 @@ export default function AccountPage() {
                 await initializeStudentSession();
             }
 
-            // Create GitHub provider
-            const githubProvider = new GithubAuthProvider();
-            githubProvider.addScope("read:user");
-            githubProvider.addScope("read:org");
+            if (!studentAuth.currentUser)
+                throw new Error("User not authenticated");
 
-            // Check if the user already has GitHub provider linked
-            const providerData = studentAuth.currentUser?.providerData || [];
-            const githubProviderData = providerData.find(
-                (p) => p.providerId === "github.com"
-            );
-
-            let token = null;
-
-            if (githubProviderData) {
-                // User is already linked with GitHub
-                // We need to reauthenticate to get a fresh token
-                try {
-                    if (!studentAuth.currentUser)
-                        throw new Error("User not authenticated");
-                    const result = await linkWithPopup(
-                        studentAuth.currentUser,
-                        githubProvider
-                    );
-                    const credential =
-                        GithubAuthProvider.credentialFromResult(result);
-                    token = credential?.accessToken;
-                } catch (error) {
-                    // If we get credential-already-in-use, that's expected
-                    if (
-                        error instanceof FirebaseError &&
-                        error.code === "auth/credential-already-in-use"
-                    ) {
-                        const credential =
-                            GithubAuthProvider.credentialFromError(error);
-                        if (credential) {
-                            // Sign in with the existing credential to get a fresh token
-                            const result = await signInWithCredential(
-                                studentAuth,
-                                credential
-                            );
-                            const userCred =
-                                GithubAuthProvider.credentialFromResult(result);
-                            token = userCred?.accessToken;
-                        }
-                    } else {
-                        throw error;
-                    }
-                }
-            } else {
-                // User is not linked with GitHub yet, proceed with normal linking
-                try {
-                    if (!studentAuth.currentUser)
-                        throw new Error("User not authenticated");
-                    const result = await linkWithPopup(
-                        studentAuth.currentUser,
-                        githubProvider
-                    );
-                    const credential =
-                        GithubAuthProvider.credentialFromResult(result);
-                    token = credential?.accessToken;
-                } catch (error) {
-                    // Handle credential-already-in-use error
-                    if (
-                        error instanceof FirebaseError &&
-                        error.code === "auth/credential-already-in-use"
-                    ) {
-                        const credential =
-                            GithubAuthProvider.credentialFromError(error);
-                        if (credential) {
-                            // Sign in with the existing credential
-                            const result = await signInWithCredential(
-                                studentAuth,
-                                credential
-                            );
-                            const userCred =
-                                GithubAuthProvider.credentialFromResult(result);
-                            token = userCred?.accessToken;
-                        }
-                    } else {
-                        throw error;
-                    }
-                }
-            }
+            // Binds/verifies the CURRENT user only — see src/lib/github-link.ts.
+            // A GitHub identity owned by another account throws a user-facing
+            // error instead of silently switching the signed-in account.
+            const token = await connectGithubForUser(studentAuth.currentUser);
 
             if (token) {
                 const profileData = await fetchGithubUserProfile(token);
@@ -1092,13 +1095,17 @@ export default function AccountPage() {
                 throw new Error("Failed to get GitHub token");
             }
         } catch (error) {
-            setGithubError(
-                "Could not connect GitHub profile. Please try again."
-            );
-            toast.error("Connection failed", {
-                description:
-                    "Could not connect GitHub profile. Please try again.",
-            });
+            // `connectGithubForUser` throws already-user-facing messages for the
+            // "owned by another account" / "wrong GitHub account" cases; anything
+            // else falls back to the generic copy.
+            const message =
+                error instanceof Error &&
+                (error.message === GITHUB_ALREADY_LINKED_MESSAGE ||
+                    error.message === GITHUB_USER_MISMATCH_MESSAGE)
+                    ? error.message
+                    : "Could not connect GitHub profile. Please try again.";
+            setGithubError(message);
+            toast.error("Connection failed", { description: message });
             console.error(error);
         } finally {
             setIsLoadingGithub(false);
@@ -1108,6 +1115,8 @@ export default function AccountPage() {
     const disconnectGithub = async () => {
         setIsLoadingGithub(true);
         try {
+            assertSameSession();
+
             // Clear GitHub data from state
             const updatedStudent = {
                 ...student,
@@ -1125,7 +1134,10 @@ export default function AccountPage() {
 
             toast.success("GitHub disconnected successfully!");
         } catch (error) {
-            toast.error("Failed to disconnect GitHub");
+            toast.error("Failed to disconnect GitHub", {
+                description:
+                    error instanceof Error ? error.message : undefined,
+            });
         } finally {
             setIsLoadingGithub(false);
         }
@@ -1187,6 +1199,8 @@ export default function AccountPage() {
     const removeDevpostConnection = async () => {
         setIsLoadingDevpost(true);
         try {
+            assertSameSession();
+
             // Clear Devpost data from state
             const updatedStudent = {
                 ...student,
@@ -1204,7 +1218,10 @@ export default function AccountPage() {
 
             toast.success("Devpost connection removed successfully!");
         } catch (error) {
-            toast.error("Failed to remove Devpost connection");
+            toast.error("Failed to remove Devpost connection", {
+                description:
+                    error instanceof Error ? error.message : undefined,
+            });
         } finally {
             setIsLoadingDevpost(false);
         }

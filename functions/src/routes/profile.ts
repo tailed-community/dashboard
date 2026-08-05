@@ -1,6 +1,7 @@
 import express from "express";
 import Busboy from "busboy";
 import crypto from "crypto";
+import { z } from "zod";
 import { db, studentAuth, storage } from "../lib/firebase";
 import { logger } from "firebase-functions";
 import { FieldPath, FieldValue } from "firebase-admin/firestore";
@@ -1117,6 +1118,60 @@ router.patch("/main-resume/", async (req, res): Promise<void> => {
     }
 });
 
+/**
+ * Allowlist of client-writable profile fields for `PATCH /profile/update`.
+ *
+ * The handler used to do `const updates = req.body` and merge the whole thing
+ * into `profiles/{uid}`. Any key a client sent was persisted — including
+ * `email`, which is the address our onboarding drip and digests send to, and
+ * which a stale client (e.g. an account page whose signed-in user changed
+ * mid-session) could carry over from a DIFFERENT account. Unknown keys are now
+ * stripped rather than rejected, so an older client that still posts extra
+ * fields keeps working; it just can't write them.
+ *
+ * Types here are deliberately loose for the structured fields — the existing
+ * `sanitize*` helpers below own their deep validation. This schema's job is to
+ * bound WHICH keys may be written, not to re-validate their contents.
+ *
+ * Server-owned, and therefore absent on purpose: `email` (reconciled from the
+ * Firebase Auth record below), `userId`/`id`/`initials`/`profileScore`
+ * (identity or derived), `resume` (resume upload/delete endpoints),
+ * `appliedJobs`/`communities`/`events`/`organizations` (membership),
+ * `workplaceValues`/`demographicSurveyCompletedAt` (survey routes),
+ * `onboardingEmails` (drip scheduler), `createdAt`/`updatedAt`.
+ *
+ * Keep in sync with `WRITABLE_PROFILE_FIELDS` in `src/lib/profile.ts`.
+ */
+const nullableString = z.string().nullable().optional();
+const profileUpdateSchema = z.object({
+    firstName: nullableString,
+    lastName: nullableString,
+    phone: nullableString,
+    location: nullableString,
+    school: nullableString,
+    program: nullableString,
+    // string|number: legacy docs (and the retired create-account route) stored
+    // this as a number, and the account page round-trips whatever it loaded.
+    graduationYear: z.union([z.string(), z.number()]).nullable().optional(),
+    linkedinUrl: nullableString,
+    portfolioUrl: nullableString,
+    devpostUsername: nullableString,
+    githubUsername: nullableString,
+    // Connected-account payloads: an object when connected, `null` to disconnect
+    // (the null → FieldValue.delete() branch below clears the field).
+    devpost: z.any().optional(),
+    github: z.any().optional(),
+    // Structured sections — validated by the sanitizers further down.
+    skills: z.any().optional(),
+    skillsStructured: z.any().optional(),
+    experiences: z.any().optional(),
+    education: z.any().optional(),
+    projects: z.any().optional(),
+    workAuthorization: z.any().optional(),
+    preferredLanguage: z.any().optional(),
+    onboardingState: z.any().optional(),
+});
+
 router.patch("/update", async (req, res) => {
     const userId = req.user?.uid;
     if (!userId) {
@@ -1124,28 +1179,48 @@ router.patch("/update", async (req, res) => {
     }
 
     try {
-        const updates = req.body;
+        const parsed = profileUpdateSchema.safeParse(req.body ?? {});
+        if (!parsed.success) {
+            return res.status(400).json({
+                error: "Invalid request data",
+                details: parsed.error.format(),
+            });
+        }
 
-        // Check if the profile document exists and if email is set
+        // `updates` now contains ONLY allowlisted keys — zod strips the rest.
+        const updates: Record<string, any> = parsed.data;
+
+        const rejectedKeys = Object.keys(req.body ?? {}).filter(
+            (key) => !(key in profileUpdateSchema.shape)
+        );
+        if (rejectedKeys.length > 0) {
+            logger.warn(
+                `Ignored non-writable profile fields for user ${userId}: ${rejectedKeys.join(
+                    ", "
+                )}`
+            );
+        }
+
         const profileDoc = await db.collection("profiles").doc(userId).get();
 
-        // If email is not set in the profile, get it from auth
-        if (!profileDoc.exists || !profileDoc.data()?.email) {
-            try {
-                const tenantAuth = await studentAuth();
-                const userRecord = await tenantAuth.getUser(userId);
+        // `email` is server-owned: it always comes from the Firebase Auth record
+        // for THIS uid, never from the request body. Reconciled on every write so
+        // a doc that drifted (e.g. one written by a stale client holding another
+        // account's state) is repaired the next time the profile is saved.
+        try {
+            const tenantAuth = await studentAuth();
+            const userRecord = await tenantAuth.getUser(userId);
+            const authEmail = userRecord.email?.toLowerCase();
 
-                if (userRecord.email) {
-                    // Add email to the updates
-                    updates.email = userRecord.email;
-                    logger.info(
-                        `Setting email for user ${userId}: ${userRecord.email}`
-                    );
-                }
-            } catch (authError) {
-                logger.error("Error fetching user email from auth:", authError);
-                // Continue with the update even if we can't get the email
+            if (authEmail && profileDoc.data()?.email !== authEmail) {
+                updates.email = authEmail;
+                logger.info(
+                    `Reconciling profile email for user ${userId} from the auth record`
+                );
             }
+        } catch (authError) {
+            logger.error("Error fetching user email from auth:", authError);
+            // Continue with the update even if we can't get the email
         }
 
         // Validation: First name (required, must contain only letters and spaces)

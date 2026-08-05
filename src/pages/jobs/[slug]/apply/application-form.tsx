@@ -27,11 +27,10 @@ import GithubProfileSection from "./components/GithubProfileSection";
 import DevpostProfileSection from "./components/DevpostProfileSection";
 import JobDetailsSection from "./components/JobDetailsSection";
 import {
-    linkWithPopup,
-    GithubAuthProvider,
-    signInWithCredential,
-} from "firebase/auth";
-import { FirebaseError } from "firebase/app";
+    connectGithubForUser,
+    GITHUB_ALREADY_LINKED_MESSAGE,
+    GITHUB_USER_MISMATCH_MESSAGE,
+} from "@/lib/github-link";
 import {
     type TokenInfo,
     type DevpostProfile,
@@ -111,91 +110,10 @@ export default function ApplicationForm({
                 throw new Error("Failed to initialize student session");
             }
 
-            // Create GitHub provider
-            const githubProvider = new GithubAuthProvider();
-
-            githubProvider.addScope("read:user");
-            githubProvider.addScope("read:org");
-            // githubProvider.addScope("repo");
-
-            // Check if the user already has GitHub provider linked
-            const providerData = currentUser.providerData || [];
-            const githubProviderData = providerData.find(
-                (p) => p.providerId === "github.com"
-            );
-
-            let token = null;
-
-            if (githubProviderData) {
-                // User is already linked with GitHub
-                // We need to reauthenticate to get a fresh token
-                try {
-                    // Try to relink to get a fresh token
-                    const result = await linkWithPopup(
-                        currentUser,
-                        githubProvider
-                    );
-                    const credential =
-                        GithubAuthProvider.credentialFromResult(result);
-                    token = credential?.accessToken;
-                } catch (error) {
-                    // If we get credential-already-in-use, that's expected
-                    // We'll try to sign in with credential instead
-                    if (
-                        error instanceof FirebaseError &&
-                        error.code === "auth/credential-already-in-use"
-                    ) {
-                        const credential =
-                            GithubAuthProvider.credentialFromError(error);
-                        if (credential) {
-                            // Sign in with the existing credential to get a fresh token
-                            const result = await signInWithCredential(
-                                studentAuth,
-                                credential
-                            );
-                            // Fetch the GitHub user token
-                            const userCred =
-                                GithubAuthProvider.credentialFromResult(result);
-                            token = userCred?.accessToken;
-                        }
-                    } else {
-                        throw error;
-                    }
-                }
-            } else {
-                // User is not linked with GitHub yet, proceed with normal linking
-                try {
-                    const result = await linkWithPopup(
-                        currentUser,
-                        githubProvider
-                    );
-                    const credential =
-                        GithubAuthProvider.credentialFromResult(result);
-                    token = credential?.accessToken;
-                } catch (error) {
-                    // Handle credential-already-in-use error
-                    if (
-                        error instanceof FirebaseError &&
-                        error.code === "auth/credential-already-in-use"
-                    ) {
-                        const credential =
-                            GithubAuthProvider.credentialFromError(error);
-                        if (credential) {
-                            // Sign in with the existing credential
-                            const result = await signInWithCredential(
-                                studentAuth,
-                                credential
-                            );
-                            // Fetch the GitHub user token
-                            const userCred =
-                                GithubAuthProvider.credentialFromResult(result);
-                            token = userCred?.accessToken;
-                        }
-                    } else {
-                        throw error;
-                    }
-                }
-            }
+            // Binds/verifies the CURRENT user only — see src/lib/github-link.ts.
+            // A GitHub identity owned by another account throws a user-facing
+            // error instead of silently switching the signed-in account.
+            const token = await connectGithubForUser(currentUser);
 
             if (token) {
                 const profileData = await fetchGithubUserProfile(token);
@@ -212,7 +130,15 @@ export default function ApplicationForm({
                 throw new Error("Failed to get GitHub token");
             }
         } catch (error) {
-            setGithubError("Could not load GitHub profile. Please try again.");
+            // `connectGithubForUser` throws already-user-facing messages for the
+            // "owned by another account" / "wrong GitHub account" cases.
+            setGithubError(
+                error instanceof Error &&
+                    (error.message === GITHUB_ALREADY_LINKED_MESSAGE ||
+                        error.message === GITHUB_USER_MISMATCH_MESSAGE)
+                    ? error.message
+                    : "Could not load GitHub profile. Please try again."
+            );
             console.error(error);
         } finally {
             setIsLoadingGithub(false);
