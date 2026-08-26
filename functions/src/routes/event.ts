@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { DateTime } from "luxon";
 import { db, storage, requirePlatformAdmin } from "../lib/firebase";
 import { sendCommunityWelcomeEmail, sendEventApprovalEmail } from "../lib/email-service";
+import { notifyModerationQueue } from "../lib/moderation-notify";
 import { getPreferredLocaleForUid } from "../lib/locale";
 import { upsertStudentUser } from "../lib/user-management";
 import { z } from "zod";
@@ -335,6 +336,17 @@ const createEventInDB = async (
     }
 
     await batch.commit();
+  }
+
+  if (moderationStatus === "pending") {
+    notifyModerationQueue({
+      kind: "event",
+      id: eventRef.id,
+      name: validatedData.title,
+      slug: validatedData.slug,
+      description: richTextToPlain(validatedData.description || ""),
+      userId,
+    });
   }
 
   return { id: eventRef.id, moderationStatus };

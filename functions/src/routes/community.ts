@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { db, storage, requirePlatformAdmin } from "../lib/firebase";
 import { sendCommunityWelcomeEmail } from "../lib/email-service";
+import { notifyModerationQueue } from "../lib/moderation-notify";
 import { getPreferredLocaleForUid } from "../lib/locale";
 import { upsertStudentUser } from "../lib/user-management";
 import { z } from "zod";
@@ -485,6 +486,15 @@ const createCommunityInDB = async (
       updatedAt: new Date(),
     });
   }
+
+  notifyModerationQueue({
+    kind: "community",
+    id: communityRef.id,
+    name: validatedData.name,
+    slug: validatedData.slug,
+    description: validatedData.shortDescription,
+    userId,
+  });
 
   return { id: communityRef.id, data: newCommunityData };
 };
