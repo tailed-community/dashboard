@@ -3,7 +3,7 @@ import dotenv from "dotenv";
 import { buildJobDetailUrl } from "./links";
 import type { DigestJob } from "./jobs-feed";
 import type { Locale } from "./locale";
-import { emailFrom, frontendUrl, shouldSendEmail } from "./env";
+import { emailFrom, frontendUrl, moderationNotificationEmail, shouldSendEmail } from "./env";
 
 dotenv.config();
 
@@ -1891,5 +1891,127 @@ export const sendJobsDigestEmail = async (
   };
 
   return deliver(mailOptions);
+};
+
+/* ---------------------------------------------------------------------------
+ * Moderation queue alert (internal ops).
+ * Not student-facing, so English-only and no unsubscribe: this goes to the
+ * team inbox, not to a subscriber.
+ * ------------------------------------------------------------------------- */
+
+export interface ModerationQueueSubmission {
+  kind: "community" | "event";
+  /** Firestore document id, so the row can be found even if the slug changes. */
+  id: string;
+  name: string;
+  slug?: string | null;
+  description?: string | null;
+  submittedByName?: string | null;
+  submittedByEmail?: string | null;
+  submittedByUid?: string | null;
+}
+
+const MODERATION_SNIPPET_LIMIT = 240;
+
+function moderationDetailRow(label: string, value: string): string {
+  return `
+        <tr>
+          <td style="padding:6px 0;font:600 12px ${EMAIL_FONT};color:#A18B6D;text-transform:uppercase;letter-spacing:0.06em;white-space:nowrap;vertical-align:top;">${label}</td>
+          <td style="padding:6px 0 6px 16px;font:400 14px/1.5 ${EMAIL_FONT};color:#2F1E02;">${value}</td>
+        </tr>`;
+}
+
+/**
+ * Tell the team a community or event just landed in the moderation queue.
+ *
+ * Fire-and-forget at the call sites: a submission must never fail because the
+ * mail server is down.
+ */
+export const sendModerationQueueEmail = async (
+  submission: ModerationQueueSubmission
+): Promise<unknown> => {
+  const { kind, id, name, slug, description } = submission;
+  const kindLabel = kind === "community" ? "Community" : "Event";
+  const reviewUrl = `${EMAIL_SITE_URL}/admin/moderation`;
+
+  const submitter =
+    submission.submittedByName ||
+    submission.submittedByEmail ||
+    submission.submittedByUid ||
+    "Unknown";
+  const submitterLine = submission.submittedByEmail
+    ? `${escapeHtml(submitter)} &lt;${escapeHtml(submission.submittedByEmail)}&gt;`
+    : escapeHtml(submitter);
+
+  const snippet = (description || "").trim();
+  const truncated =
+    snippet.length > MODERATION_SNIPPET_LIMIT
+      ? `${snippet.slice(0, MODERATION_SNIPPET_LIMIT)}…`
+      : snippet;
+
+  const rows =
+    moderationDetailRow("Type", kindLabel) +
+    moderationDetailRow("Name", escapeHtml(name)) +
+    (slug ? moderationDetailRow("Slug", escapeHtml(slug)) : "") +
+    moderationDetailRow("Doc ID", escapeHtml(id)) +
+    moderationDetailRow("Submitted by", submitterLine) +
+    (truncated ? moderationDetailRow("Description", escapeHtml(truncated)) : "");
+
+  const preheader = `${kindLabel} "${name}" is waiting for review.`;
+
+  const html = emailShell(
+    preheader,
+    emailHeader(
+      "Moderation queue",
+      `New ${kindLabel.toLowerCase()} pending review`,
+      `${EMAIL_DOT}Submitted ${new Date().toLocaleString("en-CA", {
+        timeZone: "America/Toronto",
+      })} (ET)`
+    ) +
+      `
+        <tr><td style="padding:20px 24px 4px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:18px;border-collapse:separate;">
+            <tr><td style="padding:20px 22px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+                ${rows}
+              </table>
+            </td></tr>
+          </table>
+        </td></tr>
+        <tr><td align="center" style="padding:18px 24px 30px;">${emailButton(
+          reviewUrl,
+          "Open review queue"
+        )}</td></tr>
+        <tr><td align="center" style="padding:0 24px 30px;font:400 12px/1.6 ${EMAIL_FONT};color:#A18B6D;">
+          Internal notification &middot; Tail'ed Community
+        </td></tr>`
+  );
+
+  const text = [
+    `New ${kindLabel.toLowerCase()} pending review`,
+    ``,
+    `Type: ${kindLabel}`,
+    `Name: ${name}`,
+    slug ? `Slug: ${slug}` : null,
+    `Doc ID: ${id}`,
+    `Submitted by: ${submitter}${
+      submission.submittedByEmail ? ` <${submission.submittedByEmail}>` : ""
+    }`,
+    truncated ? `Description: ${truncated}` : null,
+    ``,
+    `Review: ${reviewUrl}`,
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
+
+  return deliver(
+    {
+      to: moderationNotificationEmail(),
+      subject: `[Moderation] New ${kindLabel.toLowerCase()} pending review: ${name}`,
+      html,
+      text,
+    },
+    "moderation-queue"
+  );
 };
 

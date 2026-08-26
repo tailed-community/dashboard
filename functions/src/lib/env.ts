@@ -161,6 +161,10 @@ export const shouldSendEmail = () => Boolean(emailServer());
 export const emailFrom = () =>
   process.env.EMAIL_FROM || "Tail'ed <no-reply@tailed.ca>";
 
+/** Inbox that gets internal ops alerts (moderation queue submissions). */
+export const moderationNotificationEmail = () =>
+  process.env.MODERATION_NOTIFICATION_EMAIL || "community@tailed.ca";
+
 /* -------------------------------------------------------------------------
  * URLs
  * ---------------------------------------------------------------------- */
