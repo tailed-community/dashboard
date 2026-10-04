@@ -171,6 +171,7 @@ const cities = [
     { name: "Seattle", region: "North America" },
     { name: "Toronto", region: "North America" },
     { name: "Vancouver", region: "North America" },
+    { name: "Ottawa", region: "North America" },
     { name: "Washington, DC", region: "North America" },
     { name: "Amsterdam", region: "Europe" },
     { name: "Barcelona", region: "Europe" },
