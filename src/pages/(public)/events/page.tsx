@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, CalendarDays, MapPin, Sparkles, Users } from "lucide-react";
+import { ArrowRight, CalendarDays, ChevronLeft, ChevronRight, MapPin, Sparkles, Users } from "lucide-react";
 import { apiFetch } from "@/lib/fetch";
 import { toEventItem, type ApiEvent, type EventItem, type Mode } from "@/pages/design-lab/playground-events";
 import { MOCK_EVENTS } from "@/pages/design-lab/playground-events-mock";
@@ -51,6 +51,13 @@ export default function EventsPage() {
     const [modeFilter, setModeFilter] = useState<"all" | Mode>("all");
     const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
     const [cityFilter, setCityFilter] = useState<string | null>(null);
+    const [selectedDate, setSelectedDate] = useState<string | null>(null); // e.g., "YYYY-MM-DD"
+
+    // Calendar navigation state (defaults to the current live month and year)
+    const [currentMonth, setCurrentMonth] = useState(() => {
+        const now = new Date();
+        return new Date(now.getFullYear(), now.getMonth(), 1);
+    });
 
     useEffect(() => {
         let cancelled = false;
@@ -116,16 +123,35 @@ export default function EventsPage() {
             .map(([name, count]) => ({ name, count }));
     }, [events]);
 
+    const eventDatesMap = useMemo(() => {
+        const map = new Set<string>();
+        events.forEach((e) => {
+            if (e.date) {
+                const parsed = new Date(e.date);
+                if (!isNaN(parsed.getTime())) {
+                    map.add(parsed.toISOString().split("T")[0]);
+                }
+            }
+        });
+        return map;
+    }, [events]);
+
     const filteredEvents = useMemo(() => {
         return events.filter((e) => {
             if (modeFilter !== "all" && e.mode !== modeFilter) return false;
             if (categoryFilter && e.category !== categoryFilter) return false;
             if (cityFilter && e.city !== cityFilter) return false;
+            if (selectedDate) {
+                const parsed = new Date(e.date);
+                if (isNaN(parsed.getTime()) || parsed.toISOString().split("T")[0] !== selectedDate) {
+                    return false;
+                }
+            }
             return true;
         });
-    }, [events, modeFilter, categoryFilter, cityFilter]);
+    }, [events, modeFilter, categoryFilter, cityFilter, selectedDate]);
 
-    const hasFilters = modeFilter !== "all" || categoryFilter !== null || cityFilter !== null;
+    const hasFilters = modeFilter !== "all" || categoryFilter !== null || cityFilter !== null || selectedDate !== null;
     const featured = !hasFilters && filteredEvents.length > 0 ? filteredEvents[0] : null;
     const gridEvents = featured ? filteredEvents.slice(1) : filteredEvents;
 
@@ -133,7 +159,27 @@ export default function EventsPage() {
         setModeFilter("all");
         setCategoryFilter(null);
         setCityFilter(null);
+        setSelectedDate(null);
     }
+
+    // Calendar helper calculations
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    const firstDayIndex = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const monthName = currentMonth.toLocaleString("default", { month: "long" });
+
+    const calendarDays = useMemo(() => {
+        const days = [];
+        for (let i = 0; i < firstDayIndex; i++) {
+            days.push(null);
+        }
+        for (let d = 1; d <= daysInMonth; d++) {
+            const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+            days.push({ dayNum: d, dateStr });
+        }
+        return days;
+    }, [year, month, firstDayIndex, daysInMonth]);
 
     return (
         <PlaygroundShell
@@ -148,10 +194,11 @@ export default function EventsPage() {
                 path="/events"
             />
 
-            {/* ---------------- Hero ---------------- */}
+            {/* ---------------- Hero with Calendar Widget ---------------- */}
             <section className="relative overflow-hidden px-5 pb-10 pt-12 md:pt-16">
-                <div className="relative mx-auto max-w-6xl">
-                    <div className="max-w-2xl">
+                <div className="relative mx-auto max-w-6xl lg:grid lg:grid-cols-12 lg:gap-12 lg:items-center">
+                    {/* Left Column: Hero Text & Filters */}
+                    <div className="lg:col-span-7">
                         <div className="inline-flex items-center gap-1.5 rounded-full bg-white px-3.5 py-1 shadow-sm">
                             <Sparkles className="h-3.5 w-3.5 text-joy-grass" aria-hidden="true" />
                             <span className="text-xs font-bold text-joy-ink-muted">
@@ -193,9 +240,8 @@ export default function EventsPage() {
                                         key={f.value}
                                         type="button"
                                         onClick={() => setModeFilter(f.value)}
-                                        className={`rounded-md px-3.5 py-1.5 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60 ${
-                                            modeFilter === f.value ? "bg-white text-joy-ink shadow-sm" : "text-joy-ink-muted"
-                                        }`}
+                                        className={`rounded-md px-3.5 py-1.5 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60 ${modeFilter === f.value ? "bg-white text-joy-ink shadow-sm" : "text-joy-ink-muted"
+                                            }`}
                                     >
                                         {f.label}
                                     </button>
@@ -213,11 +259,10 @@ export default function EventsPage() {
                                             setCityFilter(null);
                                             setCategoryFilter(categoryFilter === c.name ? null : c.name);
                                         }}
-                                        className={`rounded-full border px-3 py-1 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60 ${
-                                            categoryFilter === c.name
+                                        className={`rounded-full border px-3 py-1 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60 ${categoryFilter === c.name
                                                 ? "border-joy-grass/40 bg-joy-grass/10 text-joy-grass"
                                                 : "border-joy-ink/10 text-joy-ink-muted hover:border-joy-ink/25"
-                                        }`}
+                                            }`}
                                     >
                                         {c.name}
                                         <span className="joy-mono ml-1 opacity-60">{c.count}</span>
@@ -240,11 +285,10 @@ export default function EventsPage() {
                                             setCategoryFilter(null);
                                             setCityFilter(cityFilter === c.name ? null : c.name);
                                         }}
-                                        className={`rounded-full border px-3 py-1 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60 ${
-                                            cityFilter === c.name
+                                        className={`rounded-full border px-3 py-1 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60 ${cityFilter === c.name
                                                 ? "border-joy-sky/50 bg-joy-sky/12 text-joy-sky-ink"
                                                 : "border-joy-ink/10 text-joy-ink-muted hover:border-joy-ink/25"
-                                        }`}
+                                            }`}
                                     >
                                         {c.name}
                                         <span className="joy-mono ml-1 opacity-60">{c.count}</span>
@@ -263,10 +307,98 @@ export default function EventsPage() {
                             </button>
                         )}
                     </div>
+
+                    {/* Right Column: Mini Calendar Widget */}
+                    <div className="mt-10 lg:mt-0 lg:col-span-5">
+                        <div className="rounded-2xl border-2 border-joy-ink/10 bg-white p-5 shadow-sm">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="joy-display text-base font-extrabold text-joy-ink">
+                                    {monthName} {year}
+                                </h3>
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => setCurrentMonth(new Date(year, month - 1, 1))}
+                                        className="rounded-lg p-1.5 text-joy-ink-muted hover:bg-joy-ink/5 transition"
+                                        aria-label="Previous month"
+                                    >
+                                        <ChevronLeft className="h-4 w-4" />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setCurrentMonth(new Date(year, month + 1, 1))}
+                                        className="rounded-lg p-1.5 text-joy-ink-muted hover:bg-joy-ink/5 transition"
+                                        aria-label="Next month"
+                                    >
+                                        <ChevronRight className="h-4 w-4" />
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-7 gap-1 text-center text-xs font-bold text-joy-ink/40 mb-2">
+                                <span>Su</span>
+                                <span>Mo</span>
+                                <span>Tu</span>
+                                <span>We</span>
+                                <span>Th</span>
+                                <span>Fr</span>
+                                <span>Sa</span>
+                            </div>
+
+                            <div className="grid grid-cols-7 gap-1 text-center">
+                                {calendarDays.map((item, index) => {
+                                    if (!item) {
+                                        return <div key={`empty-${index}`} />;
+                                    }
+                                    const hasEvent = eventDatesMap.has(item.dateStr);
+                                    const isSelected = selectedDate === item.dateStr;
+
+                                    return (
+                                        <button
+                                            key={item.dateStr}
+                                            type="button"
+                                            onClick={() => setSelectedDate(isSelected ? null : item.dateStr)}
+                                            aria-label={`${item.dateStr}${hasEvent ? ", events available" : ""}`}
+                                            aria-pressed={isSelected}
+                                            className={`relative flex h-9 w-full flex-col items-center justify-center rounded-lg text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60 ${isSelected
+                                                    ? "bg-joy-grass text-white shadow-sm"
+                                                    : hasEvent
+                                                        ? "bg-joy-grass/10 text-joy-grass hover:bg-joy-grass/20"
+                                                        : "text-joy-ink hover:bg-joy-ink/5"
+                                                }`}
+                                        >
+                                            <span>{item.dayNum}</span>
+                                            {hasEvent && !isSelected && (
+                                                <span
+                                                    className="absolute bottom-1 h-1 w-1 rounded-full bg-joy-grass"
+                                                    aria-hidden="true"
+                                                />
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {selectedDate && (
+                                <div className="mt-4 flex items-center justify-between border-t border-joy-ink/8 pt-3 text-xs">
+                                    <span className="font-bold text-joy-ink-muted">
+                                        Filtering for {selectedDate}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedDate(null)}
+                                        className="font-bold text-joy-grass hover:underline"
+                                    >
+                                        Show all dates
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </div>
             </section>
 
-            {/* ---------------- Sample-data banner (dev only — see fetch effect above) ---------------- */}
+            {/* ---------------- Sample-data banner (dev only) ---------------- */}
             {!loading && usingSampleEvents && (
                 <section className="px-5 pb-4">
                     <div className="mx-auto max-w-6xl">
