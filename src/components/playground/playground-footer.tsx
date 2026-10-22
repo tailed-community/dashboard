@@ -43,6 +43,15 @@ export function PlaygroundFooter() {
                     >
                         Sign in
                     </Link>
+                      <a
+                        href="https://github.com/GakuX/dashboardtailed?tab=coc-ov-file"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-2 rounded hover:text-joy-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60"
+                    >
+                       
+                        Code of Conduct
+                    </a>
                 </div>
             </div>
         </footer>

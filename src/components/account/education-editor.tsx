@@ -166,6 +166,7 @@ export function EducationEditor({ profile, onSaved }: EducationEditorProps) {
           )}
         </div>
 
+
         <div className="space-y-3">
           {additional.map((item) =>
             editingId === item.id ? (
@@ -205,6 +206,7 @@ export function EducationEditor({ profile, onSaved }: EducationEditorProps) {
                       setDraft({ ...item });
                       setEditingId(item.id);
                     }}
+                     aria-label="Edit education"
                     disabled={editingId !== null}
                   >
                     <Pencil className="h-4 w-4" />
@@ -213,6 +215,7 @@ export function EducationEditor({ profile, onSaved }: EducationEditorProps) {
                     variant="ghost"
                     size="icon"
                     onClick={() => remove(item.id)}
+                     aria-label="Delete education"
                     disabled={isSaving || editingId !== null}
                     className="text-red-600 hover:text-red-700"
                   >

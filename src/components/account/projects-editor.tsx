@@ -195,6 +195,7 @@ export function ProjectsEditor({ projects, onSaved }: ProjectsEditorProps) {
                     variant="ghost"
                     size="icon"
                     onClick={() => startEdit(item)}
+                    aria-label="Edit Project"
                     disabled={editingId !== null}
                   >
                     <Pencil className="h-4 w-4" />
@@ -203,6 +204,7 @@ export function ProjectsEditor({ projects, onSaved }: ProjectsEditorProps) {
                     variant="ghost"
                     size="icon"
                     onClick={() => remove(item.id)}
+                    aria-label="Delete Project"
                     disabled={isSaving || editingId !== null}
                     className="text-red-600 hover:text-red-700"
                   >

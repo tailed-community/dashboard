@@ -204,7 +204,9 @@ export function ExperienceEditor({
                     variant="ghost"
                     size="icon"
                     onClick={() => startEdit(item)}
+                    aria-label="Edit Experience"
                     disabled={editingId !== null}
+
                   >
                     <Pencil className="h-4 w-4" />
                   </Button>
@@ -212,6 +214,7 @@ export function ExperienceEditor({
                     variant="ghost"
                     size="icon"
                     onClick={() => remove(item.id)}
+                     aria-label="Delete Experience"
                     disabled={isSaving || editingId !== null}
                     className="text-red-600 hover:text-red-700"
                   >
