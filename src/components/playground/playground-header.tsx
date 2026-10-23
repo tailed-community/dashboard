@@ -8,7 +8,7 @@ import { usePlaygroundRoutes } from "@/components/playground/playground-routes";
 import { useAuth } from "@/hooks/use-auth";
 import { studentAuth } from "@/lib/auth";
 
-export type PlaygroundActiveNav = "jobs" | "events" | "communities" | null;
+export type PlaygroundActiveNav = "jobs" | "events" | "communities" | "friends" | null;
 
 export type PlaygroundHeaderCta =
     | { label: string; to: string; onClick?: never }
@@ -43,6 +43,7 @@ export function PlaygroundHeader({
         { key: "jobs", label: "Jobs", to: routes.jobs },
         { key: "events", label: "Events", to: routes.events },
         { key: "communities", label: "Communities", to: routes.communities },
+        {key: "friends", label: "Friends", to: routes.friends}
     ];
 
     // Same logout call/redirect as the old header's `Header` component.

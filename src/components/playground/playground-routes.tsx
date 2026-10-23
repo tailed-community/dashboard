@@ -15,6 +15,7 @@ export interface PlaygroundRoutes {
     eventDetail: (idOrSlug: string) => string;
     communityDetail: (idOrSlug: string) => string;
     spotlight: string;
+    friends: string
     signIn: string;
     signUp: string;
     /** Get-alerts CTA target used by pages that link (rather than scroll/onClick) to the alert builder. */
@@ -47,6 +48,7 @@ export const LAB_ROUTES: PlaygroundRoutes = {
     jobDetail: (idOrSlug) => `/design-lab/playground/jobs/${idOrSlug}`,
     eventDetail: (idOrSlug) => `/design-lab/playground/events/${idOrSlug}`,
     communityDetail: (idOrSlug) => `/design-lab/playground/communities/${idOrSlug}`,
+    friends: "/friends",
     spotlight: "/spotlight",
     signIn: "/sign-in",
     signUp: "/sign-up",
@@ -83,6 +85,7 @@ export const LIVE_ROUTES: PlaygroundRoutes = {
     eventDetail: (idOrSlug) => `/events/${idOrSlug}`,
     communityDetail: (idOrSlug) => `/communities/${idOrSlug}`,
     spotlight: "/spotlight",
+     friends: "/friends",
     signIn: "/sign-in",
     signUp: "/sign-up",
     alertBuilder: "/jobs#alert-builder",

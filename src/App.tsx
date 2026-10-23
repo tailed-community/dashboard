@@ -11,6 +11,8 @@ import { schedulePreload } from "./lib/route-preload";
 import { installGlobalNavProgressListener } from "./lib/nav-progress";
 import { NavProgressBar, NavProgressReset } from "./components/nav-progress-bar";
 import { RouteFallback } from "./components/route-fallback";
+
+import FriendsConceptPage from "./pages/friends/page";
 import {
     accountImport,
     alertDetailImport,
@@ -395,6 +397,7 @@ function App() {
                                 path="/spotlight"
                                 element={<SpotlightPage />}
                             />
+                          
                             <Route path="/explore" element={<ExplorePage />} />
                             <Route path="/about" element={<AboutPage />} />
                             
@@ -440,6 +443,7 @@ function App() {
                         <Route path="/design-lab/playground/jobs/:id" element={<LabPlaygroundJobDetail />} />
                         <Route path="/design-lab/playground/events/:id" element={<LabPlaygroundEventDetail />} />
                         <Route path="/design-lab/playground/communities/:id" element={<LabPlaygroundCommunityDetail />} />
+                          <Route path="/friends" element={<FriendsConceptPage />} />
 
                         {/* 404 CATCH-ALL ROUTE */}
                         <Route path="*" element={<NotFoundComponent />} />
