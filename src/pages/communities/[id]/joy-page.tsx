@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, CalendarDays, Check, Loader2, Settings, Users } from "lucide-react";
+import { ArrowLeft, CalendarDays, Check, Loader2, MessageCircle, Send, Settings, Users } from "lucide-react";
+
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { usePlatformAdmin } from "@/hooks/use-platform-admin";
@@ -73,6 +74,32 @@ export default function CommunityDetailJoyPage() {
     const [eventsLoading, setEventsLoading] = useState(true);
     const [eventsFailed, setEventsFailed] = useState(false);
     const [showAllPast, setShowAllPast] = useState(false);
+    const [chatMessages, setChatMessages] = useState<{
+        id: string;
+        author: string;
+        text: string;
+        time: string;
+    }[]>([]);
+    const [chatDraft, setChatDraft] = useState("");
+
+    useEffect(() => {
+        setChatMessages([
+            { id: "1", author: "Priya S.", text: "Anyone going to the build night on Thursday?", time: "2h ago" },
+            { id: "2", author: "Marco D.", text: "Yep! Bringing my hackathon team to plan our project 🚀", time: "1h ago" },
+        ]);
+        setChatDraft("");
+    }, [id]);
+
+    const handlePostMessage = () => {
+        if (!chatDraft.trim()) return;
+        setChatMessages((prev) => [
+            ...prev,
+            { id: crypto.randomUUID(), author: "You", text: chatDraft.trim(), time: "Just now" },
+        ]);
+        setChatDraft("");
+    };
+
+
 
     useEffect(() => {
         let cancelled = false;
@@ -464,6 +491,56 @@ export default function CommunityDetailJoyPage() {
                                         )}
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                        {/* <div className="mt-8 rounded-2xl border border-joy-ink/8 bg-white p-6 shadow-sm sm:p-8">
+                        
+                        
+                        <button className="bg-red-500 ">yo</button>
+                        
+                        
+                        </div> */}
+
+                          <div className="mt-8 rounded-2xl border border-joy-ink/8 bg-white p-6 shadow-sm sm:p-8">
+                            <p className="joy-mono text-xs font-bold uppercase tracking-wide text-joy-grass flex items-center gap-1.5">
+                                <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" />
+                                Discussion
+                            </p>
+
+                            <div className="mt-4 space-y-4">
+                                {chatMessages.map((msg) => (
+                                    <div key={msg.id} className="flex items-start gap-3">
+                                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-joy-grass/10 text-sm font-bold text-joy-grass">
+                                            {msg.author.charAt(0).toUpperCase()}
+                                        </div>
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm font-bold text-joy-ink">{msg.author}</span>
+                                                <span className="text-xs text-joy-ink-muted">{msg.time}</span>
+                                            </div>
+                                            <p className="mt-0.5 text-sm text-joy-ink-muted">{msg.text}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="mt-5 flex items-center gap-2 border-t border-joy-ink/8 pt-4">
+                                <input
+                                    type="text"
+                                    value={chatDraft}
+                                    onChange={(e) => setChatDraft(e.target.value)}
+                                    onKeyDown={(e) => e.key === "Enter" && handlePostMessage()}
+                                    placeholder="Share something with the community..."
+                                    className="flex-1 rounded-xl border border-joy-ink/12 bg-joy-surface-alt px-4 py-2.5 text-sm text-joy-ink placeholder:text-joy-ink-muted focus:outline-none focus:ring-2 focus:ring-joy-grass/60"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={handlePostMessage}
+                                    aria-label="Post message"
+                                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-joy-grass text-white transition hover:bg-joy-grass-bright focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60"
+                                >
+                                    <Send className="h-4 w-4" aria-hidden="true" />
+                                </button>
                             </div>
                         </div>
 
