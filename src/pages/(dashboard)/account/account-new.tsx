@@ -619,7 +619,7 @@ export default function AccountPage() {
                     return `${
                         name === "firstName" ? "First" : "Last"
                     } name is required`;
-                if (!/^[a-zA-Z\s'-]+$/.test(value))
+                if (!/^[\p{L}\p{M}][\p{L}\p{M}\s'’.-]*$/u.test(value))
                     return "Only letters, spaces, hyphens, and apostrophes allowed";
                 return "";
 
