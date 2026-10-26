@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, X } from "lucide-react";
 import { Seo } from "@/components/seo";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trackEvent } from "@/lib/analytics";
 import { useAuth } from "@/hooks/use-auth";
 import { useProfileSummary } from "@/hooks/use-profile-summary";
@@ -15,6 +16,11 @@ import {
     searchJoyJobs,
     matchesJoyTypeFilter,
     computeJoyFeedPulse,
+    rankJoyFilterOptions,
+    joyLocationOptions,
+    matchesJoyLocation,
+    joyRegionOptions,
+    type JoyFilterOption,
     type JoyJobTypeFilter,
 } from "@/components/playground/joy-live-jobs";
 import { PlaygroundShell } from "@/components/playground/playground-chrome";
@@ -41,6 +47,45 @@ const RESULT_TYPE_FILTERS: { label: string; value: JoyJobTypeFilter }[] = [
     { label: "Internships", value: "internship" },
     { label: "New grad", value: "new-grad" },
 ];
+
+function chipClass(active: boolean) {
+    return `rounded-full border px-3.5 py-2 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60 ${
+        active
+            ? "border-joy-grass/40 bg-joy-grass/10 text-joy-grass"
+            : "border-joy-ink/10 text-joy-ink-muted hover:border-joy-ink/25"
+    }`;
+}
+
+// Dropdown that looks like the filter buttons above. "All" removes the filter.
+function FilterMenu({
+    label,
+    value,
+    options,
+    onChange,
+}: {
+    label: string;
+    value: string;
+    options: JoyFilterOption[];
+    onChange: (value: string) => void;
+}) {
+    if (options.length === 0) return null;
+
+    return (
+        <Select value={value} onValueChange={onChange}>
+            <SelectTrigger aria-label={label} className={`bg-transparent data-[size=default]:h-auto ${chipClass(value !== "all")}`}>
+                <SelectValue>{options.find((o) => o.value === value)?.label ?? label}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                {options.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                        {o.label} ({o.count.toLocaleString("en-US")})
+                    </SelectItem>
+                ))}
+            </SelectContent>
+        </Select>
+    );
+}
 
 /**
  * Slim, dismissible profile-completion nudge shown on the jobs board for
@@ -86,6 +131,9 @@ export default function JoyJobsPage() {
     );
     const [debouncedQuery, setDebouncedQuery] = useState(searchQuery);
     const [typeFilter, setTypeFilter] = useState<JoyJobTypeFilter>("all");
+    const [season, setSeason] = useState("all");
+    const [location, setLocation] = useState("all");
+    const [region, setRegion] = useState("all");
     const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
     useEffect(() => {
@@ -111,16 +159,37 @@ export default function JoyJobsPage() {
         () => (isSearching ? searchJoyJobs(all, debouncedQuery) : all),
         [all, debouncedQuery, isSearching]
     );
+        const seasonOptions = useMemo(
+        () =>
+            rankJoyFilterOptions(all, (job) =>
+                job.external?.season ? [{ value: job.external.season, label: job.external.season }] : []
+            ),
+        [all]
+    );
+    const locationOptions = useMemo(() => rankJoyFilterOptions(all, joyLocationOptions), [all]);
+    const regionOptions = useMemo(
+        () =>
+            location === "all" || location === "remote"
+                ? []
+                : rankJoyFilterOptions(all, (job) => joyRegionOptions(job, location)),
+        [all, location]
+    );
     const filteredMatches = useMemo(
-        () => baseMatches.filter((job) => matchesJoyTypeFilter(job, typeFilter)),
-        [baseMatches, typeFilter]
+        () =>
+            baseMatches.filter(
+                (job) =>
+                    matchesJoyTypeFilter(job, typeFilter) &&
+                    (season === "all" || job.external?.season === season) &&
+                    matchesJoyLocation(job, location, region)
+            ),
+        [baseMatches, typeFilter, season, location, region]
     );
 
     // Reset the "load more" window back to the first page whenever the
     // filtered set changes (new search term or type filter).
     useEffect(() => {
         setVisibleCount(PAGE_SIZE);
-    }, [debouncedQuery, typeFilter]);
+    }, [debouncedQuery, typeFilter, season, location, region]);
 
     const displayedMatches = filteredMatches.slice(0, visibleCount);
     const hasMore = visibleCount < filteredMatches.length;
@@ -219,16 +288,30 @@ export default function JoyJobsPage() {
                                             key={f.value}
                                             type="button"
                                             onClick={() => setTypeFilter(f.value)}
-                                            className={`rounded-full border px-3.5 py-2 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-joy-grass/60 ${
-                                                typeFilter === f.value
-                                                    ? "border-joy-grass/40 bg-joy-grass/10 text-joy-grass"
-                                                    : "border-joy-ink/10 text-joy-ink-muted hover:border-joy-ink/25"
-                                            }`}
+                                            className={chipClass(typeFilter === f.value)}
                                         >
                                             {f.label}
                                         </button>
                                     ))}
                                 </div>
+                            </div>
+                                                        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                                <FilterMenu label="Session" value={season} options={seasonOptions} onChange={setSeason} />
+                                                                <FilterMenu
+                                    label="Location"
+                                    value={location}
+                                    options={locationOptions}
+                                    onChange={(value) => {
+                                        setLocation(value);
+                                        setRegion("all");
+                                    }}
+                                />
+                                <FilterMenu
+                                    label="Province / State"
+                                    value={region}
+                                    options={regionOptions}
+                                    onChange={setRegion}
+                                />
                             </div>
                         </div>
 
@@ -265,7 +348,7 @@ export default function JoyJobsPage() {
                             )}
                         </div>
 
-                        <div key={`${typeFilter}:${debouncedQuery}`} className="joy-swap mt-4">
+                        <div key={`${typeFilter}:${season}:${location}:${region}:${debouncedQuery}`} className="joy-swap mt-4">
                             {loading ? (
                                 <div className="space-y-2">
                                     {Array.from({ length: 6 }).map((_, i) => (

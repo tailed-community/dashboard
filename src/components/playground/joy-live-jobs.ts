@@ -8,6 +8,12 @@ import {
 } from "@/lib/external-jobs";
 import type { ExternalJob } from "@/types/jobs";
 
+import {
+    matchLocationFilters,
+    normalizeLocations,
+    type LocationFilterOption,
+} from "@/lib/location-normalization";
+
 /**
  * Featured/internal job as returned by `GET /public/jobs` (Firestore-backed,
  * companies API). Shape mirrors the (unexported) `FeaturedJob` type in
@@ -198,6 +204,52 @@ export function matchesJoyTypeFilter(job: JoyJob, filter: JoyJobTypeFilter): boo
     if (filter === "all") return true;
     if (filter === "featured") return job.featured;
     return !job.featured && job.type === filter;
+}
+
+export type JoyFilterOption = LocationFilterOption & { count: number };
+
+// Counts how many jobs have each option and returns the most common ones first.
+// Used to fill the Session and Location dropdowns.
+export function rankJoyFilterOptions(
+    jobs: JoyJob[],
+    optionsOf: (job: JoyJob) => LocationFilterOption[],
+    limit = 10
+): JoyFilterOption[] {
+    const ranked = new Map<string, JoyFilterOption>();
+    for (const job of jobs) {
+        for (const option of new Map(optionsOf(job).map((o) => [o.value, o])).values()) {
+            const entry = ranked.get(option.value) ?? { ...option, count: 0 };
+            entry.count += 1;
+            ranked.set(option.value, entry);
+        }
+    }
+    return [...ranked.values()].sort((a, b) => b.count - a.count).slice(0, limit);
+}
+
+// True if the job matches the selected location ("all", "remote" or a country code).
+export function joyLocationOptions(job: JoyJob): LocationFilterOption[] {
+    return normalizeLocations(job.locations).flatMap(({ type, normalized }) => [
+        ...(type === "remote" ? [{ value: "remote", label: "Remote" }] : []),
+        ...(normalized.country_code && normalized.country
+            ? [{ value: normalized.country_code, label: normalized.country }]
+            : []),
+    ]);
+}
+
+// Province/state options for one job, but only if it is in the selected country.
+export function joyRegionOptions(job: JoyJob, country: string): LocationFilterOption[] {
+    return normalizeLocations(job.locations).flatMap(({ normalized }) =>
+        normalized.country_code === country && normalized.region_code && normalized.region
+            ? [{ value: normalized.region_code, label: normalized.region }]
+            : []
+    );
+}
+
+export function matchesJoyLocation(job: JoyJob, location: string, region: string): boolean {
+    const locations = normalizeLocations(job.locations);
+    return location === "remote"
+        ? locations.some((loc) => loc.type === "remote")
+        : matchLocationFilters(locations, { countryCode: location, regionKey: region, cityKey: "all" });
 }
 
 const DAY_MS = 86_400_000;
