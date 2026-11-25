@@ -179,7 +179,7 @@ export default function ExternalJobBoard() {
       {filteredJobs.length === 0 && (
         <div className="text-center py-12">
           <p className="text-muted-foreground">
-            No jobs found matching your criteria.
+            No jobs found. Try changing your search or filters.
           </p>
         </div>
       )}
