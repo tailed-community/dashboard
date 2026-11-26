@@ -275,7 +275,7 @@ export default function JoyJobsPage() {
                             ) : filteredMatches.length === 0 ? (
                                 <div className="rounded-2xl border border-joy-ink/8 bg-white p-8 text-center shadow-sm">
                                     <p className="text-sm text-joy-ink-muted">
-                                        No live roles match that yet — be first to know when one appears.
+                                        No results found. Try different keywords or clear your filters to see more opportunities.
                                     </p>
                                     <PlaygroundButton onClick={handleGetAlertsForSearch} variant="outline" className="mt-4">
                                         Get alerts for this search
